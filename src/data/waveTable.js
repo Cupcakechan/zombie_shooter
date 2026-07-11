@@ -18,11 +18,11 @@ export const WAVES = {
     SPEED_CAP: 1.4,    // shamblers, not sprinters — hard ceiling
   },
   SPAWN_POINTS: [
-    { x: 0, z: -28 },
-    { x: -12, z: -28 },
-    { x: 12, z: -28 },
-    { x: -14, z: -18 },
-    { x: 14, z: -18 },
+    { x: 0, z: -24 },
+    { x: -12, z: -24 },
+    { x: 12, z: -24 },
+    { x: -13, z: -11 },
+    { x: 13, z: -11 },
   ],
   SPAWN_GAP_MS: 800,      // stagger between a wave's spawns
   INTERMISSION_MS: 2500,  // breather + banner between waves
