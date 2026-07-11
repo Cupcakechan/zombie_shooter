@@ -1,0 +1,15 @@
+# Dependencies / caches (scratch tooling only — the game itself ships dependency-free)
+node_modules/
+
+# Editor / IDE
+.vscode/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ad-hoc test probes (throwaway, one per pass)...
+test_*.mjs
+# ...except the committed module-health suite (negation must follow the pattern)
+!test_suite.mjs
