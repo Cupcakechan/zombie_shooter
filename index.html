@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zombie Shooter (working title)</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="crosshair" class="hidden" aria-hidden="true"></div>
+
+  <section id="screen-start" class="screen">
+    <h1>Zombie Shooter</h1>
+    <p class="subtitle">Stage 1 &mdash; Shooting Range</p>
+    <button id="btn-start" type="button">Start</button>
+    <p class="controls">Mouse &mdash; look &middot; Left click &mdash; fire &middot; ESC &mdash; pause</p>
+    <p id="start-hint" class="hint"></p>
+  </section>
+
+  <section id="screen-pause" class="screen hidden">
+    <h2>Paused</h2>
+    <p id="pause-hint" class="hint">Click anywhere to resume</p>
+  </section>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -107,10 +107,14 @@ Fixed **60-second** round. At 0: input stops, targets freeze, RESULTS shows.
 ## 7. Tech & architecture
 
 - **Stack:** plain HTML/CSS/JS, ES modules, **no bundler, no build step**.
-  Three.js is **vendored** — `three.module.js` pinned at **r185** lives in
-  `lib/` and is mapped via an import map in `index.html`
-  (`"three" → "./lib/three.module.js"`), so the ship folder is fully
-  self-contained (no CDN at runtime).
+  Three.js is **vendored** at **r185** in `lib/` — the r185 build is split, so
+  it's a pair: `three.module.js` + `three.core.js` (the former imports the
+  latter as a sibling). Game code imports it by **relative path**
+  (`../lib/three.module.js`) — no import map, because the committed Node test
+  suite can't read browser import maps and relative specifiers behave
+  identically in browser and Node. Ship folder stays fully self-contained
+  (no CDN at runtime). At ship time the `.min` pair can be swapped in if
+  upload size matters.
 - **Renderer:** `WebGLRenderer` with antialias, `devicePixelRatio` capped at 2,
   shadows OFF for the slice.
 - **Crosshair + HUD:** HTML/CSS overlay, not in-scene meshes.
@@ -132,6 +136,7 @@ zombie_shooter/
 ├── .gitignore
 ├── test_suite.mjs           committed module-health suite
 ├── lib/
+│   ├── three.core.js        vendored Three.js r185 (split build) — ships
 │   └── three.module.js      vendored Three.js r185 — ships
 ├── src/
 │   ├── main.js              entry + frame loop
@@ -208,3 +213,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 ---
 
 *Changelog: 2026-07-11 — v1, written after kickoff decisions (Option 1 slice, new repo).*
+*2026-07-11 — v1.1 (shell pass): import map dropped in favour of relative imports (Node suite compatibility); vendored pair is `three.module.js` + `three.core.js` (r185 split build).*
