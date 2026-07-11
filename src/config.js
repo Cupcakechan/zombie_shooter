@@ -83,4 +83,7 @@ export const CONFIG = {
 
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',
+  // — Debug (dev-only; the suite FAILS any truthy flag when the SHIP env
+  // var is set — the pre-ship gate that keeps these out of a real build) —
+  DEBUG: { SPAWN_ZOMBIE: true },
 };
