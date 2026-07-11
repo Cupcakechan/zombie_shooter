@@ -1,34 +1,51 @@
-// ui/hud.js — the DOM layer: screen overlays, crosshair, HUD bar (score,
-// multiplier pill, live timer), the countdown numeral, and the results
-// screen. Pure DOM, no three.js, no game logic: main.js pushes values and
-// the current mode in via the setters/parameters.
+// ui/hud.js — the DOM layer: screen overlays, crosshair, the Range HUD bar
+// (score, pill, timer), the Waves HUD (hearts, kills), the countdown
+// numeral, damage vignette, results, and game over. Pure DOM: main.js
+// pushes values and the current mode in via the setters/parameters.
 
 import { States } from '../state.js';
 
 const els = {};
 let hintTimer = null;
 let lastTimerText = null;
+let lastHearts = -1;
+let heartsMax = 0;
 const defaultHints = {};
 
+function fmtTime(seconds) {
+  const s = Math.max(0, seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 export function initHud({
-  onRangeClick, onWavesClick, onResumeClick, onPlayAgainClick, onQuitClick,
+  onRangeClick, onWavesClick, onResumeClick, onPlayAgainClick,
+  onRetryClick, onQuitClick,
 } = {}) {
   const ids = {
     screenStart: 'screen-start',
     screenPause: 'screen-pause',
     screenResults: 'screen-results',
+    screenGameover: 'screen-gameover',
     crosshair: 'crosshair',
     countdown: 'countdown',
+    vignette: 'damage-vignette',
     btnRange: 'btn-range',
     btnWaves: 'btn-waves',
     btnAgain: 'btn-again',
+    btnRetry: 'btn-retry',
     btnQuit: 'btn-quit',
+    btnGoQuit: 'btn-go-quit',
     startHint: 'start-hint',
     pauseHint: 'pause-hint',
     hudBar: 'hud',
     hudScore: 'hud-score',
     hudMult: 'hud-mult',
     hudTimer: 'hud-timer',
+    hudWaves: 'hud-waves',
+    hudHearts: 'hud-hearts',
+    hudKills: 'hud-kills',
+    goKills: 'go-kills',
+    goTime: 'go-time',
     resultScore: 'result-score',
     resultAccuracy: 'result-accuracy',
     resultStreak: 'result-streak',
@@ -53,6 +70,7 @@ export function initHud({
   if (onRangeClick) els.btnRange.addEventListener('click', onRangeClick);
   if (onWavesClick) els.btnWaves.addEventListener('click', onWavesClick);
   if (onPlayAgainClick) els.btnAgain.addEventListener('click', onPlayAgainClick);
+  if (onRetryClick) els.btnRetry.addEventListener('click', onRetryClick);
   // The whole pause overlay is the resume button — biggest possible target.
   // The quit button must NOT bubble into that overlay click, or quitting
   // would also request a pointer lock.
@@ -62,6 +80,7 @@ export function initHud({
       e.stopPropagation();
       onQuitClick();
     });
+    els.btnGoQuit.addEventListener('click', onQuitClick);
   }
 }
 
@@ -73,10 +92,11 @@ export function showForState(state, mode) {
   setVisible(els.screenStart, state === States.START);
   setVisible(els.screenPause, state === States.PAUSED);
   setVisible(els.screenResults, state === States.RESULTS);
+  setVisible(els.screenGameover, state === States.GAMEOVER);
   setVisible(els.countdown, state === States.COUNTDOWN);
   setVisible(els.crosshair, state === States.PLAYING);
-  // The score/timer bar belongs to Range; Waves gets its own HUD in 5b.
   setVisible(els.hudBar, state === States.PLAYING && mode === 'range');
+  setVisible(els.hudWaves, state === States.PLAYING && mode === 'waves');
 }
 
 export function setScore(score) {
@@ -100,11 +120,47 @@ export function setCountdown(n) {
 // m:ss, updated only when the text actually changes so a per-frame call
 // doesn't churn the DOM sixty times a second.
 export function setTimer(seconds) {
-  const s = Math.max(0, seconds);
-  const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const text = fmtTime(seconds);
   if (text === lastTimerText) return;
   lastTimerText = text;
   els.hudTimer.textContent = text;
+}
+
+// Hearts as pips: built once per max, then only the .lost class toggles.
+export function setHearts(current, max) {
+  if (max !== heartsMax) {
+    heartsMax = max;
+    els.hudHearts.innerHTML = '';
+    for (let i = 0; i < max; i++) {
+      const pip = document.createElement('span');
+      pip.className = 'pip';
+      els.hudHearts.appendChild(pip);
+    }
+    lastHearts = -1;
+  }
+  if (current === lastHearts) return;
+  lastHearts = current;
+  const pips = els.hudHearts.children;
+  for (let i = 0; i < pips.length; i++) {
+    pips[i].classList.toggle('lost', i >= current);
+  }
+}
+
+export function setKills(n) {
+  els.hudKills.textContent = `KILLS ${n}`;
+}
+
+// Red edge-flash on taking damage: restart the CSS animation by removing
+// the class, forcing a reflow, and re-adding it.
+export function flashDamage() {
+  els.vignette.classList.remove('flash');
+  void els.vignette.offsetWidth;
+  els.vignette.classList.add('flash');
+}
+
+export function showGameOver({ kills, seconds }) {
+  els.goKills.textContent = String(kills);
+  els.goTime.textContent = fmtTime(seconds);
 }
 
 function formatAccuracy(accuracy) {

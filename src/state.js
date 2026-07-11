@@ -10,6 +10,7 @@ export const States = Object.freeze({
   PLAYING: 'PLAYING',
   PAUSED: 'PAUSED',
   RESULTS: 'RESULTS',
+  GAMEOVER: 'GAMEOVER',
 });
 
 let current = States.BOOT;

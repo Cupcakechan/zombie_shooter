@@ -83,6 +83,8 @@ BOOT ──► START ──click──► COUNTDOWN (3s) ──► PLAYING (60s)
   to START.
 - **RESULTS** — score, accuracy %, best streak, personal best (with "NEW BEST!"
   flag when beaten), PLAY AGAIN button.
+- **GAMEOVER** (Waves only) — "You Died" with kills + survival time, TRY AGAIN
+  (fresh waves run) and Quit to menu. Entered when player hits reach 0.
 
 ## 5. Mechanics spec (Stage 1)
 
@@ -264,3 +266,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v2.4 (proto-zombie pass, picks 1+B): dev-toggled proto-zombie (`DEBUG.SPAWN_ZOMBIE`, intentionally true in the dev build) — blocky arms-out humanoid, stride-locked procedural shamble, walks from (0,−28) and stops exactly 2 m out; `enemyTypes.js` registry + `enemies.js`; MEASURED: `rotation.y = atan2(dx,dz)` faces a +Z-built body at the player; new SHIP env-var gate makes the suite fail any truthy DEBUG flag pre-ship; registries now leaf-swept by Section 5; movement clamp suite-pinned (Section 6).*
 *2026-07-11 — v2.5 (combat pass, pick A): unified hit pipeline (targets + enemy body parts raycast together, nearest wins, kind-tagged dispatch); proto_zombie HP 3, hit reaction = red flash 100 ms + stagger 200 ms + 0.15 m knockback; death = fall-over around the feet (600 ms, k² ease) → lie 1500 ms → fade 400 ms → despawn; dying bodies are unhittable (shots pass through); zombie hits are SCORING-NEUTRAL until wave-mode scoring (passes 5–6); death timeline suite-pinned relative to registry timings.*
 *2026-07-11 — v2.6 (mode split, 5a of pick 1): START offers Range / Waves; Waves = untimed last-stand arena (no practice targets, no round clock — suite-pinned) with the zombie in its proper home; `DEBUG.SPAWN_ZOMBIE` retired (DEBUG block + SHIP gate stay for future flags); PAUSED gains Quit to menu; range-as-a-mode open question RESOLVED: yes. Player health, attacks, and game over are 5b.*
+*2026-07-11 — v2.7 (threat pass, 5b, pick B): zombie telegraphed swipe (windup 300 ms arms-rear tell → strike lands damage → recover; cooldown 1200 ms start-to-start, suite-asserted ≥ phase sum); pinned — a hit CANCELS an in-progress attack and the cooldown keeps running; player = 5 arcade hits (hearts HUD), red vignette + 120 ms camera kick per hit; GAMEOVER state (kills + survival time, Try Again, Quit); waves kills/time counters live in main until the pass-6 wave manager absorbs them.*

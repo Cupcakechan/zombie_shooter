@@ -85,5 +85,11 @@ export const CONFIG = {
   STORAGE_KEY: 'zombieShooter.v1.best',
   // — Debug (dev-only; the suite FAILS any truthy flag when the SHIP env
   // var is set — the pre-ship gate that keeps these out of a real build) —
+  // — Player (waves mode) —
+  PLAYER: {
+    MAX_HITS: 5,            // arcade health: hits before game over
+    DAMAGE_SHAKE_MS: 120,   // camera kick duration on taking a hit
+    DAMAGE_SHAKE_AMP: 0.02, // radians of pitch wobble
+  },
   DEBUG: { SPAWN_ZOMBIE: true },
 };

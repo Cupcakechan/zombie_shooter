@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 14;
+const MIN_EXPECTED_MODULES = 15;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -365,6 +365,8 @@ try {
     'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
     'STORAGE_KEY': 'string',
+    'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
+    'PLAYER.DAMAGE_SHAKE_AMP': 'number',
   };
 
   const resolvePath = (obj, path) =>
@@ -496,6 +498,39 @@ try {
 } catch (err) {
   failures.push({ file: 'section6', err });
   console.log(`  FAIL   section 6 threw: ${err.message}`);
+}
+
+// ————— Section 7: player health + attack pacing —————
+
+console.log('');
+console.log('— Section 7: player health + attack pacing —');
+try {
+  const player = await import(pathToFileURL(join('src', 'game', 'player.js')).href);
+  const { CONFIG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const { ENEMY_TYPES } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+
+  player.resetPlayer();
+  assertNear('section7', 'fresh player at MAX_HITS', player.getHits(), CONFIG.PLAYER.MAX_HITS);
+  // Damage down to exactly 1: still alive.
+  for (let i = 0; i < CONFIG.PLAYER.MAX_HITS - 1; i++) player.damagePlayer(1);
+  assertTrue('section7', 'alive at 1 hit remaining', !player.isDead());
+  player.damagePlayer(1);
+  assertTrue('section7', 'dead exactly at 0', player.isDead());
+  player.damagePlayer(5);
+  assertNear('section7', 'overkill clamps at 0', player.getHits(), 0);
+  player.resetPlayer();
+  assertTrue('section7', 'reset revives to full', !player.isDead()
+    && player.getHits() === CONFIG.PLAYER.MAX_HITS);
+
+  // Attack pacing invariant (relative, so retuning stays safe): the
+  // start-to-start cooldown must cover windup + strike + recover, or two
+  // attacks could overlap their animations.
+  const AT = ENEMY_TYPES.proto_zombie.ATTACK;
+  assertTrue('section7', 'attack cooldown covers windup+strike+recover',
+    AT.COOLDOWN_MS >= AT.WINDUP_MS + AT.STRIKE_MS + AT.RECOVER_MS);
+} catch (err) {
+  failures.push({ file: 'section7', err });
+  console.log(`  FAIL   section 7 threw: ${err.message}`);
 }
 
 // ————— Report —————

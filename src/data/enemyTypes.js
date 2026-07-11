@@ -1,7 +1,7 @@
 // data/enemyTypes.js — the enemy registry. Same pattern as targetTypes.js:
 // content as data, so pass 7's designed creatures become new entries flowing
-// through the same spawn/update/hit pipeline. Body dimensions live in the
-// builder for now — they move here the day a second enemy type needs
+// through the same spawn/update/hit/attack pipeline. Body dimensions live in
+// the builder for now — they move here the day a second enemy type needs
 // different proportions.
 
 export const ENEMY_TYPES = {
@@ -9,7 +9,7 @@ export const ENEMY_TYPES = {
     id: 'proto_zombie',
     HP: 3,                // hits to kill (any body part counts)
     WALK_SPEED: 1.2,      // m/s — shamble pace (26 m from spawn ≈ 22 s to reach you)
-    STOP_DISTANCE: 2,     // m — where it halts; becomes the attack range in pass 5
+    STOP_DISTANCE: 2,     // m — where it halts and starts attacking
     SPAWN: { x: 0, z: -28 }, // back-centre of the range
     COLORS: {
       SKIN: 0x7da06a,     // sickly green — distinct from the orange targets
@@ -28,6 +28,17 @@ export const ENEMY_TYPES = {
       FLINCH_MS: 100,     // red flash on taking a hit
       STAGGER_MS: 200,    // movement pause per hit
       KNOCKBACK: 0.15,    // metres shoved away from the player per hit
+    },
+    ATTACK: {             // telegraphed swipe (player-forgiving convention)
+      RANGE_SLACK: 0.5,   // attacks within STOP_DISTANCE + this (covers knockback drift)
+      WINDUP_MS: 300,     // arms rear back — the tell; a hit here CANCELS the attack
+      STRIKE_MS: 150,     // arms thrust; damage lands at the START of this phase
+      RECOVER_MS: 300,    // return to pose
+      COOLDOWN_MS: 1200,  // attack-start to attack-start; must cover the three
+                          // phases above (suite-asserted, relatively)
+      DAMAGE: 1,          // arcade hits removed per landed strike
+      REAR_RAD: 0.6,      // how far the arms rear back in windup
+      THRUST_RAD: 0.5,    // how far past the pose the strike thrusts
     },
     DEATH: {              // Option A (picked 2026-07-11): fall over
       FALL_MS: 600,       // pitch to the ground (eased, accelerating)

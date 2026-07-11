@@ -9,6 +9,7 @@
 <body>
   <canvas id="game-canvas"></canvas>
 
+  <div id="damage-vignette" aria-hidden="true"></div>
   <div id="crosshair" class="hidden" aria-hidden="true"></div>
   <div id="countdown" class="hidden" aria-hidden="true">3</div>
 
@@ -18,6 +19,11 @@
       <span id="hud-mult" class="hud-pill hidden">&times;2</span>
     </div>
     <span id="hud-timer">1:00</span>
+  </div>
+
+  <div id="hud-waves" class="hidden">
+    <div id="hud-hearts" class="hud-left"></div>
+    <span id="hud-kills">KILLS 0</span>
   </div>
 
   <section id="screen-start" class="screen">
@@ -47,6 +53,16 @@
       <p><span>Personal best</span><strong id="result-best">&mdash;</strong></p>
     </div>
     <button id="btn-again" type="button">Play Again</button>
+  </section>
+
+  <section id="screen-gameover" class="screen hidden">
+    <h2 class="doom">You Died</h2>
+    <div class="results-stats">
+      <p><span>Kills</span><strong id="go-kills">0</strong></p>
+      <p><span>Survived</span><strong id="go-time">0:00</strong></p>
+    </div>
+    <button id="btn-retry" type="button">Try Again</button>
+    <button id="btn-go-quit" type="button" class="btn-secondary">Quit to menu</button>
   </section>
 
   <script type="module" src="./src/main.js"></script>

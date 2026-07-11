@@ -25,9 +25,11 @@ import {
 } from './game/scoring.js';
 import { initRound, beginCountdown, updateRound, getRemainingS } from './game/round.js';
 import { saveBestIfBeaten } from './game/best.js';
+import { resetPlayer, damagePlayer, getHits, isDead } from './game/player.js';
 import {
   initHud, showForState, flashLockHint,
-  setScore, setMultiplier, setCountdown, setTimer, showResults,
+  setScore, setMultiplier, setCountdown, setTimer,
+  setHearts, setKills, flashDamage, showGameOver, showResults,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -35,8 +37,16 @@ if (!canvas) throw new Error('main.js: #game-canvas not found in index.html');
 
 // — Mode: which ruleset the current session uses. Single writer (the two
 // START buttons); everything else reads it. 'range' = 60s score attack;
-// 'waves' = untimed last-stand (threat systems arrive in 5b).
+// 'waves' = untimed last-stand.
 let mode = 'range';
+
+// Waves session stats — glue-level counters that the wave manager (pass 6)
+// will absorb into a proper module.
+let wavesKills = 0;
+let wavesElapsedMs = 0;
+
+// Camera damage-kick state (a brief pitch jolt layered over the look).
+let shakeT = 0;
 
 // — Renderer —
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -62,10 +72,26 @@ scene.add(camera);
 // — Gun viewmodel: parented to the camera so it rides every look movement —
 camera.add(createGun());
 
+// — Player damage: hearts, vignette, camera kick, and — at zero — game over.
+function handlePlayerHit(damage) {
+  if (getState() !== States.PLAYING || mode !== 'waves') return;
+  damagePlayer(damage);
+  setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
+  flashDamage();
+  shakeT = CONFIG.PLAYER.DAMAGE_SHAKE_MS;
+  if (isDead()) setState(States.GAMEOVER);
+}
+
 // — Targets + enemies: modules initialised empty-handed; what actually
 // spawns is decided per-mode in the COUNTDOWN enter handler below.
 initTargets(scene);
-initEnemies(scene);
+initEnemies(scene, {
+  onPlayerHit: handlePlayerHit,
+  onEnemyKilled: () => {
+    wavesKills += 1;
+    setKills(wavesKills);
+  },
+});
 
 // — Scoring → HUD —
 function refreshHud() {
@@ -75,8 +101,8 @@ function refreshHud() {
 
 // — Shooting: unified hit pipeline. Targets and enemy body parts are
 // raycast together; the nearest wins and the tag routes it. Range scoring
-// only runs in Range mode; enemy hits touch no scoring anywhere (wave-mode
-// kill scoring is defined in 5b/6). Every real shot kicks the gun.
+// only runs in Range mode; enemy hits touch no range scoring (wave-mode
+// kill scoring is a pass-6 decision). Every real shot kicks the gun.
 initShooting({
   camera,
   getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
@@ -116,9 +142,10 @@ initHud({
   onWavesClick: () => { mode = 'waves'; requestLock(canvas); },
   onResumeClick: () => requestLock(canvas),
   onPlayAgainClick: () => requestLock(canvas),
+  onRetryClick: () => requestLock(canvas),
   onQuitClick: () => {
-    // Pause already released the pointer lock; just clean the arena and go
-    // home. Fresh setup happens on the next mode entry anyway.
+    // PAUSED/GAMEOVER already have the pointer free; just clean the arena
+    // and go home. Fresh setup happens on the next mode entry anyway.
     resetEnemies();
     setState(States.START);
   },
@@ -132,7 +159,7 @@ initInput({
       setState(States.COUNTDOWN);
     } else if (getState() === States.PLAYING || getState() === States.COUNTDOWN) {
       // ESC / alt-tab while playing OR mid-countdown = pause. Lock loss in
-      // RESULTS is our own exitPointerLock() and must NOT pause.
+      // RESULTS/GAMEOVER is our own exitPointerLock() and must NOT pause.
       setState(States.PAUSED);
     }
   },
@@ -143,8 +170,8 @@ initInput({
 Object.values(States).forEach((s) => onEnter(s, () => showForState(s, mode)));
 
 // COUNTDOWN carries the fresh-vs-resume decision: arriving from PAUSED keeps
-// score and clock; arriving from anywhere else (START, RESULTS) is a new
-// round, set up per mode.
+// score and clock; arriving from anywhere else (START, RESULTS, GAMEOVER) is
+// a new round, set up per mode.
 onEnter(States.COUNTDOWN, (prev) => {
   const fresh = prev !== States.PAUSED;
   if (fresh) {
@@ -157,6 +184,11 @@ onEnter(States.COUNTDOWN, (prev) => {
       beginCountdown({ fresh: true, timed: true });
     } else {
       clearTargets(); // Waves: no practice targets in the arena
+      resetPlayer();
+      wavesKills = 0;
+      wavesElapsedMs = 0;
+      setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
+      setKills(0);
       spawnEnemy('proto_zombie');
       beginCountdown({ fresh: true, timed: false });
     }
@@ -176,6 +208,15 @@ onEnter(States.RESULTS, () => {
     bestStreak: getBestStreak(),
     best,
     isNew,
+  });
+});
+
+// GAMEOVER (Waves only): release the mouse for Try Again / Quit, show stats.
+onEnter(States.GAMEOVER, () => {
+  if (document.pointerLockElement) document.exitPointerLock();
+  showGameOver({
+    kills: wavesKills,
+    seconds: Math.floor(wavesElapsedMs / 1000),
   });
 });
 
@@ -201,6 +242,13 @@ renderer.setAnimationLoop(() => {
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
 
+  // Damage kick: a decaying pitch wobble layered over the look for a beat.
+  if (shakeT > 0) {
+    shakeT = Math.max(0, shakeT - dtMs);
+    const k = shakeT / CONFIG.PLAYER.DAMAGE_SHAKE_MS;
+    camera.rotation.x = pitch + Math.sin(shakeT * 0.09) * CONFIG.PLAYER.DAMAGE_SHAKE_AMP * k;
+  }
+
   const st = getState();
   // The round clock ticks through countdown AND play; PAUSED starves it,
   // which is exactly what freezes the timer (and the zombie).
@@ -210,8 +258,9 @@ renderer.setAnimationLoop(() => {
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
     updateEnemies(dtMs, camera.position);
   }
-  if (st === States.PLAYING && mode === 'range') {
-    setTimer(getRemainingS());
+  if (st === States.PLAYING) {
+    if (mode === 'range') setTimer(getRemainingS());
+    else wavesElapsedMs += dtMs;
   }
 
   renderer.render(scene, camera);

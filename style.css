@@ -8,6 +8,7 @@
   --ink: #e8efe6;
   --muted: #7d8a80;
   --accent: #a8ff3e;
+  --danger: #ff4b2e;
 }
 
 * {
@@ -36,8 +37,31 @@ body {
   display: none !important;
 }
 
-/* — In-game HUD bar — pointer-events off: the HUD must never eat a click. */
-#hud {
+/* — Damage vignette: red edge flash on taking a hit. Always in the DOM,
+   invisible until the .flash animation runs; pointer-events off. */
+#damage-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center,
+    rgba(255, 75, 46, 0) 55%,
+    rgba(255, 75, 46, 0.55) 100%);
+}
+
+#damage-vignette.flash {
+  animation: vignette-fade 350ms ease-out;
+}
+
+@keyframes vignette-fade {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* — HUD bars (Range top bar and Waves top bar share the layout) —
+   pointer-events off: the HUD must never eat a click. */
+#hud,
+#hud-waves {
   position: fixed;
   top: 18px;
   left: 22px;
@@ -66,6 +90,24 @@ body {
   color: var(--bg);
   font-size: 16px;
   text-shadow: none;
+}
+
+/* Hearts: diamond pips that dim as hits are lost. */
+#hud-hearts {
+  gap: 8px;
+}
+
+.pip {
+  width: 14px;
+  height: 14px;
+  background: var(--danger);
+  transform: rotate(45deg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.pip.lost {
+  background: transparent;
+  border: 1px solid var(--muted);
 }
 
 /* — Countdown numeral — over the live scene, not a dark overlay. */
@@ -110,6 +152,11 @@ h2 {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+/* Game-over heading reads in the danger colour. */
+h2.doom {
+  color: var(--danger);
 }
 
 .subtitle {
@@ -172,7 +219,7 @@ button:hover {
   font-size: 14px;
 }
 
-/* — Results — */
+/* — Results / game-over stats — */
 .newbest {
   margin: 0;
   color: var(--accent);

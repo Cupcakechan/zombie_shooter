@@ -1,8 +1,9 @@
 // render/enemies.js — enemy lifecycle: build the blocky proto-zombie, steer
-// it toward the player, drive the procedural shamble, and (pass 4) take
-// damage and die. Death is Option A: fall over around the feet, lie, fade,
-// despawn. Same module shape as targets.js: module-level records,
-// spawn/update/reset, pure math exported for the suite.
+// it toward the player, drive the procedural shamble, take damage, die
+// (fall over), and — pass 5b — fight back with a telegraphed swipe.
+// Same module shape as targets.js: module-level records, spawn/update/reset,
+// pure math exported for the suite. Damage to the PLAYER leaves this module
+// only via the injected onPlayerHit callback; kills leave via onEnemyKilled.
 
 import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
@@ -10,8 +11,8 @@ import { ENEMY_TYPES } from '../data/enemyTypes.js';
 // ————— Pure math (suite-tested) —————
 
 // How far the enemy may close THIS frame: capped by speed, and clamped so it
-// lands exactly ON the stop ring, never inside it (and never moves backward
-// if it's already inside — pass 5's attack shove can put it there).
+// lands exactly ON the stop ring, never inside it (knockback can put it
+// slightly outside; it simply walks back in).
 export function advanceDistance(currentDist, speedMps, dtMs, stopDist) {
   const step = (speedMps * dtMs) / 1000;
   return Math.min(step, Math.max(0, currentDist - stopDist));
@@ -32,7 +33,9 @@ export function deathPhase(dieT, D) {
 // ————— Stateful enemy management —————
 
 let sceneRef = null;
-const records = []; // { type, group, parts, meshes, materials, hp, walked, t, flashT, staggerT, dying, dieT }
+let onPlayerHitCb = null;
+let onEnemyKilledCb = null;
+const records = []; // see spawnEnemy for the record shape
 const byMesh = new Map(); // any body mesh -> record
 
 function buildProtoBody(type) {
@@ -64,7 +67,7 @@ function buildProtoBody(type) {
 
   // Arms — raised straight forward (+Z). Geometry is translated so the mesh
   // origin sits at the SHOULDER: rotation.x then pivots the whole arm there,
-  // which is what makes the wobble read as an arm and not a propeller.
+  // which is what makes wobble and attack swings read as arms.
   const armGeo = new THREE.BoxGeometry(0.14, 0.6, 0.14);
   armGeo.translate(0, 0.3, 0); // arm extends +Y from its origin
   const armL = new THREE.Mesh(armGeo, skin);
@@ -78,8 +81,10 @@ function buildProtoBody(type) {
   return { group, parts: { armL, armR }, materials: [skin, cloth] };
 }
 
-export function initEnemies(scene) {
+export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
   sceneRef = scene;
+  onPlayerHitCb = onPlayerHit || null;
+  onEnemyKilledCb = onEnemyKilled || null;
 }
 
 export function spawnEnemy(typeId) {
@@ -104,6 +109,7 @@ export function spawnEnemy(typeId) {
     hp: type.HP,
     walked: 0, t: 0,
     flashT: 0, staggerT: 0,
+    attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
   };
   group.traverse((child) => {
@@ -131,11 +137,12 @@ function startDeath(rec) {
   rec.dying = true;
   rec.dieT = 0;
   rec.flashT = 0;
+  rec.attackPhase = null;
   setFlash(rec, 0);
-  // Zero the shamble pose so the fall pivots cleanly around the feet —
-  // this is Option A's one fiddly bit, handled here.
+  // Zero the shamble pose so the fall pivots cleanly around the feet.
   rec.group.rotation.z = 0;
   rec.group.position.y = 0;
+  if (onEnemyKilledCb) onEnemyKilledCb(rec.type.id);
 }
 
 function setFlash(rec, intensity) {
@@ -145,9 +152,13 @@ function setFlash(rec, intensity) {
   }
 }
 
+function setArms(rec, rotX) {
+  rec.parts.armL.rotation.x = rotX;
+  rec.parts.armR.rotation.x = rotX;
+}
+
 // Returns true if the hit landed on a living enemy. Deliberately does NOT
-// touch scoring — zombie hits are scoring-neutral until the wave mode owns
-// its own kill scoring (passes 5–6).
+// touch range scoring — wave-mode kill scoring is a pass-6 decision.
 export function damageEnemy(mesh) {
   const rec = byMesh.get(mesh);
   if (!rec || rec.dying) return false;
@@ -155,6 +166,11 @@ export function damageEnemy(mesh) {
   rec.hp -= 1;
   rec.flashT = rec.type.COMBAT.FLINCH_MS;
   rec.staggerT = rec.type.COMBAT.STAGGER_MS;
+
+  // Counterplay (pinned 5b): a hit CANCELS an in-progress attack — including
+  // mid-windup — and the cooldown set at attack start keeps running, so the
+  // zombie pays a full cycle for the failed attempt.
+  rec.attackPhase = null;
 
   // Knockback straight away from the player. The body always faces the
   // player (yaw), so "away" is the facing direction reversed.
@@ -196,6 +212,7 @@ export function updateEnemies(dtMs, playerPos) {
 
     // — Alive —
     rec.t += dtMs;
+    rec.cooldownT = Math.max(0, rec.cooldownT - dtMs);
 
     const dx = playerPos.x - group.position.x;
     const dz = playerPos.z - group.position.z;
@@ -210,10 +227,46 @@ export function updateEnemies(dtMs, playerPos) {
       setFlash(rec, (rec.flashT / type.COMBAT.FLINCH_MS) * 0.9);
     }
 
-    // Stagger pauses movement; the shamble idles in place meanwhile.
+    const AT = type.ATTACK;
+
+    // — Attack cycle: the arms belong to the attack while a phase runs.
+    if (rec.attackPhase) {
+      rec.attackT += dtMs;
+      if (rec.attackPhase === 'windup') {
+        const k = Math.min(1, rec.attackT / AT.WINDUP_MS);
+        setArms(rec, Math.PI / 2 + AT.REAR_RAD * k); // the tell: arms rear back
+        if (k >= 1) {
+          rec.attackPhase = 'strike';
+          rec.attackT = 0;
+          // Damage lands at the START of the strike — the windup was the
+          // player's whole window to cancel it.
+          if (onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
+        }
+      } else if (rec.attackPhase === 'strike') {
+        const k = Math.min(1, rec.attackT / AT.STRIKE_MS);
+        setArms(rec, Math.PI / 2 - AT.THRUST_RAD * (1 - k)); // thrust, then ease back
+        if (k >= 1) {
+          rec.attackPhase = 'recover';
+          rec.attackT = 0;
+        }
+      } else { // recover
+        setArms(rec, Math.PI / 2);
+        if (rec.attackT >= AT.RECOVER_MS) rec.attackPhase = null;
+      }
+    } else {
+      // Start an attack when close enough, off cooldown, and not staggered.
+      const inReach = dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+      if (inReach && rec.cooldownT <= 0 && rec.staggerT <= 0) {
+        rec.attackPhase = 'windup';
+        rec.attackT = 0;
+        rec.cooldownT = AT.COOLDOWN_MS; // start-to-start pacing
+      }
+    }
+
+    // Stagger pauses movement; attacks also root the zombie in place.
     if (rec.staggerT > 0) {
       rec.staggerT -= dtMs;
-    } else {
+    } else if (!rec.attackPhase) {
       const step = advanceDistance(dist, type.WALK_SPEED, dtMs, type.STOP_DISTANCE);
       if (step > 0 && dist > 1e-6) {
         group.position.x += (dx / dist) * step;
@@ -231,10 +284,13 @@ export function updateEnemies(dtMs, playerPos) {
       Math.sin(rec.walked * A.SWAY_FREQ + rec.t * A.IDLE_SWAY_FREQ) * A.SWAY_AMP;
     group.rotation.x = A.LEAN;
 
-    const wob =
-      Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
-    rec.parts.armL.rotation.x = Math.PI / 2 + wob;
-    rec.parts.armR.rotation.x = Math.PI / 2 - wob;
+    // The idle arm wobble only runs when the attack doesn't own the arms.
+    if (!rec.attackPhase) {
+      const wob =
+        Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
+      rec.parts.armL.rotation.x = Math.PI / 2 + wob;
+      rec.parts.armR.rotation.x = Math.PI / 2 - wob;
+    }
   }
 }
 
