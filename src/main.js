@@ -9,7 +9,7 @@ import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
 import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
-import { createGun } from './render/gun.js';
+import { createGun, kick, updateGun } from './render/gun.js';
 import { initTargets, resetTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
 import { initShooting } from './game/shooting.js';
 import {
@@ -59,12 +59,14 @@ function refreshHud() {
   setMultiplier(getMultiplier());
 }
 
-// — Shooting: raycast on fire; hits pop + score, misses reset the streak —
+// — Shooting: raycast on fire; every real shot kicks the gun, hits pop +
+// score, misses reset the streak. Cooldown-ignored clicks reach none of this.
 initShooting({
   camera,
   getHittables,
   canFire: () => getState() === States.PLAYING,
   onHit: (sphere) => {
+    kick();
     // hitTarget() can only refuse an already-popping sphere; hittables are
     // filtered at raycast time, so a refusal means a race — count it as a
     // miss rather than paying for a target that didn't pop.
@@ -73,6 +75,7 @@ initShooting({
     refreshHud();
   },
   onMiss: () => {
+    kick();
     registerMiss();
     refreshHud();
   },
@@ -165,6 +168,7 @@ renderer.setAnimationLoop(() => {
   if (st === States.COUNTDOWN || st === States.PLAYING) {
     updateRound(dtMs);
     updateTargets(dtMs); // pops may finish during a resume countdown
+    updateGun(dtMs);     // recoil/flash settle even if the round just ended
   }
   if (st === States.PLAYING) {
     setTimer(getRemainingS());
