@@ -1,5 +1,8 @@
 // test_suite.mjs — committed headless suite. Run from the repo root:
 //   node test_suite.mjs
+// Pre-ship gate (all DEBUG flags must be false):
+//   PowerShell:  $env:SHIP=1; node test_suite.mjs
+//   cmd:         set SHIP=1&& node test_suite.mjs
 //
 // Section 0 — module health: imports EVERY src/**/*.js module under a minimal
 // DOM stub, so parse errors, duplicate import bindings, and broken import
@@ -9,12 +12,11 @@
 // Section 2 — scoring exact math (multiplier tiers, best streak, accuracy).
 // Section 3 — round clock timing (countdown ticks, round end, resume rule).
 // Section 4 — personal-best persistence contract (hermetic storage stub).
-// Section 5 — config contract: every required constant exists with the right
-//             type (numbers FINITE), plus a text scan of all src (including
-//             main.js) failing any literal CONFIG.<path> read that doesn't
-//             resolve. Added after the NaN-light incident (LESSONS.md
-//             2026-07-11): a parse-clean file with a missing constant turned
-//             the whole scene black with zero console errors.
+// Section 5 — config contract: schema (numbers FINITE) + usage scan of every
+//             literal CONFIG.<path> read in src (incl. main.js) + registry
+//             leaf sweep + the SHIP gate for DEBUG flags. Added after the
+//             NaN-light incident (LESSONS.md 2026-07-11).
+// Section 6 — enemy movement math (stop-ring clamping).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -77,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 12;
+const MIN_EXPECTED_MODULES = 14;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -321,9 +323,10 @@ try {
 // ————— Section 5: config contract —————
 // A parse-clean config with a missing constant shipped a black screen with
 // zero console errors (NaN light intensity — see LESSONS.md 2026-07-11).
-// Two layers: a hand-maintained schema (covers destructured reads; EXTEND IT
-// when adding constants) and a usage scan of every literal CONFIG.<path> in
-// src — including main.js, which section 0 can't import.
+// Layers: a hand-maintained schema (covers destructured reads; EXTEND IT
+// when adding constants), a usage scan of every literal CONFIG.<path> in
+// src — including main.js, which section 0 can't import — a registry leaf
+// sweep, and the SHIP gate for DEBUG flags.
 
 console.log('');
 console.log('— Section 5: config contract —');
@@ -348,6 +351,7 @@ try {
     'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
     'STORAGE_KEY': 'string',
+    'DEBUG.SPAWN_ZOMBIE': 'boolean',
   };
 
   const resolvePath = (obj, path) =>
@@ -359,6 +363,7 @@ try {
     let ok = false;
     if (kind === 'number') ok = typeof v === 'number' && Number.isFinite(v);
     else if (kind === 'string') ok = typeof v === 'string' && v.length > 0;
+    else if (kind === 'boolean') ok = typeof v === 'boolean';
     else if (kind === 'numberArray') ok = Array.isArray(v) && v.length > 0 && v.every((n) => Number.isFinite(n));
     else if (kind === 'tierArray') ok = Array.isArray(v) && v.length > 0 && v.every((t) => Number.isFinite(t?.streak) && Number.isFinite(t?.mult));
     if (!ok) {
@@ -401,9 +406,66 @@ try {
   }
   // Guard-the-guard: a rotted regex finding nothing must fail, not pass.
   assertTrue('section5', `usage scan found >= 15 reads (found ${seen.size})`, seen.size >= 15);
+
+  // Registries get the same finite-leaf guarantee as CONFIG.
+  const { TARGET_TYPES } = await import(pathToFileURL(join('src', 'data', 'targetTypes.js')).href);
+  const { ENEMY_TYPES } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  let leafCount = 0;
+  let regFails = 0;
+  const sweepRegistry = (obj, path) => {
+    for (const [k, v] of Object.entries(obj)) {
+      const p = `${path}.${k}`;
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        sweepRegistry(v, p);
+      } else {
+        leafCount++;
+        const bad = v === undefined || (typeof v === 'number' && !Number.isFinite(v));
+        if (bad) {
+          regFails++;
+          console.log(`  FAIL   registry leaf ${p} = ${v}`);
+          failures.push({ file: 'section5', err: new Error(`registry ${p}`) });
+        }
+      }
+    }
+  };
+  sweepRegistry(TARGET_TYPES, 'TARGET_TYPES');
+  sweepRegistry(ENEMY_TYPES, 'ENEMY_TYPES');
+  if (regFails === 0) {
+    console.log(`  ok     registries: ${leafCount} leaves defined and finite`);
+  }
+  assertTrue('section5', `registry sweep found >= 10 leaves (found ${leafCount})`, leafCount >= 10);
+
+  // SHIP gate: with the SHIP env var set, every DEBUG flag must be false.
+  const truthyFlags = Object.entries(CONFIG.DEBUG || {})
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  if (process.env.SHIP) {
+    assertTrue('section5',
+      `SHIP gate: all DEBUG flags false (truthy: ${truthyFlags.join(', ') || 'none'})`,
+      truthyFlags.length === 0);
+  } else {
+    console.log(`  info   DEBUG flags truthy: ${truthyFlags.join(', ') || 'none'} (SHIP gate not active)`);
+  }
 } catch (err) {
   failures.push({ file: 'section5', err });
   console.log(`  FAIL   section 5 threw: ${err.message}`);
+}
+
+// ————— Section 6: enemy movement math —————
+
+console.log('');
+console.log('— Section 6: enemy movement math —');
+try {
+  const { advanceDistance } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+
+  assertNear('section6', 'full-speed step (10 m away, 2 m/s, 1 s)', advanceDistance(10, 2, 1000, 2), 2);
+  assertNear('section6', 'clamps exactly onto the stop ring (from 2.5 m)', advanceDistance(2.5, 2, 1000, 2), 0.5);
+  assertNear('section6', 'on the ring: no movement', advanceDistance(2, 2, 1000, 2), 0);
+  assertNear('section6', 'inside the ring: never negative', advanceDistance(1.5, 2, 1000, 2), 0);
+  assertNear('section6', 'sub-second precision (1.2 m/s, 500 ms)', advanceDistance(10, 1.2, 500, 2), 0.6);
+} catch (err) {
+  failures.push({ file: 'section6', err });
+  console.log(`  FAIL   section 6 threw: ${err.message}`);
 }
 
 // ————— Report —————
@@ -413,5 +475,5 @@ if (failures.length) {
   console.log(`SUITE FAIL — ${failures.length} failure(s), ${files.length} module(s) checked`);
   process.exitCode = 1;
 } else {
-  console.log(`SUITE PASS — ${files.length} modules imported cleanly; spawn, scoring, round, best, and config invariants proven`);
+  console.log(`SUITE PASS — ${files.length} modules imported cleanly; spawn, scoring, round, best, config, and enemy invariants proven`);
 }

@@ -11,6 +11,7 @@ import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
 import { createGun, kick, updateGun } from './render/gun.js';
 import { initTargets, resetTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
+import { initEnemies, spawnEnemy, resetEnemies, updateEnemies } from './render/enemies.js';
 import { initShooting } from './game/shooting.js';
 import {
   registerHit, registerMiss, resetScoring,
@@ -52,6 +53,11 @@ camera.add(createGun());
 
 // — Targets —
 initTargets(scene);
+
+// — Enemies (pass 3: dev-toggled proto-zombie; suite's SHIP gate keeps the
+// flag out of real builds) —
+initEnemies(scene);
+if (CONFIG.DEBUG.SPAWN_ZOMBIE) spawnEnemy('proto_zombie');
 
 // — Scoring → HUD —
 function refreshHud() {
@@ -121,6 +127,10 @@ onEnter(States.COUNTDOWN, (prev) => {
   if (fresh) {
     resetScoring();
     resetTargets();
+    // The dev zombie walks back to its spawn point each fresh round —
+    // otherwise round two starts with it already at your face.
+    resetEnemies();
+    if (CONFIG.DEBUG.SPAWN_ZOMBIE) spawnEnemy('proto_zombie');
     refreshHud();
     setTimer(CONFIG.ROUND_LENGTH_S);
   }
@@ -164,11 +174,12 @@ renderer.setAnimationLoop(() => {
 
   const st = getState();
   // The round clock ticks through countdown AND play; PAUSED starves it,
-  // which is exactly what freezes the timer.
+  // which is exactly what freezes the timer (and the zombie).
   if (st === States.COUNTDOWN || st === States.PLAYING) {
     updateRound(dtMs);
     updateTargets(dtMs); // pops may finish during a resume countdown
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
+    updateEnemies(dtMs, camera.position);
   }
   if (st === States.PLAYING) {
     setTimer(getRemainingS());
