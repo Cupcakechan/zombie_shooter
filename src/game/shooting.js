@@ -14,8 +14,13 @@ const CENTER = new THREE.Vector2(0, 0);
 
 let lastShotAt = -Infinity;
 
-export function initShooting({ camera, getHittables, onHit, onMiss } = {}) {
+export function initShooting({ camera, getHittables, onHit, onMiss, canFire } = {}) {
   onFire(() => {
+    // State gate first: a click during COUNTDOWN/RESULTS must not fire and
+    // must not consume the cooldown — main injects the predicate so this
+    // module stays ignorant of the state machine.
+    if (canFire && !canFire()) return;
+
     const now = performance.now();
     // Inside the cooldown a click is IGNORED entirely (DESIGN.md §5): it is
     // not a shot and not a miss — punishing spam is the streak reset's job.

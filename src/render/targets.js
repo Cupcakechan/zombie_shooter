@@ -96,8 +96,22 @@ function spawn(slotIndex, type) {
   bySphere.set(sphere, rec);
 }
 
-export function initTargets(scene) {
-  sceneRef = scene;
+function disposeRecord(rec) {
+  sceneRef.remove(rec.group);
+  // Placeholder meshes are created per-spawn — dispose so a long session
+  // doesn't leak GPU resources.
+  rec.sphere.geometry.dispose();
+  rec.sphere.material.dispose();
+  rec.group.children.forEach((child) => {
+    if (child !== rec.sphere) {
+      child.geometry.dispose();
+      child.material.dispose();
+    }
+  });
+  bySphere.delete(rec.sphere);
+}
+
+function spawnInitial() {
   const type = TARGET_TYPES.range_orb;
 
   // Distinct starting slots via Fisher–Yates shuffle.
@@ -109,6 +123,19 @@ export function initTargets(scene) {
   for (let n = 0; n < CONFIG.TARGETS_LIVE; n++) {
     spawn(indices[n], type);
   }
+}
+
+export function initTargets(scene) {
+  sceneRef = scene;
+  spawnInitial();
+}
+
+// Fresh round: clear everything on the field — including mid-pop corpses —
+// and lay out a brand-new set, so no round inherits the last one's layout.
+export function resetTargets() {
+  for (const rec of records) disposeRecord(rec);
+  records.length = 0;
+  spawnInitial();
 }
 
 // Only living targets are shootable — a popping target can't be double-hit.
@@ -141,18 +168,7 @@ export function updateTargets(dtMs) {
     rec.sphere.material.emissiveIntensity = rec.baseIntensity * (1 + 2 * k);
 
     if (k >= 1) {
-      sceneRef.remove(rec.group);
-      // Placeholder meshes are created per-spawn — dispose so a long session
-      // doesn't leak GPU resources.
-      rec.sphere.geometry.dispose();
-      rec.sphere.material.dispose();
-      rec.group.children.forEach((child) => {
-        if (child !== rec.sphere) {
-          child.geometry.dispose();
-          child.material.dispose();
-        }
-      });
-      bySphere.delete(rec.sphere);
+      disposeRecord(rec);
       records.splice(i, 1);
     }
   }

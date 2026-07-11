@@ -75,7 +75,8 @@ BOOT ──► START ──click──► COUNTDOWN (3s) ──► PLAYING (60s)
 - **PLAYING** — HUD: score (top-left), streak multiplier (next to score),
   timer (top-right). Crosshair fixed at screen center.
 - **PAUSED** — entered automatically whenever pointer lock is lost (ESC or
-  alt-tab). Timer freezes. Overlay: "Click to resume" → re-lock → 3-2-1 → resume.
+  alt-tab) during play *or* countdown. Timer freezes. Overlay: "Click to
+  resume" → re-lock → 3-2-1 → resume.
 - **RESULTS** — score, accuracy %, best streak, personal best (with "NEW BEST!"
   flag when beaten), PLAY AGAIN button.
 
@@ -255,3 +256,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v1.2 (shot loop pass): spawn spec is the jittered slot grid (Option 3) with suite-pinned envelope; target registry named `targetTypes.js` to stay distinct from `render/targets.js`; target colour hot orange (crosshair readability).*
 *2026-07-11 — v1.3 (scoring/HUD pass): threshold-hit multiplier semantics pinned (10th hit is the first ×2); HUD shows score + multiplier pill (pill hidden at ×1); accuracy is `null` before any shot; timer element reserved for the round pass.*
 *2026-07-11 — v2 (roadmap): stage ladder reshaped around decisions A1/B1/C1 — finish Stage 1, enemies designed through Claude (procedural, creature-forge pipeline; no GLTFLoader), wave v1 is stationary last-stand, WASD becomes Stage 3; full pass roadmap added to §2.*
+*2026-07-11 — v2.1 (round pass): pinned — lock loss during COUNTDOWN also pauses; clicks can only fire in PLAYING; a personal best requires score > 0 (ties don't count, first recorded best flashes NEW BEST); resume re-runs the 3-2-1 without consuming round time (suite-pinned).*

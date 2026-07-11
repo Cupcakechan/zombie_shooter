@@ -68,6 +68,20 @@ body {
   text-shadow: none;
 }
 
+/* — Countdown numeral — over the live scene, not a dark overlay. */
+#countdown {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 140px;
+  font-weight: 800;
+  color: var(--accent);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* — Overlay screens — */
 .screen {
   position: fixed;
@@ -136,6 +150,38 @@ button:hover {
   min-height: 1.4em;
   color: var(--accent);
   font-size: 14px;
+}
+
+/* — Results — */
+.newbest {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-size: 18px;
+}
+
+.results-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 320px;
+}
+
+.results-stats p {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  font-size: 18px;
+}
+
+.results-stats span {
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 14px;
+  align-self: center;
 }
 
 /* — Crosshair — two thin bars centred on screen; pointer-events off so it

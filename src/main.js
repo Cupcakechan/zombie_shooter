@@ -10,10 +10,18 @@ import { States, getState, setState, onEnter } from './state.js';
 import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
 import { createGun } from './render/gun.js';
-import { initTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
+import { initTargets, resetTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
 import { initShooting } from './game/shooting.js';
-import { registerHit, registerMiss, getScore, getMultiplier } from './game/scoring.js';
-import { initHud, showForState, flashLockHint, setScore, setMultiplier } from './ui/hud.js';
+import {
+  registerHit, registerMiss, resetScoring,
+  getScore, getMultiplier, getAccuracy, getBestStreak,
+} from './game/scoring.js';
+import { initRound, beginCountdown, updateRound, getRemainingS } from './game/round.js';
+import { saveBestIfBeaten } from './game/best.js';
+import {
+  initHud, showForState, flashLockHint,
+  setScore, setMultiplier, setCountdown, setTimer, showResults,
+} from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
 if (!canvas) throw new Error('main.js: #game-canvas not found in index.html');
@@ -55,6 +63,7 @@ function refreshHud() {
 initShooting({
   camera,
   getHittables,
+  canFire: () => getState() === States.PLAYING,
   onHit: (sphere) => {
     // hitTarget() can only refuse an already-popping sphere; hittables are
     // filtered at raycast time, so a refusal means a race — count it as a
@@ -69,19 +78,30 @@ initShooting({
   },
 });
 
-// — UI + input wiring —
+// — Round clock —
+initRound({
+  onCountdownTick: (n) => setCountdown(n),
+  onCountdownDone: () => setState(States.PLAYING),
+  onRoundEnd: () => setState(States.RESULTS),
+});
+
+// — UI + input wiring — all three buttons just request the lock; the state
+// the lock lands in is decided by where we came FROM (see COUNTDOWN below).
 initHud({
   onStartClick: () => requestLock(canvas),
   onResumeClick: () => requestLock(canvas),
+  onPlayAgainClick: () => requestLock(canvas),
 });
 
 initInput({
   onLockChange: (locked) => {
     if (locked) {
-      setState(States.PLAYING);
-    } else if (getState() === States.PLAYING) {
-      // ESC / alt-tab while playing = pause. A failed lock from START stays
-      // on START, which is why this branch checks the current state.
+      // Gaining the lock always means "run the 3-2-1" — whether it's a fresh
+      // round or a resume is decided inside the COUNTDOWN enter handler.
+      setState(States.COUNTDOWN);
+    } else if (getState() === States.PLAYING || getState() === States.COUNTDOWN) {
+      // ESC / alt-tab while playing OR mid-countdown = pause. Lock loss in
+      // RESULTS is our own exitPointerLock() and must NOT pause.
       setState(States.PAUSED);
     }
   },
@@ -90,6 +110,33 @@ initInput({
 
 // Every state change drives the overlay layer.
 Object.values(States).forEach((s) => onEnter(s, () => showForState(s)));
+
+// COUNTDOWN carries the fresh-vs-resume decision: arriving from PAUSED keeps
+// score and clock; arriving from anywhere else (START, RESULTS) is a new round.
+onEnter(States.COUNTDOWN, (prev) => {
+  const fresh = prev !== States.PAUSED;
+  if (fresh) {
+    resetScoring();
+    resetTargets();
+    refreshHud();
+    setTimer(CONFIG.ROUND_LENGTH_S);
+  }
+  beginCountdown({ fresh });
+});
+
+// RESULTS: release the mouse so Play Again is clickable, then show the stats.
+onEnter(States.RESULTS, () => {
+  if (document.pointerLockElement) document.exitPointerLock();
+  const { best, isNew } = saveBestIfBeaten(getScore(), getAccuracy());
+  showResults({
+    score: getScore(),
+    accuracy: getAccuracy(),
+    bestStreak: getBestStreak(),
+    best,
+    isNew,
+  });
+});
+
 setState(States.START);
 refreshHud(); // HUD shows a true zero state before the first shot
 
@@ -104,16 +151,23 @@ window.addEventListener('resize', () => {
 let lastT = performance.now();
 renderer.setAnimationLoop(() => {
   const now = performance.now();
-  const dtMs = now - lastT;
+  // Clamp so a stray long frame can't skip whole seconds of countdown/pops.
+  const dtMs = Math.min(now - lastT, 100);
   lastT = now;
 
   const { yaw, pitch } = getLook();
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
 
-  // Gated on PLAYING so a pause mid-pop freezes the animation with the game.
-  if (getState() === States.PLAYING) {
-    updateTargets(dtMs);
+  const st = getState();
+  // The round clock ticks through countdown AND play; PAUSED starves it,
+  // which is exactly what freezes the timer.
+  if (st === States.COUNTDOWN || st === States.PLAYING) {
+    updateRound(dtMs);
+    updateTargets(dtMs); // pops may finish during a resume countdown
+  }
+  if (st === States.PLAYING) {
+    setTimer(getRemainingS());
   }
 
   renderer.render(scene, camera);

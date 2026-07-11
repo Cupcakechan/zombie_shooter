@@ -10,13 +10,14 @@
   <canvas id="game-canvas"></canvas>
 
   <div id="crosshair" class="hidden" aria-hidden="true"></div>
+  <div id="countdown" class="hidden" aria-hidden="true">3</div>
 
   <div id="hud" class="hidden">
     <div class="hud-left">
       <span id="hud-score">SCORE 0</span>
       <span id="hud-mult" class="hud-pill hidden">&times;2</span>
     </div>
-    <span id="hud-timer" class="hidden">1:00</span>
+    <span id="hud-timer">1:00</span>
   </div>
 
   <section id="screen-start" class="screen">
@@ -30,6 +31,18 @@
   <section id="screen-pause" class="screen hidden">
     <h2>Paused</h2>
     <p id="pause-hint" class="hint">Click anywhere to resume</p>
+  </section>
+
+  <section id="screen-results" class="screen hidden">
+    <h2>Time!</h2>
+    <p id="results-newbest" class="newbest hidden">NEW BEST!</p>
+    <div class="results-stats">
+      <p><span>Score</span><strong id="result-score">0</strong></p>
+      <p><span>Accuracy</span><strong id="result-accuracy">&mdash;</strong></p>
+      <p><span>Best streak</span><strong id="result-streak">0</strong></p>
+      <p><span>Personal best</span><strong id="result-best">&mdash;</strong></p>
+    </div>
+    <button id="btn-again" type="button">Play Again</button>
   </section>
 
   <script type="module" src="./src/main.js"></script>

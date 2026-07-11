@@ -5,10 +5,11 @@
 // DOM stub, so parse errors, duplicate import bindings, and broken import
 // paths fail HERE instead of in the browser. The browser must never be the
 // first parser to see delivered code.
-// Section 1 — spawn placement invariants: exact-math proof of the jittered
-// grid's guarantees (hand-computed expected values, DESIGN.md §5/§8).
-// Section 2 — scoring exact math: hand-computed score/streak/accuracy
-// scenarios, proving the multiplier tiers actually change the numbers.
+// Section 1 — spawn placement invariants (hand-computed, DESIGN.md §5/§8).
+// Section 2 — scoring exact math (multiplier tiers, best streak, accuracy).
+// Section 3 — round clock timing (countdown ticks, round end, resume rule).
+// Section 4 — personal-best persistence contract (against a hermetic
+//             in-memory localStorage stub).
 
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,7 +72,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 10;
+const MIN_EXPECTED_MODULES = 12;
 
 const files = walk('src').filter((p) => !EXCLUDE.has(p));
 
@@ -161,7 +162,7 @@ try {
   const scoring = await import(pathToFileURL(join('src', 'game', 'scoring.js')).href);
   const {
     multiplierFor, registerHit, registerMiss,
-    getScore, getStreak, getMultiplier, getAccuracy, resetScoring,
+    getScore, getStreak, getBestStreak, getMultiplier, getAccuracy, resetScoring,
   } = scoring;
 
   // Tier boundaries (×1 base, ×2 @ 10, ×3 @ 20 cap)
@@ -182,29 +183,133 @@ try {
   for (let i = 0; i < 25; i++) registerHit();
   assertNear('section2', 'score after 25 straight hits', getScore(), 4700);
   assertNear('section2', 'streak after 25 straight hits', getStreak(), 25);
+  assertNear('section2', 'best streak after 25 straight hits', getBestStreak(), 25);
   assertNear('section2', 'multiplier after 25 straight hits', getMultiplier(), 3);
   assertNear('section2', 'accuracy after 25/25', getAccuracy(), 1);
 
-  // Miss resets the streak but keeps the score:
+  // Miss resets the streak but keeps score AND best streak:
   // 12 hits = 9×100 + 3×200 = 1500; miss; next hit back at ×1 → 1600.
   resetScoring();
   for (let i = 0; i < 12; i++) registerHit();
   assertNear('section2', 'score after 12 straight hits', getScore(), 1500);
   registerMiss();
   assertNear('section2', 'streak resets on miss', getStreak(), 0);
+  assertNear('section2', 'best streak survives the miss', getBestStreak(), 12);
   assertNear('section2', 'multiplier back to 1 on miss', getMultiplier(), 1);
   registerHit();
   assertNear('section2', 'hit after miss pays x1 (total)', getScore(), 1600);
+  assertNear('section2', 'best streak still 12 after 1-hit rebuild', getBestStreak(), 12);
   assertNear('section2', 'accuracy 13 hits / 14 shots', getAccuracy(), 13 / 14);
 
   // Reset zeroes everything
   resetScoring();
   assertNear('section2', 'reset: score 0', getScore(), 0);
   assertNear('section2', 'reset: streak 0', getStreak(), 0);
+  assertNear('section2', 'reset: best streak 0', getBestStreak(), 0);
   assertTrue('section2', 'reset: accuracy null again', getAccuracy() === null);
 } catch (err) {
   failures.push({ file: 'section2', err });
   console.log(`  FAIL   section 2 threw: ${err.message}`);
+}
+
+// ————— Section 3: round clock timing —————
+
+console.log('');
+console.log('— Section 3: round clock timing —');
+try {
+  const round = await import(pathToFileURL(join('src', 'game', 'round.js')).href);
+  const { CONFIG } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  let ticks = [];
+  let done = 0;
+  let ended = 0;
+  round.initRound({
+    onCountdownTick: (n) => ticks.push(n),
+    onCountdownDone: () => { done++; },
+    onRoundEnd: () => { ended++; },
+  });
+
+  // Fresh round: 3-2-1 in 3 one-second steps, then the round clock arms.
+  round.beginCountdown({ fresh: true });
+  assertNear('section3', 'first tick shows immediately', ticks[0], CONFIG.COUNTDOWN_S);
+  round.updateRound(1000);
+  round.updateRound(1000);
+  assertTrue('section3', `countdown ticks are 3,2,1 (got ${ticks.join(',')})`,
+    ticks.join(',') === '3,2,1');
+  assertNear('section3', 'countdown not done at t=2s', done, 0);
+  round.updateRound(1000);
+  assertNear('section3', 'countdown done fires exactly once', done, 1);
+  assertNear('section3', 'round clock arms at full length', round.getRemainingS(), CONFIG.ROUND_LENGTH_S);
+
+  // Run the round down: 59.5 s leaves the display at 0:01, not 0:00.
+  round.updateRound(59500);
+  assertNear('section3', 'display shows 1 through the last second', round.getRemainingS(), 1);
+  assertNear('section3', 'round not ended at 59.5s', ended, 0);
+  round.updateRound(500);
+  assertNear('section3', 'round end fires exactly once', ended, 1);
+  assertNear('section3', 'remaining clamps to 0', round.getRemainingS(), 0);
+  round.updateRound(1000);
+  assertNear('section3', 'no double round-end after idle', ended, 1);
+
+  // Resume rule: fresh:false preserves the round clock across the 3-2-1.
+  ticks = []; done = 0; ended = 0;
+  round.beginCountdown({ fresh: true });
+  round.updateRound(3000); // countdown done
+  round.updateRound(5000); // 5s of play
+  assertNear('section3', '55s remain after 5s of play', round.getRemainingS(), 55);
+  round.beginCountdown({ fresh: false }); // pause → resume
+  assertNear('section3', 'resume countdown keeps the clock', round.getRemainingS(), 55);
+  round.updateRound(3000); // resume countdown done
+  assertNear('section3', 'countdown consumed no round time', round.getRemainingS(), 55);
+  round.updateRound(1000);
+  assertNear('section3', 'clock resumes ticking after resume', round.getRemainingS(), 54);
+} catch (err) {
+  failures.push({ file: 'section3', err });
+  console.log(`  FAIL   section 3 threw: ${err.message}`);
+}
+
+// ————— Section 4: personal-best persistence contract —————
+
+console.log('');
+console.log('— Section 4: personal-best persistence —');
+try {
+  const best = await import(pathToFileURL(join('src', 'game', 'best.js')).href);
+
+  // Without any localStorage (plain Node), everything is null-safe.
+  assertTrue('section4', 'loadBest is null without storage', best.loadBest() === null);
+
+  // Hermetic in-memory stub — best.js checks availability per call, so
+  // installing it after import still takes effect.
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => { mem.set(k, String(v)); },
+    removeItem: (k) => { mem.delete(k); },
+  };
+
+  const zero = best.saveBestIfBeaten(0, null);
+  assertTrue('section4', 'score 0 never records a best', zero.isNew === false && zero.best === null);
+
+  const first = best.saveBestIfBeaten(1200, 0.9);
+  assertTrue('section4', 'first positive score is a new best', first.isNew === true);
+  assertNear('section4', 'stored best score', best.loadBest().score, 1200);
+  assertNear('section4', 'stored best accuracy', best.loadBest().accuracy, 0.9);
+
+  const lower = best.saveBestIfBeaten(1100, 1);
+  assertTrue('section4', 'lower score is not a new best', lower.isNew === false);
+  assertNear('section4', 'lower score returns the standing best', lower.best.score, 1200);
+
+  const tie = best.saveBestIfBeaten(1200, 1);
+  assertTrue('section4', 'a tie is not a new best (strictly greater)', tie.isNew === false);
+
+  const higher = best.saveBestIfBeaten(1300, 0.8);
+  assertTrue('section4', 'higher score is a new best', higher.isNew === true);
+  assertNear('section4', 'new best persists', best.loadBest().score, 1300);
+
+  delete globalThis.localStorage;
+} catch (err) {
+  failures.push({ file: 'section4', err });
+  console.log(`  FAIL   section 4 threw: ${err.message}`);
 }
 
 // ————— Report —————
@@ -214,5 +319,5 @@ if (failures.length) {
   console.log(`SUITE FAIL — ${failures.length} failure(s), ${files.length} module(s) checked`);
   process.exitCode = 1;
 } else {
-  console.log(`SUITE PASS — ${files.length} modules imported cleanly, spawn + scoring invariants proven`);
+  console.log(`SUITE PASS — ${files.length} modules imported cleanly; spawn, scoring, round, and best invariants proven`);
 }

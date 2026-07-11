@@ -6,6 +6,7 @@ import { CONFIG } from '../config.js';
 
 let score = 0;
 let streak = 0;
+let bestStreak = 0;
 let hits = 0;
 let shots = 0;
 
@@ -22,6 +23,7 @@ export function registerHit() {
   shots++;
   hits++;
   streak++;
+  if (streak > bestStreak) bestStreak = streak;
   // Semantics pinned in DESIGN.md §5: the hit that REACHES a threshold is
   // already paid at the new rate — the 10th consecutive hit is the first
   // ×2 hit. (Streak increments before the multiplier is read.)
@@ -41,6 +43,12 @@ export function getStreak() {
   return streak;
 }
 
+// Highest streak reached this round — survives the misses that reset the
+// live streak; it's a results-screen stat, not a live-HUD one.
+export function getBestStreak() {
+  return bestStreak;
+}
+
 export function getMultiplier() {
   return multiplierFor(streak);
 }
@@ -54,6 +62,7 @@ export function getAccuracy() {
 export function resetScoring() {
   score = 0;
   streak = 0;
+  bestStreak = 0;
   hits = 0;
   shots = 0;
 }
