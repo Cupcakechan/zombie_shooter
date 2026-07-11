@@ -50,6 +50,11 @@ export const CONFIG = {
   POP_MS: 120,                // target pop animation
   RECOIL_MS: 60,
   RECOIL_KICK_DEG: 1,
+  RECOIL_MS: 60,
+  RECOIL_KICK_DEG: 1,
+  RECOIL_KICK_BACK: 0.06,     // metres the gun slides toward the camera
+  FLASH_MS: 50,               // muzzle flash lifetime
+  FLASH_INTENSITY: 6,         // point-light peak at the muzzle
 
   // — Gun viewmodel (camera-space offset: right, down, forward) —
   GUN: { OFFSET_X: 0.28, OFFSET_Y: -0.22, OFFSET_Z: -0.55 },

@@ -8,10 +8,15 @@
 // Section 1 — spawn placement invariants (hand-computed, DESIGN.md §5/§8).
 // Section 2 — scoring exact math (multiplier tiers, best streak, accuracy).
 // Section 3 — round clock timing (countdown ticks, round end, resume rule).
-// Section 4 — personal-best persistence contract (against a hermetic
-//             in-memory localStorage stub).
+// Section 4 — personal-best persistence contract (hermetic storage stub).
+// Section 5 — config contract: every required constant exists with the right
+//             type (numbers FINITE), plus a text scan of all src (including
+//             main.js) failing any literal CONFIG.<path> read that doesn't
+//             resolve. Added after the NaN-light incident (LESSONS.md
+//             2026-07-11): a parse-clean file with a missing constant turned
+//             the whole scene black with zero console errors.
 
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -74,7 +79,8 @@ const EXCLUDE = new Set([join('src', 'main.js')]);
 // module is added; a drop below means a module silently went missing.
 const MIN_EXPECTED_MODULES = 12;
 
-const files = walk('src').filter((p) => !EXCLUDE.has(p));
+const allSrcFiles = walk('src');
+const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
 
 console.log('— Section 0: module health —');
 for (const file of files) {
@@ -312,6 +318,94 @@ try {
   console.log(`  FAIL   section 4 threw: ${err.message}`);
 }
 
+// ————— Section 5: config contract —————
+// A parse-clean config with a missing constant shipped a black screen with
+// zero console errors (NaN light intensity — see LESSONS.md 2026-07-11).
+// Two layers: a hand-maintained schema (covers destructured reads; EXTEND IT
+// when adding constants) and a usage scan of every literal CONFIG.<path> in
+// src — including main.js, which section 0 can't import.
+
+console.log('');
+console.log('— Section 5: config contract —');
+try {
+  const { CONFIG } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  const SCHEMA = {
+    'FOV': 'number', 'EYE_HEIGHT': 'number', 'MOUSE_SENSITIVITY': 'number',
+    'PITCH_CLAMP_DEG': 'number', 'FIRE_COOLDOWN_MS': 'number',
+    'ROUND_LENGTH_S': 'number', 'COUNTDOWN_S': 'number',
+    'TARGETS_LIVE': 'number', 'TARGET_RADIUS': 'number', 'MIN_TARGET_SEPARATION': 'number',
+    'SPAWN.SLOT_XS': 'numberArray', 'SPAWN.SLOT_ZS': 'numberArray',
+    'SPAWN.JITTER_X': 'number', 'SPAWN.JITTER_Z': 'number',
+    'SPAWN.Y_MIN': 'number', 'SPAWN.Y_MAX': 'number',
+    'POINTS_PER_HIT': 'number', 'STREAK_TIERS': 'tierArray',
+    'POP_MS': 'number', 'RECOIL_MS': 'number', 'RECOIL_KICK_DEG': 'number',
+    'RECOIL_KICK_BACK': 'number', 'FLASH_MS': 'number', 'FLASH_INTENSITY': 'number',
+    'GUN.OFFSET_X': 'number', 'GUN.OFFSET_Y': 'number', 'GUN.OFFSET_Z': 'number',
+    'RANGE.WIDTH': 'number', 'RANGE.BACK_Z': 'number', 'RANGE.FRONT_Z': 'number',
+    'RANGE.WALL_HEIGHT': 'number', 'FOG.NEAR': 'number', 'FOG.FAR': 'number',
+    'COLORS.SKY': 'number', 'COLORS.FLOOR': 'number', 'COLORS.WALL': 'number',
+    'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
+    'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
+    'STORAGE_KEY': 'string',
+  };
+
+  const resolvePath = (obj, path) =>
+    path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+
+  let schemaFails = 0;
+  for (const [path, kind] of Object.entries(SCHEMA)) {
+    const v = resolvePath(CONFIG, path);
+    let ok = false;
+    if (kind === 'number') ok = typeof v === 'number' && Number.isFinite(v);
+    else if (kind === 'string') ok = typeof v === 'string' && v.length > 0;
+    else if (kind === 'numberArray') ok = Array.isArray(v) && v.length > 0 && v.every((n) => Number.isFinite(n));
+    else if (kind === 'tierArray') ok = Array.isArray(v) && v.length > 0 && v.every((t) => Number.isFinite(t?.streak) && Number.isFinite(t?.mult));
+    if (!ok) {
+      schemaFails++;
+      console.log(`  FAIL   schema: ${path} (${kind}) got ${JSON.stringify(v)}`);
+      failures.push({ file: 'section5', err: new Error(`schema ${path}`) });
+    }
+  }
+  if (schemaFails === 0) {
+    console.log(`  ok     schema: all ${Object.keys(SCHEMA).length} required keys present, typed, finite`);
+  }
+
+  // The descending order is load-bearing (first tier reached wins).
+  const tiers = CONFIG.STREAK_TIERS;
+  assertTrue('section5', 'STREAK_TIERS sorted descending',
+    tiers.every((t, i) => i === 0 || tiers[i - 1].streak > t.streak));
+
+  // Usage scan: every literal CONFIG.<path> in src must resolve; number
+  // leaves must be finite. Text-level, so it covers main.js too.
+  const refRe = /CONFIG\.([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g;
+  const seen = new Map(); // path -> file first seen in
+  for (const f of allSrcFiles) {
+    const text = readFileSync(f, 'utf8');
+    for (const m of text.matchAll(refRe)) {
+      if (!seen.has(m[1])) seen.set(m[1], f);
+    }
+  }
+  let scanFails = 0;
+  for (const [path, file] of seen) {
+    const v = resolvePath(CONFIG, path);
+    const bad = v === undefined || (typeof v === 'number' && !Number.isFinite(v));
+    if (bad) {
+      scanFails++;
+      console.log(`  FAIL   unresolved CONFIG.${path} (read in ${file})`);
+      failures.push({ file: 'section5', err: new Error(`unresolved CONFIG.${path}`) });
+    }
+  }
+  if (scanFails === 0) {
+    console.log(`  ok     usage scan: ${seen.size} distinct CONFIG reads all resolve`);
+  }
+  // Guard-the-guard: a rotted regex finding nothing must fail, not pass.
+  assertTrue('section5', `usage scan found >= 15 reads (found ${seen.size})`, seen.size >= 15);
+} catch (err) {
+  failures.push({ file: 'section5', err });
+  console.log(`  FAIL   section 5 threw: ${err.message}`);
+}
+
 // ————— Report —————
 
 console.log('');
@@ -319,5 +413,5 @@ if (failures.length) {
   console.log(`SUITE FAIL — ${failures.length} failure(s), ${files.length} module(s) checked`);
   process.exitCode = 1;
 } else {
-  console.log(`SUITE PASS — ${files.length} modules imported cleanly; spawn, scoring, round, and best invariants proven`);
+  console.log(`SUITE PASS — ${files.length} modules imported cleanly; spawn, scoring, round, best, and config invariants proven`);
 }

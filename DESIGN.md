@@ -228,12 +228,12 @@ slice blocks on it.
 
 ## 10. Definition of done — Stage 1
 
-- [ ] Start screen → pointer lock → countdown → playable round → results → replay, with no dead ends
-- [ ] Losing pointer lock (ESC/alt-tab) always lands in PAUSED, never a broken state
-- [ ] 3 targets always live; hit → pop → respawn honors band + separation rules
-- [ ] Score, streak multiplier, accuracy, and timer all correct (hand-checked math)
-- [ ] Personal best persists across reloads
-- [ ] Gun feel pass done (recoil + muzzle flash)
+- [x] Start screen → pointer lock → countdown → playable round → results → replay, with no dead ends
+- [x] Losing pointer lock (ESC/alt-tab) always lands in PAUSED, never a broken state
+- [x] 3 targets always live; hit → pop → respawn honors band + separation rules
+- [x] Score, streak multiplier, accuracy, and timer all correct (hand-checked math)
+- [x] Personal best persists across reloads
+- [x] Gun feel pass done (recoil + muzzle flash)
 - [ ] `test_suite.mjs` green; no console errors; runs in Chrome + Firefox via Live Server
 
 ## 11. Out of scope for Stage 1
@@ -258,3 +258,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v2 (roadmap): stage ladder reshaped around decisions A1/B1/C1 — finish Stage 1, enemies designed through Claude (procedural, creature-forge pipeline; no GLTFLoader), wave v1 is stationary last-stand, WASD becomes Stage 3; full pass roadmap added to §2.*
 *2026-07-11 — v2.1 (round pass): pinned — lock loss during COUNTDOWN also pauses; clicks can only fire in PLAYING; a personal best requires score > 0 (ties don't count, first recorded best flashes NEW BEST); resume re-runs the 3-2-1 without consuming round time (suite-pinned).*
 *2026-07-11 — v2.2 (feel pass): recoil (60 ms, 1° up + 0.06 m back, eased return) + muzzle flash (additive quad AND point-light pulse, 50 ms) on every real shot, hits and misses alike; new tunables RECOIL_KICK_BACK / FLASH_MS / FLASH_INTENSITY.*
+*2026-07-11 — v2.3 (guard): suite Section 5 config contract (42-key schema + usage scan over all src incl. main.js), added after the NaN-light incident (LESSONS.md) and proven to fire on it; DoD items 1–6 ticked, browser matrix pending.*
