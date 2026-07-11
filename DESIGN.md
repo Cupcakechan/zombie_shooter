@@ -18,13 +18,39 @@ zombie wave shooter.
 
 | Stage | Name | Adds | Status |
 |---|---|---|---|
-| 1 | Shooting Range | Pointer-lock aim, hitscan shot, targets, scoring, round timer, results | **CURRENT SLICE** |
-| 2 | Walkable Range | WASD movement, bigger arena, varied target placement | Later |
-| 3 | Zombie Waves | Zombies that approach, player health, waves, game over | Later |
+| 1 | Shooting Range | Pointer-lock aim, hitscan shot, targets, scoring, round timer, results | **CURRENT — 2 passes left** |
+| 2 | Zombie Waves — Last-Stand | Zombies approach a stationary player, HP both ways, waves, game over | Next |
+| 3 | WASD Arena | Player movement + bounds, zombies that chase | Later |
 
-> **Assumption (flagged):** the repo name says the Stage 3 enemies are zombies —
-> the theme is treated as "zombies, direction TBD" until Daniel sets it. Nothing
-> in Stage 1 depends on the theme.
+> Enemies are **designed through Claude** (Decision B1, 2026-07-11): code-built
+> creatures with procedural animation — a placeholder "proto-zombie" proves the
+> systems first, then the real designed creatures land via Daniel's creature
+> pipeline (**attach the creature-forge skill for those passes**). No downloaded
+> models, no GLTFLoader. Octree/Capsule world collision (the research report's
+> path) is deferred unless a real level ever demands it.
+
+### Pass roadmap (decided 2026-07-11 — picks A1 / B1 / C1)
+
+**Stage 1 — finish the range:**
+1. **Round pass** — countdown → 60 s timer → results screen (score, accuracy,
+   best streak, personal best via localStorage) → play again.
+2. **Feel pass** — gun recoil + muzzle flash; Stage 1 definition-of-done check.
+
+**Stage 2 — Zombie Waves: Last-Stand (the range becomes the arena):**
+3. **Proto-zombie pass** — blocky code-built zombie with a procedural shamble,
+   walking from a spawn point toward the player; joins the enemy registry.
+4. **Combat pass** — zombie HP (multi-hit), hit reaction, procedural death.
+5. **Threat pass** — close-range attack, player health + damage feedback,
+   game over + restart.
+6. **Wave manager pass** — data-driven wave table (count / speed / spawn
+   points), wave HUD, escalation, object pooling.
+7. **Creature design pass(es)** — designed zombies via the creature-forge
+   pipeline, swapped in behind the registry.
+8. **Atmosphere pass (optional)** — positional audio, blood particles/decals,
+   difficulty tuning.
+
+**Stage 3 — WASD Arena:** movement + arena bounds as its own stage;
+Octree/Capsule collision only if a real level requires it.
 
 ## 3. Stage 1 core loop
 
@@ -211,14 +237,16 @@ slice blocks on it.
 
 ## 11. Out of scope for Stage 1
 
-Movement (Stage 2), enemies/health (Stage 3), audio, real art/models, weapon
+Movement (Stage 3), enemies/health (Stage 2), audio, real models, weapon
 variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboards.
 
 ## 12. Open questions
 
 - Game title — `zombie_shooter` is the working name only.
-- Theme/art direction and when the art pass happens (Daniel's call).
-- Whether ammo/reload ever enters (classic gallery lever — Stage 2+ discussion).
+- Creature design direction (Daniel's call, at roadmap pass 7 via creature-forge).
+- Does the Stage 1 range survive as a selectable mode next to Waves? Cheap to
+  keep (the state machine already separates them) — decide during Stage 2.
+- Whether ammo/reload ever enters (classic wave-shooter pressure lever).
 
 ---
 
@@ -226,3 +254,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v1.1 (shell pass): import map dropped in favour of relative imports (Node suite compatibility); vendored pair is `three.module.js` + `three.core.js` (r185 split build).*
 *2026-07-11 — v1.2 (shot loop pass): spawn spec is the jittered slot grid (Option 3) with suite-pinned envelope; target registry named `targetTypes.js` to stay distinct from `render/targets.js`; target colour hot orange (crosshair readability).*
 *2026-07-11 — v1.3 (scoring/HUD pass): threshold-hit multiplier semantics pinned (10th hit is the first ×2); HUD shows score + multiplier pill (pill hidden at ×1); accuracy is `null` before any shot; timer element reserved for the round pass.*
+*2026-07-11 — v2 (roadmap): stage ladder reshaped around decisions A1/B1/C1 — finish Stage 1, enemies designed through Claude (procedural, creature-forge pipeline; no GLTFLoader), wave v1 is stationary last-stand, WASD becomes Stage 3; full pass roadmap added to §2.*

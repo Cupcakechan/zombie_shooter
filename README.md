@@ -7,7 +7,10 @@ and zombie waves. See `DESIGN.md` for the full plan.
 
 ## Status
 
-🚧 In development — project scaffold. No playable build yet.
+🚧 In development — **Stage 1 (Shooting Range)**: playable practice build with
+scoring and streak multipliers; round timer + results are next. Full roadmap in
+`DESIGN.md` §2 (destination: a zombie wave shooter with creatures designed in
+code).
 
 ## Running locally (dev)
 
