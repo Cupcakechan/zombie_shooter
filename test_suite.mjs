@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 15;
+const MIN_EXPECTED_MODULES = 17;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -425,26 +425,36 @@ try {
   // Registries get the same finite-leaf guarantee as CONFIG.
   const { TARGET_TYPES } = await import(pathToFileURL(join('src', 'data', 'targetTypes.js')).href);
   const { ENEMY_TYPES } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
   let leafCount = 0;
   let regFails = 0;
+  const checkLeaf = (v, p) => {
+    leafCount++;
+    const bad = v === undefined || (typeof v === 'number' && !Number.isFinite(v));
+    if (bad) {
+      regFails++;
+      console.log(`  FAIL   registry leaf ${p} = ${v}`);
+      failures.push({ file: 'section5', err: new Error(`registry ${p}`) });
+    }
+  };
   const sweepRegistry = (obj, path) => {
     for (const [k, v] of Object.entries(obj)) {
       const p = `${path}.${k}`;
-      if (v && typeof v === 'object' && !Array.isArray(v)) {
+      if (Array.isArray(v)) {
+        v.forEach((item, idx) => {
+          if (item && typeof item === 'object') sweepRegistry(item, `${p}[${idx}]`);
+          else checkLeaf(item, `${p}[${idx}]`);
+        });
+      } else if (v && typeof v === 'object') {
         sweepRegistry(v, p);
       } else {
-        leafCount++;
-        const bad = v === undefined || (typeof v === 'number' && !Number.isFinite(v));
-        if (bad) {
-          regFails++;
-          console.log(`  FAIL   registry leaf ${p} = ${v}`);
-          failures.push({ file: 'section5', err: new Error(`registry ${p}`) });
-        }
+        checkLeaf(v, p);
       }
     }
   };
   sweepRegistry(TARGET_TYPES, 'TARGET_TYPES');
   sweepRegistry(ENEMY_TYPES, 'ENEMY_TYPES');
+  sweepRegistry(WAVES, 'WAVES');
   if (regFails === 0) {
     console.log(`  ok     registries: ${leafCount} leaves defined and finite`);
   }
@@ -531,6 +541,48 @@ try {
 } catch (err) {
   failures.push({ file: 'section7', err });
   console.log(`  FAIL   section 7 threw: ${err.message}`);
+}
+
+// ————— Section 8: wave composition math —————
+
+console.log('');
+console.log('— Section 8: wave composition math —');
+try {
+  const { waveSpec } = await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { WAVES } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { TABLE, EXTEND } = WAVES;
+  const L = TABLE.length;
+  const last = TABLE[L - 1];
+
+  // Table waves come back verbatim (relative: retuning the table stays safe).
+  let tableOk = true;
+  for (let n = 1; n <= L; n++) {
+    const s = waveSpec(n);
+    if (s.count !== TABLE[n - 1].count || Math.abs(s.speedMult - TABLE[n - 1].speedMult) > 1e-9) {
+      tableOk = false;
+    }
+  }
+  assertTrue('section8', `table waves 1..${L} match the table verbatim`, tableOk);
+
+  // Extension formula: hand-relative expectations three waves past the table.
+  const ext = waveSpec(L + 3);
+  assertNear('section8', 'extended count follows COUNT_STEP',
+    ext.count, last.count + 3 * EXTEND.COUNT_STEP);
+  assertNear('section8', 'extended speed follows SPEED_STEP (pre-cap)',
+    ext.speedMult, Math.min(EXTEND.SPEED_CAP, last.speedMult + 3 * EXTEND.SPEED_STEP));
+
+  // The cap engages far out.
+  assertNear('section8', 'speed cap engages at wave 99', waveSpec(99).speedMult, EXTEND.SPEED_CAP);
+
+  // Counts never shrink wave-over-wave (the table itself must honour this too).
+  let monotonic = true;
+  for (let n = 2; n <= 12; n++) {
+    if (waveSpec(n).count < waveSpec(n - 1).count) monotonic = false;
+  }
+  assertTrue('section8', 'wave counts are non-decreasing (1..12)', monotonic);
+} catch (err) {
+  failures.push({ file: 'section8', err });
+  console.log(`  FAIL   section 8 threw: ${err.message}`);
 }
 
 // ————— Report —————

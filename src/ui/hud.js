@@ -1,12 +1,13 @@
 // ui/hud.js — the DOM layer: screen overlays, crosshair, the Range HUD bar
-// (score, pill, timer), the Waves HUD (hearts, kills), the countdown
-// numeral, damage vignette, results, and game over. Pure DOM: main.js
-// pushes values and the current mode in via the setters/parameters.
+// (score, pill, timer), the Waves HUD (hearts, wave, kills), the wave
+// banner, countdown numeral, damage vignette, results, and game over.
+// Pure DOM: main.js pushes values and the current mode in via setters.
 
 import { States } from '../state.js';
 
 const els = {};
 let hintTimer = null;
+let bannerTimer = null;
 let lastTimerText = null;
 let lastHearts = -1;
 let heartsMax = 0;
@@ -28,6 +29,7 @@ export function initHud({
     screenGameover: 'screen-gameover',
     crosshair: 'crosshair',
     countdown: 'countdown',
+    waveBanner: 'wave-banner',
     vignette: 'damage-vignette',
     btnRange: 'btn-range',
     btnWaves: 'btn-waves',
@@ -43,8 +45,10 @@ export function initHud({
     hudTimer: 'hud-timer',
     hudWaves: 'hud-waves',
     hudHearts: 'hud-hearts',
+    hudWave: 'hud-wave',
     hudKills: 'hud-kills',
     goKills: 'go-kills',
+    goWave: 'go-wave',
     goTime: 'go-time',
     resultScore: 'result-score',
     resultAccuracy: 'result-accuracy',
@@ -97,6 +101,8 @@ export function showForState(state, mode) {
   setVisible(els.crosshair, state === States.PLAYING);
   setVisible(els.hudBar, state === States.PLAYING && mode === 'range');
   setVisible(els.hudWaves, state === States.PLAYING && mode === 'waves');
+  // Leaving PLAYING always retires the banner (e.g. dying mid-intermission).
+  if (state !== States.PLAYING) setVisible(els.waveBanner, false);
 }
 
 export function setScore(score) {
@@ -146,8 +152,20 @@ export function setHearts(current, max) {
   }
 }
 
+export function setWave(n) {
+  els.hudWave.textContent = `WAVE ${n}`;
+}
+
 export function setKills(n) {
   els.hudKills.textContent = `KILLS ${n}`;
+}
+
+// Big centre banner announcing the wave during the intermission breather.
+export function showWaveBanner(n) {
+  els.waveBanner.textContent = `WAVE ${n}`;
+  setVisible(els.waveBanner, true);
+  if (bannerTimer) clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => setVisible(els.waveBanner, false), 1500);
 }
 
 // Red edge-flash on taking damage: restart the CSS animation by removing
@@ -158,8 +176,9 @@ export function flashDamage() {
   els.vignette.classList.add('flash');
 }
 
-export function showGameOver({ kills, seconds }) {
+export function showGameOver({ kills, wave, seconds }) {
   els.goKills.textContent = String(kills);
+  els.goWave.textContent = String(wave);
   els.goTime.textContent = fmtTime(seconds);
 }
 

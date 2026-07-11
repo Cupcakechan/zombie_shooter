@@ -1,12 +1,12 @@
 // render/enemies.js — enemy lifecycle: build the blocky proto-zombie, steer
 // it toward the player, drive the procedural shamble, take damage, die
-// (fall over), and — pass 5b — fight back with a telegraphed swipe.
-// Same module shape as targets.js: module-level records, spawn/update/reset,
-// pure math exported for the suite. Damage to the PLAYER leaves this module
-// only via the injected onPlayerHit callback; kills leave via onEnemyKilled.
+// (fall over), fight back with a telegraphed swipe — and, pass 6, coexist:
+// spawn positions come from the wave manager and living zombies push apart
+// so a wave arrives as a group, not a merged clump.
 
 import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
+import { WAVES } from '../data/waveTable.js';
 
 // ————— Pure math (suite-tested) —————
 
@@ -87,7 +87,7 @@ export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
   onEnemyKilledCb = onEnemyKilled || null;
 }
 
-export function spawnEnemy(typeId) {
+export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
   const type = ENEMY_TYPES[typeId];
   // Graceful: an unknown id logs and skips — a registry typo must never crash.
   if (!type) {
@@ -95,9 +95,11 @@ export function spawnEnemy(typeId) {
     return null;
   }
   if (!sceneRef) return null;
+  // Graceful: a missing position falls back to back-centre rather than NaN.
+  const at = pos || { x: 0, z: -28 };
 
   const { group, parts, materials } = buildProtoBody(type);
-  group.position.set(type.SPAWN.x, 0, type.SPAWN.z);
+  group.position.set(at.x, 0, at.z);
   // Yaw (Y) applied first, then lean (X), then sway (Z) — same YXZ pattern
   // as the camera, so the three rotations compose without fighting.
   group.rotation.order = 'YXZ';
@@ -105,6 +107,7 @@ export function spawnEnemy(typeId) {
 
   const rec = {
     type, group, parts, materials,
+    speedMult,
     meshes: [],
     hp: type.HP,
     walked: 0, t: 0,
@@ -157,8 +160,7 @@ function setArms(rec, rotX) {
   rec.parts.armR.rotation.x = rotX;
 }
 
-// Returns true if the hit landed on a living enemy. Deliberately does NOT
-// touch range scoring — wave-mode kill scoring is a pass-6 decision.
+// Returns true if the hit landed on a living enemy.
 export function damageEnemy(mesh) {
   const rec = byMesh.get(mesh);
   if (!rec || rec.dying) return false;
@@ -267,7 +269,9 @@ export function updateEnemies(dtMs, playerPos) {
     if (rec.staggerT > 0) {
       rec.staggerT -= dtMs;
     } else if (!rec.attackPhase) {
-      const step = advanceDistance(dist, type.WALK_SPEED, dtMs, type.STOP_DISTANCE);
+      const step = advanceDistance(
+        dist, type.WALK_SPEED * rec.speedMult, dtMs, type.STOP_DISTANCE,
+      );
       if (step > 0 && dist > 1e-6) {
         group.position.x += (dx / dist) * step;
         group.position.z += (dz / dist) * step;
@@ -290,6 +294,31 @@ export function updateEnemies(dtMs, playerPos) {
         Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
       rec.parts.armL.rotation.x = Math.PI / 2 + wob;
       rec.parts.armR.rotation.x = Math.PI / 2 - wob;
+    }
+  }
+
+  // — Crowd separation: overlapping LIVING zombies push apart so a wave
+  // arrives as a group, not a merged clump. O(n²), fine at this scale
+  // (pooling/partitioning waits for a MEASURED frame drop, per the report).
+  const sep = WAVES.CROWD.SEPARATION_RADIUS;
+  for (let a = 0; a < records.length; a++) {
+    const ra = records[a];
+    if (ra.dying) continue;
+    for (let b = a + 1; b < records.length; b++) {
+      const rb = records[b];
+      if (rb.dying) continue;
+      let dx = rb.group.position.x - ra.group.position.x;
+      let dz = rb.group.position.z - ra.group.position.z;
+      let d = Math.hypot(dx, dz);
+      if (d >= sep) continue;
+      if (d < 1e-6) { dx = 1; dz = 0; d = 1; } // exact overlap: pick an axis
+      const push = (sep - d) / 2;
+      const nx = dx / d;
+      const nz = dz / d;
+      ra.group.position.x -= nx * push;
+      ra.group.position.z -= nz * push;
+      rb.group.position.x += nx * push;
+      rb.group.position.z += nz * push;
     }
   }
 }

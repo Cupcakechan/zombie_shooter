@@ -27,9 +27,14 @@ import { initRound, beginCountdown, updateRound, getRemainingS } from './game/ro
 import { saveBestIfBeaten } from './game/best.js';
 import { resetPlayer, damagePlayer, getHits, isDead } from './game/player.js';
 import {
+  initWaves, startWaves, updateWaves, notifyKill,
+  getWave, getKills, getElapsedMs,
+} from './game/waves.js';
+import {
   initHud, showForState, flashLockHint,
   setScore, setMultiplier, setCountdown, setTimer,
-  setHearts, setKills, flashDamage, showGameOver, showResults,
+  setHearts, setWave, setKills, showWaveBanner,
+  flashDamage, showGameOver, showResults,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -39,11 +44,6 @@ if (!canvas) throw new Error('main.js: #game-canvas not found in index.html');
 // START buttons); everything else reads it. 'range' = 60s score attack;
 // 'waves' = untimed last-stand.
 let mode = 'range';
-
-// Waves session stats — glue-level counters that the wave manager (pass 6)
-// will absorb into a proper module.
-let wavesKills = 0;
-let wavesElapsedMs = 0;
 
 // Camera damage-kick state (a brief pitch jolt layered over the look).
 let shakeT = 0;
@@ -88,8 +88,17 @@ initTargets(scene);
 initEnemies(scene, {
   onPlayerHit: handlePlayerHit,
   onEnemyKilled: () => {
-    wavesKills += 1;
-    setKills(wavesKills);
+    notifyKill();
+    setKills(getKills());
+  },
+});
+
+// — Wave manager: spawn function injected so waves.js stays render-free.
+initWaves({
+  spawn: (typeId, pos, opts) => spawnEnemy(typeId, pos, opts),
+  onWaveStart: (n) => {
+    setWave(n);
+    showWaveBanner(n);
   },
 });
 
@@ -101,8 +110,8 @@ function refreshHud() {
 
 // — Shooting: unified hit pipeline. Targets and enemy body parts are
 // raycast together; the nearest wins and the tag routes it. Range scoring
-// only runs in Range mode; enemy hits touch no range scoring (wave-mode
-// kill scoring is a pass-6 decision). Every real shot kicks the gun.
+// only runs in Range mode; enemy hits touch no range scoring. Every real
+// shot kicks the gun.
 initShooting({
   camera,
   getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
@@ -185,11 +194,9 @@ onEnter(States.COUNTDOWN, (prev) => {
     } else {
       clearTargets(); // Waves: no practice targets in the arena
       resetPlayer();
-      wavesKills = 0;
-      wavesElapsedMs = 0;
       setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
       setKills(0);
-      spawnEnemy('proto_zombie');
+      startWaves(); // wave 1 announces on the first PLAYING frame
       beginCountdown({ fresh: true, timed: false });
     }
     return;
@@ -215,8 +222,9 @@ onEnter(States.RESULTS, () => {
 onEnter(States.GAMEOVER, () => {
   if (document.pointerLockElement) document.exitPointerLock();
   showGameOver({
-    kills: wavesKills,
-    seconds: Math.floor(wavesElapsedMs / 1000),
+    kills: getKills(),
+    wave: getWave(),
+    seconds: Math.floor(getElapsedMs() / 1000),
   });
 });
 
@@ -251,7 +259,7 @@ renderer.setAnimationLoop(() => {
 
   const st = getState();
   // The round clock ticks through countdown AND play; PAUSED starves it,
-  // which is exactly what freezes the timer (and the zombie).
+  // which is exactly what freezes the timer (and the zombies).
   if (st === States.COUNTDOWN || st === States.PLAYING) {
     updateRound(dtMs);
     updateTargets(dtMs); // pops may finish during a resume countdown
@@ -260,7 +268,7 @@ renderer.setAnimationLoop(() => {
   }
   if (st === States.PLAYING) {
     if (mode === 'range') setTimer(getRemainingS());
-    else wavesElapsedMs += dtMs;
+    else updateWaves(dtMs); // spawning + intermissions only run while playing
   }
 
   renderer.render(scene, camera);

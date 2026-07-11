@@ -124,6 +124,22 @@ body {
   user-select: none;
 }
 
+/* — Wave banner — same spot as the countdown, smaller; never both visible
+   (the first intermission waits for the first PLAYING frame). */
+#wave-banner {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 72px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--danger);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* — Overlay screens — */
 .screen {
   position: fixed;

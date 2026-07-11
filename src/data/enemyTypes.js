@@ -1,16 +1,16 @@
 // data/enemyTypes.js — the enemy registry. Same pattern as targetTypes.js:
 // content as data, so pass 7's designed creatures become new entries flowing
-// through the same spawn/update/hit/attack pipeline. Body dimensions live in
-// the builder for now — they move here the day a second enemy type needs
-// different proportions.
+// through the same spawn/update/hit/attack pipeline. Spawn POSITIONS live in
+// waveTable.js (they're an arena property, not an enemy property). Body
+// dimensions live in the builder until a second type needs different
+// proportions.
 
 export const ENEMY_TYPES = {
   proto_zombie: {
     id: 'proto_zombie',
     HP: 3,                // hits to kill (any body part counts)
-    WALK_SPEED: 1.2,      // m/s — shamble pace (26 m from spawn ≈ 22 s to reach you)
+    WALK_SPEED: 1.2,      // m/s base — waves multiply this per waveTable.js
     STOP_DISTANCE: 2,     // m — where it halts and starts attacking
-    SPAWN: { x: 0, z: -28 }, // back-centre of the range
     COLORS: {
       SKIN: 0x7da06a,     // sickly green — distinct from the orange targets
       CLOTH: 0x343b3f,
