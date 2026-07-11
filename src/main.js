@@ -10,8 +10,14 @@ import { States, getState, setState, onEnter } from './state.js';
 import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
 import { createGun, kick, updateGun } from './render/gun.js';
-import { initTargets, resetTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
-import { initEnemies, spawnEnemy, resetEnemies, updateEnemies } from './render/enemies.js';
+import {
+  initTargets, resetTargets, getHittables as getTargetHittables,
+  hitTarget, updateTargets,
+} from './render/targets.js';
+import {
+  initEnemies, spawnEnemy, resetEnemies, updateEnemies,
+  getEnemyHittables, damageEnemy,
+} from './render/enemies.js';
 import { initShooting } from './game/shooting.js';
 import {
   registerHit, registerMiss, resetScoring,
@@ -54,8 +60,8 @@ camera.add(createGun());
 // — Targets —
 initTargets(scene);
 
-// — Enemies (pass 3: dev-toggled proto-zombie; suite's SHIP gate keeps the
-// flag out of real builds) —
+// — Enemies (dev-toggled proto-zombie; suite's SHIP gate keeps the flag out
+// of real builds) —
 initEnemies(scene);
 if (CONFIG.DEBUG.SPAWN_ZOMBIE) spawnEnemy('proto_zombie');
 
@@ -65,18 +71,24 @@ function refreshHud() {
   setMultiplier(getMultiplier());
 }
 
-// — Shooting: raycast on fire; every real shot kicks the gun, hits pop +
-// score, misses reset the streak. Cooldown-ignored clicks reach none of this.
+// — Shooting: unified hit pipeline. Targets and enemy body parts are
+// raycast together; the nearest wins and the tag routes it. Zombie hits are
+// SCORING-NEUTRAL (no score/streak/shots/accuracy change) — wave-mode kill
+// scoring is defined in passes 5–6. Every real shot kicks the gun.
 initShooting({
   camera,
-  getHittables,
+  getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
   canFire: () => getState() === States.PLAYING,
-  onHit: (sphere) => {
+  onHit: (mesh) => {
     kick();
+    if (mesh.userData.kind === 'enemy') {
+      damageEnemy(mesh);
+      return; // deliberately no scoring, no HUD refresh
+    }
     // hitTarget() can only refuse an already-popping sphere; hittables are
     // filtered at raycast time, so a refusal means a race — count it as a
     // miss rather than paying for a target that didn't pop.
-    if (hitTarget(sphere)) registerHit();
+    if (hitTarget(mesh)) registerHit();
     else registerMiss();
     refreshHud();
   },

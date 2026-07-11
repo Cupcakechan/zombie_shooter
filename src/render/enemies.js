@@ -1,13 +1,13 @@
 // render/enemies.js — enemy lifecycle: build the blocky proto-zombie, steer
-// it toward the player, drive the procedural shamble (Option B: fixed
-// arms-out pose + whole-body motion). Same module shape as targets.js:
-// module-level records, spawn/update/reset. Not shootable yet — HP, hit
-// reaction, and death are pass 4.
+// it toward the player, drive the procedural shamble, and (pass 4) take
+// damage and die. Death is Option A: fall over around the feet, lie, fade,
+// despawn. Same module shape as targets.js: module-level records,
+// spawn/update/reset, pure math exported for the suite.
 
 import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
 
-// ————— Pure movement math (suite-tested) —————
+// ————— Pure math (suite-tested) —————
 
 // How far the enemy may close THIS frame: capped by speed, and clamped so it
 // lands exactly ON the stop ring, never inside it (and never moves backward
@@ -17,10 +17,23 @@ export function advanceDistance(currentDist, speedMps, dtMs, stopDist) {
   return Math.min(step, Math.max(0, currentDist - stopDist));
 }
 
+// The death timeline as a pure function of elapsed death-time and the
+// type's DEATH timings — boundaries are relative to the registry values, so
+// retuning the timings never breaks the suite.
+export function deathPhase(dieT, D) {
+  if (dieT < D.FALL_MS) return { phase: 'falling', k: dieT / D.FALL_MS };
+  const t2 = dieT - D.FALL_MS;
+  if (t2 < D.LIE_MS) return { phase: 'lying', k: t2 / D.LIE_MS };
+  const t3 = t2 - D.LIE_MS;
+  if (t3 < D.FADE_MS) return { phase: 'fading', k: t3 / D.FADE_MS };
+  return { phase: 'done', k: 1 };
+}
+
 // ————— Stateful enemy management —————
 
 let sceneRef = null;
-const records = []; // { type, group, parts, walked, t }
+const records = []; // { type, group, parts, meshes, materials, hp, walked, t, flashT, staggerT, dying, dieT }
+const byMesh = new Map(); // any body mesh -> record
 
 function buildProtoBody(type) {
   const group = new THREE.Group();
@@ -62,7 +75,7 @@ function buildProtoBody(type) {
   armR.rotation.x = Math.PI / 2;
   group.add(armL, armR);
 
-  return { group, parts: { armL, armR } };
+  return { group, parts: { armL, armR }, materials: [skin, cloth] };
 }
 
 export function initEnemies(scene) {
@@ -78,20 +91,110 @@ export function spawnEnemy(typeId) {
   }
   if (!sceneRef) return null;
 
-  const { group, parts } = buildProtoBody(type);
+  const { group, parts, materials } = buildProtoBody(type);
   group.position.set(type.SPAWN.x, 0, type.SPAWN.z);
   // Yaw (Y) applied first, then lean (X), then sway (Z) — same YXZ pattern
   // as the camera, so the three rotations compose without fighting.
   group.rotation.order = 'YXZ';
   sceneRef.add(group);
 
-  records.push({ type, group, parts, walked: 0, t: 0 });
+  const rec = {
+    type, group, parts, materials,
+    meshes: [],
+    hp: type.HP,
+    walked: 0, t: 0,
+    flashT: 0, staggerT: 0,
+    dying: false, dieT: 0,
+  };
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.userData.kind = 'enemy';
+      rec.meshes.push(child);
+      byMesh.set(child, rec);
+    }
+  });
+  records.push(rec);
   return group;
 }
 
-export function updateEnemies(dtMs, playerPos) {
+// Living body meshes only — a dying zombie is not a valid raycast hit, so
+// shots pass through the corpse to whatever's behind it.
+export function getEnemyHittables() {
+  const out = [];
   for (const rec of records) {
+    if (!rec.dying) out.push(...rec.meshes);
+  }
+  return out;
+}
+
+function startDeath(rec) {
+  rec.dying = true;
+  rec.dieT = 0;
+  rec.flashT = 0;
+  setFlash(rec, 0);
+  // Zero the shamble pose so the fall pivots cleanly around the feet —
+  // this is Option A's one fiddly bit, handled here.
+  rec.group.rotation.z = 0;
+  rec.group.position.y = 0;
+}
+
+function setFlash(rec, intensity) {
+  for (const m of rec.materials) {
+    if (intensity > 0) m.emissive.setHex(0xff2222);
+    m.emissiveIntensity = intensity;
+  }
+}
+
+// Returns true if the hit landed on a living enemy. Deliberately does NOT
+// touch scoring — zombie hits are scoring-neutral until the wave mode owns
+// its own kill scoring (passes 5–6).
+export function damageEnemy(mesh) {
+  const rec = byMesh.get(mesh);
+  if (!rec || rec.dying) return false;
+
+  rec.hp -= 1;
+  rec.flashT = rec.type.COMBAT.FLINCH_MS;
+  rec.staggerT = rec.type.COMBAT.STAGGER_MS;
+
+  // Knockback straight away from the player. The body always faces the
+  // player (yaw), so "away" is the facing direction reversed.
+  const yaw = rec.group.rotation.y;
+  rec.group.position.x -= Math.sin(yaw) * rec.type.COMBAT.KNOCKBACK;
+  rec.group.position.z -= Math.cos(yaw) * rec.type.COMBAT.KNOCKBACK;
+
+  if (rec.hp <= 0) startDeath(rec);
+  return true;
+}
+
+export function updateEnemies(dtMs, playerPos) {
+  for (let i = records.length - 1; i >= 0; i--) {
+    const rec = records[i];
     const { type, group } = rec;
+
+    // — Dying: run the death timeline and nothing else.
+    if (rec.dying) {
+      rec.dieT += dtMs;
+      const { phase, k } = deathPhase(rec.dieT, type.DEATH);
+      if (phase === 'falling') {
+        // Accelerating fall (k²) from the walk lean to flat on the ground.
+        group.rotation.x = type.ANIM.LEAN + (Math.PI / 2 - type.ANIM.LEAN) * k * k;
+        group.position.y = type.DEATH.CORPSE_LIFT * k * k;
+      } else if (phase === 'lying') {
+        group.rotation.x = Math.PI / 2;
+        group.position.y = type.DEATH.CORPSE_LIFT;
+      } else if (phase === 'fading') {
+        for (const m of rec.materials) {
+          m.transparent = true;
+          m.opacity = 1 - k;
+        }
+      } else {
+        disposeEnemy(rec);
+        records.splice(i, 1);
+      }
+      continue;
+    }
+
+    // — Alive —
     rec.t += dtMs;
 
     const dx = playerPos.x - group.position.x;
@@ -101,11 +204,22 @@ export function updateEnemies(dtMs, playerPos) {
     // Always face the player, moving or stopped (yaw only).
     group.rotation.y = Math.atan2(dx, dz);
 
-    const step = advanceDistance(dist, type.WALK_SPEED, dtMs, type.STOP_DISTANCE);
-    if (step > 0 && dist > 1e-6) {
-      group.position.x += (dx / dist) * step;
-      group.position.z += (dz / dist) * step;
-      rec.walked += step;
+    // Hit flash decays over FLINCH_MS.
+    if (rec.flashT > 0) {
+      rec.flashT = Math.max(0, rec.flashT - dtMs);
+      setFlash(rec, (rec.flashT / type.COMBAT.FLINCH_MS) * 0.9);
+    }
+
+    // Stagger pauses movement; the shamble idles in place meanwhile.
+    if (rec.staggerT > 0) {
+      rec.staggerT -= dtMs;
+    } else {
+      const step = advanceDistance(dist, type.WALK_SPEED, dtMs, type.STOP_DISTANCE);
+      if (step > 0 && dist > 1e-6) {
+        group.position.x += (dx / dist) * step;
+        group.position.z += (dz / dist) * step;
+        rec.walked += step;
+      }
     }
 
     // — Procedural shamble. Bob and sway are locked to distance WALKED so
@@ -124,17 +238,18 @@ export function updateEnemies(dtMs, playerPos) {
   }
 }
 
-function disposeEnemy(group) {
-  group.traverse((child) => {
+function disposeEnemy(rec) {
+  for (const mesh of rec.meshes) byMesh.delete(mesh);
+  rec.group.traverse((child) => {
     if (child.isMesh) {
       child.geometry.dispose();
       child.material.dispose(); // double-dispose of shared materials is safe
     }
   });
-  sceneRef.remove(group);
+  sceneRef.remove(rec.group);
 }
 
 export function resetEnemies() {
-  for (const rec of records) disposeEnemy(rec.group);
+  for (const rec of records) disposeEnemy(rec);
   records.length = 0;
 }

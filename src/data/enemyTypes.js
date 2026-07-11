@@ -1,12 +1,13 @@
 // data/enemyTypes.js — the enemy registry. Same pattern as targetTypes.js:
 // content as data, so pass 7's designed creatures become new entries flowing
-// through the same spawn/update (and, from pass 4, hit) pipeline. Body
-// dimensions live in the builder for now — they move here the day a second
-// enemy type needs different proportions.
+// through the same spawn/update/hit pipeline. Body dimensions live in the
+// builder for now — they move here the day a second enemy type needs
+// different proportions.
 
 export const ENEMY_TYPES = {
   proto_zombie: {
     id: 'proto_zombie',
+    HP: 3,                // hits to kill (any body part counts)
     WALK_SPEED: 1.2,      // m/s — shamble pace (26 m from spawn ≈ 22 s to reach you)
     STOP_DISTANCE: 2,     // m — where it halts; becomes the attack range in pass 5
     SPAWN: { x: 0, z: -28 }, // back-centre of the range
@@ -22,6 +23,18 @@ export const ENEMY_TYPES = {
       IDLE_SWAY_FREQ: 0.0018, // radians per ms — keeps a STOPPED zombie subtly alive
       LEAN: 0.12,         // constant forward lean, radians
       ARM_WOBBLE: 0.08,   // radians of raised-arm bounce
+    },
+    COMBAT: {
+      FLINCH_MS: 100,     // red flash on taking a hit
+      STAGGER_MS: 200,    // movement pause per hit
+      KNOCKBACK: 0.15,    // metres shoved away from the player per hit
+    },
+    DEATH: {              // Option A (picked 2026-07-11): fall over
+      FALL_MS: 600,       // pitch to the ground (eased, accelerating)
+      LIE_MS: 1500,       // corpse holds on the floor
+      FADE_MS: 400,       // fade out, then despawn
+      CORPSE_LIFT: 0.12,  // metres the fallen body is raised so boxes rest ON
+                          // the floor instead of half-sinking through it
     },
   },
 };

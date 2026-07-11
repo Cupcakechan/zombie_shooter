@@ -69,6 +69,9 @@ function spawn(slotIndex, type) {
     sphereMat,
   );
   sphere.position.y = pos.y;
+  // Unified hit pipeline (pass 4): the raycast tests targets and enemies
+  // together; this tag is how main.js routes the hit.
+  sphere.userData.kind = 'target';
   group.add(sphere);
 
   // Stand reaches from the ground to the sphere's underside. Guarded so a

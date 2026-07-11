@@ -454,15 +454,32 @@ try {
 // ————— Section 6: enemy movement math —————
 
 console.log('');
-console.log('— Section 6: enemy movement math —');
+console.log('— Section 6: enemy movement + death timeline —');
 try {
-  const { advanceDistance } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { advanceDistance, deathPhase } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
 
   assertNear('section6', 'full-speed step (10 m away, 2 m/s, 1 s)', advanceDistance(10, 2, 1000, 2), 2);
   assertNear('section6', 'clamps exactly onto the stop ring (from 2.5 m)', advanceDistance(2.5, 2, 1000, 2), 0.5);
   assertNear('section6', 'on the ring: no movement', advanceDistance(2, 2, 1000, 2), 0);
   assertNear('section6', 'inside the ring: never negative', advanceDistance(1.5, 2, 1000, 2), 0);
   assertNear('section6', 'sub-second precision (1.2 m/s, 500 ms)', advanceDistance(10, 1.2, 500, 2), 0.6);
+
+  // Death timeline: boundaries computed FROM the registry timings, so tuning
+  // FALL/LIE/FADE never breaks the suite — only reordering the phases would.
+  const D = ENEMY_TYPES.proto_zombie.DEATH;
+  assertTrue('section6', 'death t=0 is falling (k=0)',
+    deathPhase(0, D).phase === 'falling' && deathPhase(0, D).k === 0);
+  assertNear('section6', 'falling midpoint k', deathPhase(D.FALL_MS / 2, D).k, 0.5);
+  assertTrue('section6', 'fall end flips to lying',
+    deathPhase(D.FALL_MS, D).phase === 'lying');
+  assertTrue('section6', 'lie end flips to fading (k=0)',
+    deathPhase(D.FALL_MS + D.LIE_MS, D).phase === 'fading'
+    && deathPhase(D.FALL_MS + D.LIE_MS, D).k === 0);
+  assertNear('section6', 'fading midpoint k',
+    deathPhase(D.FALL_MS + D.LIE_MS + D.FADE_MS / 2, D).k, 0.5);
+  assertTrue('section6', 'timeline ends in done',
+    deathPhase(D.FALL_MS + D.LIE_MS + D.FADE_MS, D).phase === 'done');
 } catch (err) {
   failures.push({ file: 'section6', err });
   console.log(`  FAIL   section 6 threw: ${err.message}`);
