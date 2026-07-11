@@ -71,9 +71,14 @@ single config constant applied to `movementX/Y`.
 - Exactly **3 targets live** at all times. On hit: pop animation (quick flash +
   scale-out, ~120 ms), then a replacement spawns at a different slot.
 - Placeholder look: emissive sphere on a thin cylinder stand (code-built, no assets).
-- Spawn volume: a band **8–20 m downrange**, lateral **±10 m**, target center
-  height **0.8–2.2 m**, minimum **2 m separation** between live targets, and always
-  within the forward aim cone (no targets behind the player).
+- Spawn placement (**Option 3 — jittered grid**, picked 2026-07-11): a slot
+  grid of **5 lateral columns (x ∈ {−10, −5, 0, 5, 10}) × 4 depth rows
+  (z ∈ {−8, −12, −16, −20})** = 20 slots; each spawn adds jitter of
+  **±1.5 m laterally, ±1.0 m in depth**, with centre height drawn fresh from
+  **0.8–2.2 m**. Separation is guaranteed by construction — worst case, two
+  adjacent slots jitter toward each other and land exactly **2 m** apart
+  (lateral 5 − 2×1.5, depth 4 − 2×1.0) — and the suite asserts it. Effective
+  envelope: **x ±11.5, z −7…−21** (suite-pinned). No targets behind the player.
 - Built as a small **registry/table of target types** (Stage 1 has one type). The
   spawn + hit pipeline works off the registry so Stage 3 zombies plug into the
   same pipeline instead of a parallel system.
@@ -143,6 +148,8 @@ zombie_shooter/
 │   ├── config.js            ALL tunables live here
 │   ├── state.js             screen/game state machine
 │   ├── input.js             pointer lock, mouse look, fire clicks
+│   ├── data/
+│   │   └── targetTypes.js   target registry (Stage 3 zombies join here)
 │   ├── render/
 │   │   ├── scene.js         range environment (floor, walls, lights, fog)
 │   │   ├── gun.js           viewmodel + recoil
@@ -171,7 +178,8 @@ zombie_shooter/
 | Round length | 60 s | |
 | Targets live | 3 | |
 | Target radius | 0.5 m | visual = hitbox in Stage 1 |
-| Spawn band | 8–20 m deep, ±10 m wide, 0.8–2.2 m high | |
+| Slot grid | x ∈ {−10,−5,0,5,10}, z ∈ {−8,−12,−16,−20} | 20 slots |
+| Spawn jitter | ±1.5 m x, ±1.0 m z; height 0.8–2.2 m | envelope x ±11.5, z −7…−21 |
 | Min target separation | 2 m | |
 | Points per hit | 100 | |
 | Streak thresholds | ×2 @ 10, ×3 @ 20 (cap) | |
@@ -214,3 +222,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 
 *Changelog: 2026-07-11 — v1, written after kickoff decisions (Option 1 slice, new repo).*
 *2026-07-11 — v1.1 (shell pass): import map dropped in favour of relative imports (Node suite compatibility); vendored pair is `three.module.js` + `three.core.js` (r185 split build).*
+*2026-07-11 — v1.2 (shot loop pass): spawn spec is the jittered slot grid (Option 3) with suite-pinned envelope; target registry named `targetTypes.js` to stay distinct from `render/targets.js`; target colour hot orange (crosshair readability).*

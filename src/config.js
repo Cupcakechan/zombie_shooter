@@ -22,11 +22,18 @@ export const CONFIG = {
   TARGETS_LIVE: 3,
   TARGET_RADIUS: 0.5,         // metres — visual = hitbox in Stage 1
   MIN_TARGET_SEPARATION: 2,   // metres between live target centres
-  SPAWN_BAND: {
-    Z_NEAR: -8,               // camera looks down -Z; band is 8–20 m downrange
-    Z_FAR: -20,
-    X_HALF: 10,               // lateral ±10 m
-    Y_MIN: 0.8,               // target centre height
+  // Jittered slot grid (Option 3, picked 2026-07-11). Separation is guaranteed
+  // by math, not runtime checks: worst case, two adjacent slots jitter toward
+  // each other — lateral 5 − 2×1.5 = 2 m, depth 4 − 2×1.0 = 2 m — exactly
+  // MIN_TARGET_SEPARATION. The suite asserts this, so changing any of these
+  // numbers without re-checking the invariant fails the tests, not the game.
+  // Jitter extremes push the effective envelope to x ±11.5, z −7…−21.
+  SPAWN: {
+    SLOT_XS: [-10, -5, 0, 5, 10], // lateral slot columns (5 m spacing)
+    SLOT_ZS: [-8, -12, -16, -20], // depth slot rows (4 m spacing, downrange)
+    JITTER_X: 1.5,                // per-spawn scatter, metres
+    JITTER_Z: 1.0,
+    Y_MIN: 0.8,                   // target centre height, drawn fresh each spawn
     Y_MAX: 2.2,
   },
 
@@ -43,6 +50,9 @@ export const CONFIG = {
   POP_MS: 120,                // target pop animation
   RECOIL_MS: 60,
   RECOIL_KICK_DEG: 1,
+
+  // — Gun viewmodel (camera-space offset: right, down, forward) —
+  GUN: { OFFSET_X: 0.28, OFFSET_Y: -0.22, OFFSET_Z: -0.55 },
 
   // — Range environment (shell) —
   RANGE: {

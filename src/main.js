@@ -9,6 +9,9 @@ import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
 import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
+import { createGun } from './render/gun.js';
+import { initTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
+import { initShooting } from './game/shooting.js';
 import { initHud, showForState, flashLockHint } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -32,8 +35,22 @@ const camera = new THREE.PerspectiveCamera(
 // YXZ order = yaw applied before pitch, the standard FPS camera rig.
 camera.rotation.order = 'YXZ';
 camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
-// Camera joins the scene graph so the gun viewmodel can parent to it next pass.
+// Camera lives in the scene graph so camera-space children render normally.
 scene.add(camera);
+
+// — Gun viewmodel: parented to the camera so it rides every look movement —
+camera.add(createGun());
+
+// — Targets —
+initTargets(scene);
+
+// — Shooting: raycast on fire, pop the target it hits —
+initShooting({
+  camera,
+  getHittables,
+  onHit: (sphere) => hitTarget(sphere),
+  onMiss: () => {}, // scoring pass subscribes here for streak resets
+});
 
 // — UI + input wiring —
 initHud({
@@ -66,9 +83,20 @@ window.addEventListener('resize', () => {
 });
 
 // — Frame loop —
+let lastT = performance.now();
 renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dtMs = now - lastT;
+  lastT = now;
+
   const { yaw, pitch } = getLook();
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
+
+  // Gated on PLAYING so a pause mid-pop freezes the animation with the game.
+  if (getState() === States.PLAYING) {
+    updateTargets(dtMs);
+  }
+
   renderer.render(scene, camera);
 });
