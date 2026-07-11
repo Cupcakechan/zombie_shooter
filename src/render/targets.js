@@ -133,11 +133,17 @@ export function initTargets(scene) {
   spawnInitial();
 }
 
-// Fresh round: clear everything on the field — including mid-pop corpses —
-// and lay out a brand-new set, so no round inherits the last one's layout.
-export function resetTargets() {
+// Waves mode: the arena carries no practice targets at all.
+export function clearTargets() {
   for (const rec of records) disposeRecord(rec);
   records.length = 0;
+}
+
+// Fresh Range round: clear everything on the field — including mid-pop
+// corpses — and lay out a brand-new set, so no round inherits the last
+// one's layout.
+export function resetTargets() {
+  clearTargets();
   spawnInitial();
 }
 

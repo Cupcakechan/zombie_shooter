@@ -120,6 +120,11 @@ h2 {
   font-size: 13px;
 }
 
+.btn-row {
+  display: flex;
+  gap: 16px;
+}
+
 button {
   margin-top: 10px;
   padding: 14px 56px;
@@ -136,6 +141,21 @@ button {
 
 button:hover {
   filter: brightness(1.12);
+}
+
+/* Secondary action (Quit) — quiet next to the primary accent buttons. */
+.btn-secondary {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--muted);
+  padding: 10px 32px;
+  font-size: 14px;
+}
+
+.btn-secondary:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  filter: none;
 }
 
 .controls {

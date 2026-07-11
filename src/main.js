@@ -11,8 +11,8 @@ import { initInput, requestLock, getLook } from './input.js';
 import { createRange } from './render/scene.js';
 import { createGun, kick, updateGun } from './render/gun.js';
 import {
-  initTargets, resetTargets, getHittables as getTargetHittables,
-  hitTarget, updateTargets,
+  initTargets, resetTargets, clearTargets,
+  getHittables as getTargetHittables, hitTarget, updateTargets,
 } from './render/targets.js';
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
@@ -32,6 +32,11 @@ import {
 
 const canvas = document.getElementById('game-canvas');
 if (!canvas) throw new Error('main.js: #game-canvas not found in index.html');
+
+// — Mode: which ruleset the current session uses. Single writer (the two
+// START buttons); everything else reads it. 'range' = 60s score attack;
+// 'waves' = untimed last-stand (threat systems arrive in 5b).
+let mode = 'range';
 
 // — Renderer —
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -57,13 +62,10 @@ scene.add(camera);
 // — Gun viewmodel: parented to the camera so it rides every look movement —
 camera.add(createGun());
 
-// — Targets —
+// — Targets + enemies: modules initialised empty-handed; what actually
+// spawns is decided per-mode in the COUNTDOWN enter handler below.
 initTargets(scene);
-
-// — Enemies (dev-toggled proto-zombie; suite's SHIP gate keeps the flag out
-// of real builds) —
 initEnemies(scene);
-if (CONFIG.DEBUG.SPAWN_ZOMBIE) spawnEnemy('proto_zombie');
 
 // — Scoring → HUD —
 function refreshHud() {
@@ -72,9 +74,9 @@ function refreshHud() {
 }
 
 // — Shooting: unified hit pipeline. Targets and enemy body parts are
-// raycast together; the nearest wins and the tag routes it. Zombie hits are
-// SCORING-NEUTRAL (no score/streak/shots/accuracy change) — wave-mode kill
-// scoring is defined in passes 5–6. Every real shot kicks the gun.
+// raycast together; the nearest wins and the tag routes it. Range scoring
+// only runs in Range mode; enemy hits touch no scoring anywhere (wave-mode
+// kill scoring is defined in 5b/6). Every real shot kicks the gun.
 initShooting({
   camera,
   getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
@@ -83,7 +85,7 @@ initShooting({
     kick();
     if (mesh.userData.kind === 'enemy') {
       damageEnemy(mesh);
-      return; // deliberately no scoring, no HUD refresh
+      return;
     }
     // hitTarget() can only refuse an already-popping sphere; hittables are
     // filtered at raycast time, so a refusal means a race — count it as a
@@ -94,6 +96,7 @@ initShooting({
   },
   onMiss: () => {
     kick();
+    if (mode !== 'range') return; // Waves owns no range scoring
     registerMiss();
     refreshHud();
   },
@@ -103,15 +106,22 @@ initShooting({
 initRound({
   onCountdownTick: (n) => setCountdown(n),
   onCountdownDone: () => setState(States.PLAYING),
-  onRoundEnd: () => setState(States.RESULTS),
+  onRoundEnd: () => setState(States.RESULTS), // timed (Range) only
 });
 
-// — UI + input wiring — all three buttons just request the lock; the state
-// the lock lands in is decided by where we came FROM (see COUNTDOWN below).
+// — UI + input wiring — mode buttons set the mode THEN request the lock; the
+// state the lock lands in is decided by where we came FROM (see COUNTDOWN).
 initHud({
-  onStartClick: () => requestLock(canvas),
+  onRangeClick: () => { mode = 'range'; requestLock(canvas); },
+  onWavesClick: () => { mode = 'waves'; requestLock(canvas); },
   onResumeClick: () => requestLock(canvas),
   onPlayAgainClick: () => requestLock(canvas),
+  onQuitClick: () => {
+    // Pause already released the pointer lock; just clean the arena and go
+    // home. Fresh setup happens on the next mode entry anyway.
+    resetEnemies();
+    setState(States.START);
+  },
 });
 
 initInput({
@@ -129,27 +139,34 @@ initInput({
   onLockError: () => flashLockHint(),
 });
 
-// Every state change drives the overlay layer.
-Object.values(States).forEach((s) => onEnter(s, () => showForState(s)));
+// Every state change drives the overlay layer (mode-aware).
+Object.values(States).forEach((s) => onEnter(s, () => showForState(s, mode)));
 
 // COUNTDOWN carries the fresh-vs-resume decision: arriving from PAUSED keeps
-// score and clock; arriving from anywhere else (START, RESULTS) is a new round.
+// score and clock; arriving from anywhere else (START, RESULTS) is a new
+// round, set up per mode.
 onEnter(States.COUNTDOWN, (prev) => {
   const fresh = prev !== States.PAUSED;
   if (fresh) {
     resetScoring();
-    resetTargets();
-    // The dev zombie walks back to its spawn point each fresh round —
-    // otherwise round two starts with it already at your face.
     resetEnemies();
-    if (CONFIG.DEBUG.SPAWN_ZOMBIE) spawnEnemy('proto_zombie');
-    refreshHud();
-    setTimer(CONFIG.ROUND_LENGTH_S);
+    if (mode === 'range') {
+      resetTargets();
+      refreshHud();
+      setTimer(CONFIG.ROUND_LENGTH_S);
+      beginCountdown({ fresh: true, timed: true });
+    } else {
+      clearTargets(); // Waves: no practice targets in the arena
+      spawnEnemy('proto_zombie');
+      beginCountdown({ fresh: true, timed: false });
+    }
+    return;
   }
-  beginCountdown({ fresh });
+  beginCountdown({ fresh: false });
 });
 
-// RESULTS: release the mouse so Play Again is clickable, then show the stats.
+// RESULTS (Range only — untimed Waves never ends a round): release the mouse
+// so Play Again is clickable, then show the stats.
 onEnter(States.RESULTS, () => {
   if (document.pointerLockElement) document.exitPointerLock();
   const { best, isNew } = saveBestIfBeaten(getScore(), getAccuracy());
@@ -193,7 +210,7 @@ renderer.setAnimationLoop(() => {
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
     updateEnemies(dtMs, camera.position);
   }
-  if (st === States.PLAYING) {
+  if (st === States.PLAYING && mode === 'range') {
     setTimer(getRemainingS());
   }
 

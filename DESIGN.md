@@ -69,14 +69,18 @@ BOOT ──► START ──click──► COUNTDOWN (3s) ──► PLAYING (60s)
                               └── click ── PAUSED   RESULTS ──PLAY AGAIN──► COUNTDOWN
 ```
 
-- **START** — title, START button, controls line. (Pointer lock may only be
-  requested from a user gesture, so a click is mandatory here by browser rule.)
+- **START** — title, **Range / Waves** mode buttons, controls line. (Pointer
+  lock may only be requested from a user gesture, so a click is mandatory
+  here by browser rule.) Range = the 60 s score attack; Waves = the untimed
+  last-stand (Stage 2).
 - **COUNTDOWN** — big 3-2-1 overlay; input locked, no shooting yet.
 - **PLAYING** — HUD: score (top-left), streak multiplier (next to score),
-  timer (top-right). Crosshair fixed at screen center.
+  timer (top-right) — Range only; the Waves HUD arrives in pass 5b.
+  Crosshair fixed at screen center in both modes.
 - **PAUSED** — entered automatically whenever pointer lock is lost (ESC or
   alt-tab) during play *or* countdown. Timer freezes. Overlay: "Click to
-  resume" → re-lock → 3-2-1 → resume.
+  resume" → re-lock → 3-2-1 → resume — plus a **Quit to menu** button back
+  to START.
 - **RESULTS** — score, accuracy %, best streak, personal best (with "NEW BEST!"
   flag when beaten), PLAY AGAIN button.
 
@@ -245,8 +249,6 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 
 - Game title — `zombie_shooter` is the working name only.
 - Creature design direction (Daniel's call, at roadmap pass 7 via creature-forge).
-- Does the Stage 1 range survive as a selectable mode next to Waves? Cheap to
-  keep (the state machine already separates them) — decide during Stage 2.
 - Whether ammo/reload ever enters (classic wave-shooter pressure lever).
 
 ---
@@ -261,3 +263,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v2.3 (guard): suite Section 5 config contract (42-key schema + usage scan over all src incl. main.js), added after the NaN-light incident (LESSONS.md) and proven to fire on it; DoD items 1–6 ticked, browser matrix pending.*
 *2026-07-11 — v2.4 (proto-zombie pass, picks 1+B): dev-toggled proto-zombie (`DEBUG.SPAWN_ZOMBIE`, intentionally true in the dev build) — blocky arms-out humanoid, stride-locked procedural shamble, walks from (0,−28) and stops exactly 2 m out; `enemyTypes.js` registry + `enemies.js`; MEASURED: `rotation.y = atan2(dx,dz)` faces a +Z-built body at the player; new SHIP env-var gate makes the suite fail any truthy DEBUG flag pre-ship; registries now leaf-swept by Section 5; movement clamp suite-pinned (Section 6).*
 *2026-07-11 — v2.5 (combat pass, pick A): unified hit pipeline (targets + enemy body parts raycast together, nearest wins, kind-tagged dispatch); proto_zombie HP 3, hit reaction = red flash 100 ms + stagger 200 ms + 0.15 m knockback; death = fall-over around the feet (600 ms, k² ease) → lie 1500 ms → fade 400 ms → despawn; dying bodies are unhittable (shots pass through); zombie hits are SCORING-NEUTRAL until wave-mode scoring (passes 5–6); death timeline suite-pinned relative to registry timings.*
+*2026-07-11 — v2.6 (mode split, 5a of pick 1): START offers Range / Waves; Waves = untimed last-stand arena (no practice targets, no round clock — suite-pinned) with the zombie in its proper home; `DEBUG.SPAWN_ZOMBIE` retired (DEBUG block + SHIP gate stay for future flags); PAUSED gains Quit to menu; range-as-a-mode open question RESOLVED: yes. Player health, attacks, and game over are 5b.*

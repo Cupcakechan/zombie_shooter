@@ -1,7 +1,7 @@
 // ui/hud.js — the DOM layer: screen overlays, crosshair, HUD bar (score,
 // multiplier pill, live timer), the countdown numeral, and the results
-// screen. Pure DOM, no three.js, no game logic: main.js pushes values in
-// via the setters.
+// screen. Pure DOM, no three.js, no game logic: main.js pushes values and
+// the current mode in via the setters/parameters.
 
 import { States } from '../state.js';
 
@@ -10,15 +10,19 @@ let hintTimer = null;
 let lastTimerText = null;
 const defaultHints = {};
 
-export function initHud({ onStartClick, onResumeClick, onPlayAgainClick } = {}) {
+export function initHud({
+  onRangeClick, onWavesClick, onResumeClick, onPlayAgainClick, onQuitClick,
+} = {}) {
   const ids = {
     screenStart: 'screen-start',
     screenPause: 'screen-pause',
     screenResults: 'screen-results',
     crosshair: 'crosshair',
     countdown: 'countdown',
-    btnStart: 'btn-start',
+    btnRange: 'btn-range',
+    btnWaves: 'btn-waves',
     btnAgain: 'btn-again',
+    btnQuit: 'btn-quit',
     startHint: 'start-hint',
     pauseHint: 'pause-hint',
     hudBar: 'hud',
@@ -46,23 +50,33 @@ export function initHud({ onStartClick, onResumeClick, onPlayAgainClick } = {}) 
   defaultHints.start = els.startHint.textContent;
   defaultHints.pause = els.pauseHint.textContent;
 
-  if (onStartClick) els.btnStart.addEventListener('click', onStartClick);
+  if (onRangeClick) els.btnRange.addEventListener('click', onRangeClick);
+  if (onWavesClick) els.btnWaves.addEventListener('click', onWavesClick);
   if (onPlayAgainClick) els.btnAgain.addEventListener('click', onPlayAgainClick);
   // The whole pause overlay is the resume button — biggest possible target.
+  // The quit button must NOT bubble into that overlay click, or quitting
+  // would also request a pointer lock.
   if (onResumeClick) els.screenPause.addEventListener('click', onResumeClick);
+  if (onQuitClick) {
+    els.btnQuit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onQuitClick();
+    });
+  }
 }
 
 function setVisible(el, visible) {
   el.classList.toggle('hidden', !visible);
 }
 
-export function showForState(state) {
+export function showForState(state, mode) {
   setVisible(els.screenStart, state === States.START);
   setVisible(els.screenPause, state === States.PAUSED);
   setVisible(els.screenResults, state === States.RESULTS);
   setVisible(els.countdown, state === States.COUNTDOWN);
   setVisible(els.crosshair, state === States.PLAYING);
-  setVisible(els.hudBar, state === States.PLAYING);
+  // The score/timer bar belongs to Range; Waves gets its own HUD in 5b.
+  setVisible(els.hudBar, state === States.PLAYING && mode === 'range');
 }
 
 export function setScore(score) {

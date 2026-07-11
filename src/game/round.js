@@ -1,9 +1,9 @@
 // game/round.js — the round clock. Owns the countdown phase and the running
-// 60-second phase; knows nothing about DOM, targets, or scoring. main.js
-// drives it with frame deltas (only while the state machine is in COUNTDOWN
-// or PLAYING, which is what freezes it during pause) and reacts to its
-// callbacks. Deliberately pure timing logic so the suite can prove it with
-// exact-math updates.
+// phase; knows nothing about DOM, targets, or scoring. main.js drives it
+// with frame deltas (only while the state machine is in COUNTDOWN or
+// PLAYING, which is what freezes it during pause) and reacts to its
+// callbacks. Waves mode runs UNTIMED: the 3-2-1 still plays, but the round
+// clock never decrements and onRoundEnd never fires.
 
 import { CONFIG } from '../config.js';
 
@@ -12,11 +12,12 @@ const Phase = Object.freeze({ IDLE: 'IDLE', COUNTDOWN: 'COUNTDOWN', RUNNING: 'RU
 let phase = Phase.IDLE;
 let countdownMs = 0;
 let roundMs = 0;
+let timed = true;
 let lastTickShown = null;
 
 let onCountdownTick = null; // (n) => void — displayed integer changed
 let onCountdownDone = null; // () => void  — 3-2-1 finished
-let onRoundEnd = null;      // () => void  — round timer hit zero
+let onRoundEnd = null;      // () => void  — round timer hit zero (timed only)
 
 export function initRound(callbacks = {}) {
   onCountdownTick = callbacks.onCountdownTick || null;
@@ -24,12 +25,17 @@ export function initRound(callbacks = {}) {
   onRoundEnd = callbacks.onRoundEnd || null;
 }
 
-// fresh=true  → brand-new round (full ROUND_LENGTH on the clock)
-// fresh=false → resume-from-pause (round time is preserved, only the 3-2-1 runs)
-export function beginCountdown({ fresh } = { fresh: true }) {
+// fresh=true  → brand-new round (full ROUND_LENGTH on the clock; `timed`
+//               decides whether that clock ever runs — Range yes, Waves no)
+// fresh=false → resume-from-pause (round time AND timed-ness are preserved,
+//               only the 3-2-1 runs; `timed` is ignored here)
+export function beginCountdown({ fresh, timed: timedFlag } = { fresh: true }) {
   phase = Phase.COUNTDOWN;
   countdownMs = CONFIG.COUNTDOWN_S * 1000;
-  if (fresh) roundMs = CONFIG.ROUND_LENGTH_S * 1000;
+  if (fresh) {
+    roundMs = CONFIG.ROUND_LENGTH_S * 1000;
+    timed = timedFlag !== false; // default: timed (Range behaviour)
+  }
   lastTickShown = null;
   tickCountdown(); // show the "3" immediately, not one frame late
 }
@@ -54,7 +60,7 @@ export function updateRound(dtMs) {
     return;
   }
 
-  if (phase === Phase.RUNNING) {
+  if (phase === Phase.RUNNING && timed) {
     roundMs -= dtMs;
     if (roundMs <= 0) {
       roundMs = 0;

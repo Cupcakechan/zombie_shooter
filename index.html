@@ -22,8 +22,11 @@
 
   <section id="screen-start" class="screen">
     <h1>Zombie Shooter</h1>
-    <p class="subtitle">Stage 1 &mdash; Shooting Range</p>
-    <button id="btn-start" type="button">Start</button>
+    <p class="subtitle">Pick a mode</p>
+    <div class="btn-row">
+      <button id="btn-range" type="button">Range</button>
+      <button id="btn-waves" type="button">Waves</button>
+    </div>
     <p class="controls">Mouse &mdash; look &middot; Left click &mdash; fire &middot; ESC &mdash; pause</p>
     <p id="start-hint" class="hint"></p>
   </section>
@@ -31,6 +34,7 @@
   <section id="screen-pause" class="screen hidden">
     <h2>Paused</h2>
     <p id="pause-hint" class="hint">Click anywhere to resume</p>
+    <button id="btn-quit" type="button" class="btn-secondary">Quit to menu</button>
   </section>
 
   <section id="screen-results" class="screen hidden">

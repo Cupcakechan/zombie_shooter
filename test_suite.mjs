@@ -271,6 +271,20 @@ try {
   assertNear('section3', 'countdown consumed no round time', round.getRemainingS(), 55);
   round.updateRound(1000);
   assertNear('section3', 'clock resumes ticking after resume', round.getRemainingS(), 54);
+
+  // Untimed (Waves) rule: the 3-2-1 runs, the round clock never does.
+  ticks = []; done = 0; ended = 0;
+  round.beginCountdown({ fresh: true, timed: false });
+  round.updateRound(3000); // countdown done
+  assertNear('section3', 'untimed: countdown still completes', done, 1);
+  round.updateRound(120000); // two minutes of "play"
+  assertNear('section3', 'untimed: round never ends', ended, 0);
+  assertNear('section3', 'untimed: clock stays full', round.getRemainingS(), CONFIG.ROUND_LENGTH_S);
+  // And untimed-ness survives a pause/resume cycle:
+  round.beginCountdown({ fresh: false });
+  round.updateRound(3000);
+  round.updateRound(120000);
+  assertNear('section3', 'untimed survives resume', ended, 0);
 } catch (err) {
   failures.push({ file: 'section3', err });
   console.log(`  FAIL   section 3 threw: ${err.message}`);
@@ -351,7 +365,6 @@ try {
     'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
     'STORAGE_KEY': 'string',
-    'DEBUG.SPAWN_ZOMBIE': 'boolean',
   };
 
   const resolvePath = (obj, path) =>
