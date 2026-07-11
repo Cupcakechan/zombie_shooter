@@ -12,7 +12,8 @@ import { createRange } from './render/scene.js';
 import { createGun } from './render/gun.js';
 import { initTargets, getHittables, hitTarget, updateTargets } from './render/targets.js';
 import { initShooting } from './game/shooting.js';
-import { initHud, showForState, flashLockHint } from './ui/hud.js';
+import { registerHit, registerMiss, getScore, getMultiplier } from './game/scoring.js';
+import { initHud, showForState, flashLockHint, setScore, setMultiplier } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
 if (!canvas) throw new Error('main.js: #game-canvas not found in index.html');
@@ -44,12 +45,28 @@ camera.add(createGun());
 // — Targets —
 initTargets(scene);
 
-// — Shooting: raycast on fire, pop the target it hits —
+// — Scoring → HUD —
+function refreshHud() {
+  setScore(getScore());
+  setMultiplier(getMultiplier());
+}
+
+// — Shooting: raycast on fire; hits pop + score, misses reset the streak —
 initShooting({
   camera,
   getHittables,
-  onHit: (sphere) => hitTarget(sphere),
-  onMiss: () => {}, // scoring pass subscribes here for streak resets
+  onHit: (sphere) => {
+    // hitTarget() can only refuse an already-popping sphere; hittables are
+    // filtered at raycast time, so a refusal means a race — count it as a
+    // miss rather than paying for a target that didn't pop.
+    if (hitTarget(sphere)) registerHit();
+    else registerMiss();
+    refreshHud();
+  },
+  onMiss: () => {
+    registerMiss();
+    refreshHud();
+  },
 });
 
 // — UI + input wiring —
@@ -74,6 +91,7 @@ initInput({
 // Every state change drives the overlay layer.
 Object.values(States).forEach((s) => onEnter(s, () => showForState(s)));
 setState(States.START);
+refreshHud(); // HUD shows a true zero state before the first shot
 
 // — Resize —
 window.addEventListener('resize', () => {

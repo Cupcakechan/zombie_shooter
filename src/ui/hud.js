@@ -1,7 +1,7 @@
-// ui/hud.js — the DOM layer: screen overlays + crosshair. Pure DOM, no
-// three.js, no game logic. main.js orchestrates; this module only shows,
-// hides, and forwards button clicks. Grows a real HUD (score/streak/timer)
-// in the scoring pass.
+// ui/hud.js — the DOM layer: screen overlays, crosshair, and the in-game HUD
+// bar (score + multiplier pill; the timer element exists but stays hidden
+// until the round pass drives it). Pure DOM, no three.js, no game logic:
+// main.js pushes values in via the setters.
 
 import { States } from '../state.js';
 
@@ -17,6 +17,10 @@ export function initHud({ onStartClick, onResumeClick } = {}) {
     btnStart: 'btn-start',
     startHint: 'start-hint',
     pauseHint: 'pause-hint',
+    hudBar: 'hud',
+    hudScore: 'hud-score',
+    hudMult: 'hud-mult',
+    hudTimer: 'hud-timer',
   };
 
   const missing = [];
@@ -46,6 +50,21 @@ export function showForState(state) {
   setVisible(els.screenStart, state === States.START);
   setVisible(els.screenPause, state === States.PAUSED);
   setVisible(els.crosshair, state === States.PLAYING);
+  setVisible(els.hudBar, state === States.PLAYING);
+}
+
+export function setScore(score) {
+  els.hudScore.textContent = `SCORE ${score}`;
+}
+
+// The pill only exists while a multiplier is active — ×1 is silence.
+export function setMultiplier(mult) {
+  if (mult > 1) {
+    els.hudMult.textContent = `\u00d7${mult}`;
+    setVisible(els.hudMult, true);
+  } else {
+    setVisible(els.hudMult, false);
+  }
 }
 
 // Shown when the browser refuses a pointer lock request — Chrome enforces a

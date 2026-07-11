@@ -7,6 +7,8 @@
 // first parser to see delivered code.
 // Section 1 — spawn placement invariants: exact-math proof of the jittered
 // grid's guarantees (hand-computed expected values, DESIGN.md §5/§8).
+// Section 2 — scoring exact math: hand-computed score/streak/accuracy
+// scenarios, proving the multiplier tiers actually change the numbers.
 
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -69,7 +71,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 9;
+const MIN_EXPECTED_MODULES = 10;
 
 const files = walk('src').filter((p) => !EXCLUDE.has(p));
 
@@ -151,6 +153,60 @@ try {
   console.log(`  FAIL   section 1 threw: ${err.message}`);
 }
 
+// ————— Section 2: scoring exact math —————
+
+console.log('');
+console.log('— Section 2: scoring exact math —');
+try {
+  const scoring = await import(pathToFileURL(join('src', 'game', 'scoring.js')).href);
+  const {
+    multiplierFor, registerHit, registerMiss,
+    getScore, getStreak, getMultiplier, getAccuracy, resetScoring,
+  } = scoring;
+
+  // Tier boundaries (×1 base, ×2 @ 10, ×3 @ 20 cap)
+  assertNear('section2', 'multiplier at streak 0', multiplierFor(0), 1);
+  assertNear('section2', 'multiplier at streak 9', multiplierFor(9), 1);
+  assertNear('section2', 'multiplier at streak 10', multiplierFor(10), 2);
+  assertNear('section2', 'multiplier at streak 19', multiplierFor(19), 2);
+  assertNear('section2', 'multiplier at streak 20', multiplierFor(20), 3);
+  assertNear('section2', 'multiplier capped at streak 100', multiplierFor(100), 3);
+
+  // Fresh state: accuracy is null (not 0, not 1) before any shot
+  resetScoring();
+  assertTrue('section2', 'accuracy is null before any shot', getAccuracy() === null);
+
+  // 25 consecutive hits, hand-computed:
+  // hits 1–9 at ×1 = 900; hits 10–19 at ×2 = 2000; hits 20–25 at ×3 = 1800.
+  resetScoring();
+  for (let i = 0; i < 25; i++) registerHit();
+  assertNear('section2', 'score after 25 straight hits', getScore(), 4700);
+  assertNear('section2', 'streak after 25 straight hits', getStreak(), 25);
+  assertNear('section2', 'multiplier after 25 straight hits', getMultiplier(), 3);
+  assertNear('section2', 'accuracy after 25/25', getAccuracy(), 1);
+
+  // Miss resets the streak but keeps the score:
+  // 12 hits = 9×100 + 3×200 = 1500; miss; next hit back at ×1 → 1600.
+  resetScoring();
+  for (let i = 0; i < 12; i++) registerHit();
+  assertNear('section2', 'score after 12 straight hits', getScore(), 1500);
+  registerMiss();
+  assertNear('section2', 'streak resets on miss', getStreak(), 0);
+  assertNear('section2', 'multiplier back to 1 on miss', getMultiplier(), 1);
+  registerHit();
+  assertNear('section2', 'hit after miss pays x1 (total)', getScore(), 1600);
+  assertNear('section2', 'accuracy 13 hits / 14 shots', getAccuracy(), 13 / 14);
+
+  // Reset zeroes everything
+  resetScoring();
+  assertNear('section2', 'reset: score 0', getScore(), 0);
+  assertNear('section2', 'reset: streak 0', getStreak(), 0);
+  assertTrue('section2', 'reset: accuracy null again', getAccuracy() === null);
+} catch (err) {
+  failures.push({ file: 'section2', err });
+  console.log(`  FAIL   section 2 threw: ${err.message}`);
+}
+
 // ————— Report —————
 
 console.log('');
@@ -158,5 +214,5 @@ if (failures.length) {
   console.log(`SUITE FAIL — ${failures.length} failure(s), ${files.length} module(s) checked`);
   process.exitCode = 1;
 } else {
-  console.log(`SUITE PASS — ${files.length} modules imported cleanly, spawn invariants proven`);
+  console.log(`SUITE PASS — ${files.length} modules imported cleanly, spawn + scoring invariants proven`);
 }

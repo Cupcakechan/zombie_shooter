@@ -86,7 +86,9 @@ single config constant applied to `movementX/Y`.
 ### Scoring
 - **100 points per hit × streak multiplier.**
 - Streak = consecutive hits. Multiplier: **×1 base, ×2 at streak 10, ×3 at streak
-  20 (cap)**. A miss resets streak to 0 (multiplier back to ×1).
+  20 (cap)**. A miss resets streak to 0 (multiplier back to ×1). The hit that
+  *reaches* a threshold is already paid at the new rate — the 10th consecutive
+  hit is the first ×2 hit (suite-pinned: 25 straight hits = exactly 4700).
 - Accuracy = hits ÷ shots (misses count, ignored-cooldown clicks don't).
 - Personal best score (and its accuracy) persists in `localStorage`.
 
@@ -223,3 +225,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *Changelog: 2026-07-11 — v1, written after kickoff decisions (Option 1 slice, new repo).*
 *2026-07-11 — v1.1 (shell pass): import map dropped in favour of relative imports (Node suite compatibility); vendored pair is `three.module.js` + `three.core.js` (r185 split build).*
 *2026-07-11 — v1.2 (shot loop pass): spawn spec is the jittered slot grid (Option 3) with suite-pinned envelope; target registry named `targetTypes.js` to stay distinct from `render/targets.js`; target colour hot orange (crosshair readability).*
+*2026-07-11 — v1.3 (scoring/HUD pass): threshold-hit multiplier semantics pinned (10th hit is the first ×2); HUD shows score + multiplier pill (pill hidden at ×1); accuracy is `null` before any shot; timer element reserved for the round pass.*
