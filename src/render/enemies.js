@@ -114,7 +114,17 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
+    // Spawn fade-in (pass 8.1): counts down to 0 = fully emerged. Guarded —
+    // a type without a SPAWN block simply appears at full opacity, no crash.
+    spawnFadeT: type.SPAWN?.FADE_MS ?? 0,
   };
+  // Emerging from the fog bank: start invisible; the update loop fades in.
+  if (rec.spawnFadeT > 0) {
+    for (const m of rec.materials) {
+      m.transparent = true;
+      m.opacity = 0;
+    }
+  }
   group.traverse((child) => {
     if (child.isMesh) {
       child.userData.kind = 'enemy';
@@ -157,6 +167,15 @@ function startDeath(rec) {
   rec.flashT = 0;
   rec.attackPhase = null;
   setFlash(rec, 0);
+  // A zombie killed mid-emergence snaps to full opacity: the death fade
+  // assumes it starts from opaque, and a half-ghost corpse reads as a bug.
+  if (rec.spawnFadeT > 0) {
+    rec.spawnFadeT = 0;
+    for (const m of rec.materials) {
+      m.transparent = false;
+      m.opacity = 1;
+    }
+  }
   // Zero the shamble pose so the fall pivots cleanly around the feet.
   rec.group.rotation.z = 0;
   rec.group.position.y = 0;
@@ -230,6 +249,22 @@ export function updateEnemies(dtMs, playerPos) {
     // — Alive —
     rec.t += dtMs;
     rec.cooldownT = Math.max(0, rec.cooldownT - dtMs);
+
+    // Spawn fade-in: opacity tracks time since spawn. When done, transparency
+    // switches OFF again — a permanently transparent body pays sort costs and
+    // can draw wrongly against the fog-bank curtains.
+    if (rec.spawnFadeT > 0) {
+      rec.spawnFadeT = Math.max(0, rec.spawnFadeT - dtMs);
+      const total = type.SPAWN?.FADE_MS ?? 1;
+      const k = 1 - rec.spawnFadeT / total;
+      for (const m of rec.materials) m.opacity = k;
+      if (rec.spawnFadeT === 0) {
+        for (const m of rec.materials) {
+          m.transparent = false;
+          m.opacity = 1;
+        }
+      }
+    }
 
     const dx = playerPos.x - group.position.x;
     const dz = playerPos.z - group.position.z;

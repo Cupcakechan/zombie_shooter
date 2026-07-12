@@ -66,8 +66,21 @@ export const CONFIG = {
     FRONT_Z: 4,               // wall behind the player (player stands at z=0)
     WALL_HEIGHT: 5,
   },
-  FOG: { NEAR: 18, FAR: 55 }, // FAR past the back wall so it fades, not vanishes
-
+FOG: {
+    NEAR: 18, FAR: 55, // distance fog: FAR past the back wall so it fades, not vanishes
+    // Perimeter fog bank (pass 8.1, Waves only): fixed curtains hugging the
+    // walls so zombies spawn inside the murk and walk out. DEPTH is per-wall
+    // because spawn rows sit at different distances (back row is 6 m in from
+    // the wall, side spawns only 2 m) — the suite asserts every spawn point
+    // is covered.
+    BANK: {
+      HEIGHT: 5, // curtain height — matches RANGE.WALL_HEIGHT
+      LAYERS: 3, // translucent curtains per wall
+      OPACITY_MAX: 0.45, // layer nearest the wall
+      OPACITY_MIN: 0.25, // innermost layer
+      DEPTH: { BACK: 7, SIDE: 3, FRONT: 2 }, // metres each bank extends inward
+    },
+  },
   // — Palette (scene side; UI colours live as CSS variables in style.css) —
   // Provisional placeholder palette — retheme = edit this block + the CSS vars.
   COLORS: {

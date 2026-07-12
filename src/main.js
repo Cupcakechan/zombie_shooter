@@ -9,6 +9,7 @@ import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
 import { initInput, requestLock, getLook, getMoveAxes } from './input.js';
 import { createRange } from './render/scene.js';
+import { createFogBank } from './render/fogBank.js';
 import { createGun, kick, updateGun } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -80,6 +81,13 @@ scene.add(camera);
 
 // — Gun viewmodel: parented to the camera so it rides every look movement —
 camera.add(createGun());
+
+// — Fog bank: Waves-only atmosphere, built once and toggled per round (see
+// the COUNTDOWN handler). Zombies spawn inside it and fade in as they
+// emerge — the fade itself lives in enemies.js.
+const fogBank = createFogBank();
+fogBank.visible = false;
+scene.add(fogBank);
 
 // — Player damage: hearts, vignette, camera kick, and — at zero — game over.
 function handlePlayerHit(damage) {
@@ -198,11 +206,13 @@ onEnter(States.COUNTDOWN, (prev) => {
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
+      fogBank.visible = false; // Range stays a crisp, clean shooting range
       resetTargets();
       refreshHud();
       setTimer(CONFIG.ROUND_LENGTH_S);
       beginCountdown({ fresh: true, timed: true });
     } else {
+      fogBank.visible = true; // Waves: the murk the zombies walk out of
       clearTargets(); // Waves: no practice targets in the arena
       resetPlayer();
       setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);

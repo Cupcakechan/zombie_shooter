@@ -41,6 +41,9 @@ export const ENEMY_TYPES = {
       REAR_RAD: 0.6,      // how far the arms rear back in windup
       THRUST_RAD: 0.5,    // how far past the pose the strike thrusts
     },
+    SPAWN: {              // emergence from the fog bank (pass 8.1)
+      FADE_MS: 600,       // opacity 0 → 1 as the zombie walks out of the murk
+    },
     DEATH: {              // Option A (picked 2026-07-11): fall over
       FALL_MS: 600,       // pitch to the ground (eased, accelerating)
       LIE_MS: 1500,       // corpse holds on the floor

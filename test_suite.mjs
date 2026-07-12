@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 18;
+const MIN_EXPECTED_MODULES = 19;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -361,6 +361,10 @@ try {
     'GUN.OFFSET_X': 'number', 'GUN.OFFSET_Y': 'number', 'GUN.OFFSET_Z': 'number',
     'RANGE.WIDTH': 'number', 'RANGE.BACK_Z': 'number', 'RANGE.FRONT_Z': 'number',
     'RANGE.WALL_HEIGHT': 'number', 'FOG.NEAR': 'number', 'FOG.FAR': 'number',
+    'FOG.BANK.HEIGHT': 'number', 'FOG.BANK.LAYERS': 'number',
+    'FOG.BANK.OPACITY_MAX': 'number', 'FOG.BANK.OPACITY_MIN': 'number',
+    'FOG.BANK.DEPTH.BACK': 'number', 'FOG.BANK.DEPTH.SIDE': 'number',
+    'FOG.BANK.DEPTH.FRONT': 'number',
     'COLORS.SKY': 'number', 'COLORS.FLOOR': 'number', 'COLORS.WALL': 'number',
     'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
@@ -474,6 +478,7 @@ try {
     'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
     'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
     'ATTACK.REAR_RAD', 'ATTACK.THRUST_RAD',
+    'SPAWN.FADE_MS',
     'DEATH.FALL_MS', 'DEATH.LIE_MS', 'DEATH.FADE_MS', 'DEATH.CORPSE_LIFT',
   ];
   let enemySchemaFails = 0;
@@ -611,6 +616,20 @@ try {
     if (waveSpec(n).count < waveSpec(n - 1).count) monotonic = false;
   }
   assertTrue('section8', 'wave counts are non-decreasing (1..12)', monotonic);
+
+  // Fog-bank coverage (pass 8.1): every spawn point must sit INSIDE a bank
+  // volume, or that zombie pops into view instead of walking out of the murk.
+  // Back bank covers z <= BACK_Z + DEPTH.BACK; side banks cover
+  // |x| >= WIDTH/2 - DEPTH.SIDE. Retuning spawn points or bank depths without
+  // keeping them consistent fails HERE, not in the game.
+  const { CONFIG: CFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const bank = CFG.FOG.BANK;
+  const inBack = (p) => p.z <= CFG.RANGE.BACK_Z + bank.DEPTH.BACK;
+  const inSide = (p) => Math.abs(p.x) >= CFG.RANGE.WIDTH / 2 - bank.DEPTH.SIDE;
+  const uncovered = WAVES.SPAWN_POINTS.filter((p) => !inBack(p) && !inSide(p));
+  assertTrue('section8',
+    `all ${WAVES.SPAWN_POINTS.length} spawn points sit inside the fog bank (uncovered: ${uncovered.length})`,
+    uncovered.length === 0);
 } catch (err) {
   failures.push({ file: 'section8', err });
   console.log(`  FAIL   section 8 threw: ${err.message}`);
