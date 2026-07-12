@@ -151,7 +151,7 @@ export function getCongestedWindows() {
   return out;
 }
 
-export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
+export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null } = {}) {
   const type = ENEMY_TYPES[typeId];
   // Graceful: an unknown id logs and skips — a registry typo must never crash.
   if (!type) {
@@ -164,6 +164,9 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
 
   const { group, parts, materials } = buildBody(type);
   group.position.set(at.x, 0, at.z);
+  // Spawn facing (4.3c): window entries materialize FACING the glass —
+  // a spawn-time set, so no snap concern (turnToward owns yaw after).
+  if (yaw !== null) group.rotation.y = yaw;
   // Yaw (Y) applied first, then lean (X), then sway (Z) — same YXZ pattern
   // as the camera, so the three rotations compose without fighting.
   group.rotation.order = 'YXZ';
@@ -186,6 +189,9 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // Queued at a window (4.3b.1): null, or { key, wc, wr, dc, dr } —
     // holding the sill while the window's climber is mid-flight.
     waitingAt: null,
+    // The dread beat (4.3c): ms left standing at the glass before moving.
+    // Wakes early on pain (damageEnemy) or on seeing the player up close.
+    holdT: holdMs,
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
@@ -329,6 +335,7 @@ export function damageEnemy(mesh) {
   rec.flashT = rec.type.COMBAT.FLINCH_MS;
   rec.staggerT = rec.type.COMBAT.STAGGER_MS;
   rec.squash.kick(rec.type.COMBAT.SQUASH_KICK ?? 0); // the physical flinch
+  rec.holdT = 0; // pain wakes a loitering window entry (4.3c)
 
   // Counterplay (pinned 5b): a hit CANCELS an in-progress attack — including
   // mid-windup — and the cooldown set at attack start keeps running, so the
@@ -480,6 +487,17 @@ export function updateEnemies(dtMs, playerPos) {
         group.position.x, group.position.z, playerPos.x, playerPos.z, mapColliders,
       );
 
+    // The dread beat (4.3c): a window-entry zombie stands at the glass
+    // until its loiter runs out — or wakes early if the player comes to
+    // IT in the open (LOS + close). Staring at each other THROUGH the
+    // window does not wake it: window cells block feet-level LOS, which
+    // is exactly the shape-at-the-glass moment. Pain also wakes it
+    // (damageEnemy zeroes holdT).
+    if (rec.holdT > 0) {
+      if (los && dist <= CONFIG.NAV.BEELINE_DIST) rec.holdT = 0;
+      else rec.holdT -= dtMs;
+    }
+
     // Facing is a TARGET now, applied through turnToward below — never
     // assigned directly (the snap Daniel reported). Default target: the
     // player; a field-following step overrides it with the walk direction.
@@ -542,7 +560,7 @@ export function updateEnemies(dtMs, playerPos) {
     let walking = false;
     if (rec.staggerT > 0) {
       rec.staggerT -= dtMs;
-    } else if (!rec.attackPhase) {
+    } else if (!rec.attackPhase && rec.holdT <= 0) {
       // The stop ring only exists when the player is VISIBLE (4.3): a
       // zombie must never "arrive" at a player it can't reach through a
       // wall — without LOS it keeps navigating.

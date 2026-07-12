@@ -16,7 +16,12 @@ import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
 import { buildMap } from './render/mapGen.js';
 import { MAPS, ACTIVE_MAP_ID } from './data/maps.js';
-import { parseLayout, playerWorldStart, buildColliders, worldToCell } from './game/mapGrid.js';
+import { WAVES } from './data/waveTable.js';
+import { ENEMY_TYPES } from './data/enemyTypes.js';
+import {
+  parseLayout, playerWorldStart, buildColliders, worldToCell, cellToWorld,
+  perimeterSpawnCells, windowEntrySpots,
+} from './game/mapGrid.js';
 import { buildFlowField } from './game/flowField.js';
 import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
@@ -128,6 +133,18 @@ const mapStart = playerWorldStart(activeMap, activeGrid);
 // the visual walls and the solid walls cannot disagree. Waves-only via the
 // per-mode setter below; the player-side resolve gates on the same array.
 const mapColliders = buildColliders(activeMap, activeGrid);
+// Spawn geometry (4.3c): ALL derived from the grid — perimeter candidates
+// on the map's edge ring, window entry spots via the exterior flood, and
+// every walkable cell as the last-resort fallback. Retires the
+// hand-authored SPAWN_POINTS (two sat inside wall cells — LESSONS).
+const spawnPerimeter = perimeterSpawnCells(activeGrid, ['north', 'east', 'west']);
+const spawnWindows = windowEntrySpots(activeGrid);
+const spawnAnywhere = [];
+for (let r = 0; r < activeGrid.rows; r++) {
+  for (let c = 0; c < activeGrid.cols; c++) {
+    if (activeGrid.walkable(c, r)) spawnAnywhere.push({ c, r });
+  }
+}
 let activeColliders = [];
 // The player cell the flow field was last built FROM (4.3). null forces a
 // rebuild on the next PLAYING frame — mode switches reset it. The
@@ -204,13 +221,60 @@ initEnemies(scene, {
   },
 });
 
-// — Wave manager: spawn function injected so waves.js stays render-free.
+// — Wave manager: spawn + entry picker injected so waves.js stays
+// render-free. waves decides the KIND mix per wave (4.3c); this picker
+// turns a kind into a place. Fallback chain never returns null: far
+// perimeter → any perimeter → any far walkable → any walkable → origin.
+function randomOf(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+function pickEntry(kind) {
+  const px = camera.position.x;
+  const pz = camera.position.z;
+  const minD = WAVES.SPAWN.MIN_PLAYER_DIST;
+  const farEnough = (cells) => cells.filter((cl) => {
+    const w = cellToWorld(activeMap, activeGrid, cl.c, cl.r);
+    return Math.hypot(w.x - px, w.z - pz) >= minD;
+  });
+  if (kind === 'window' && spawnWindows.length > 0) {
+    const spot = randomOf(spawnWindows);
+    // Spawn AT the facing standoff (CELL/2 + reach + reach radius + a
+    // hair), not the cell centre — the centre sits INSIDE the reach
+    // resolver's standoff, and the frame-one settling scoot reads as
+    // jank at the glass. Probe-caught. proto_zombie is the only spawned
+    // type today; when 7c adds types, pickEntry gains the typeId.
+    const zt = ENEMY_TYPES.proto_zombie;
+    const standoff = activeMap.CELL / 2
+      + (zt.WALL ? zt.WALL.REACH + zt.WALL.RADIUS : 0) + 0.05;
+    const wPos = cellToWorld(activeMap, activeGrid, spot.wc, spot.wr);
+    const ax = spot.outC - spot.wc; // unit axis toward the street
+    const az = spot.outR - spot.wr;
+    const L = WAVES.SPAWN.WINDOW_LOITER_MS;
+    return {
+      pos: { x: wPos.x + ax * standoff, z: wPos.z + az * standoff },
+      opts: {
+        holdMs: L.MIN + Math.random() * (L.MAX - L.MIN), // the dread beat
+        yaw: Math.atan2(-ax, -az), // face the glass
+      },
+    };
+  }
+  const pools = [farEnough(spawnPerimeter), spawnPerimeter,
+    farEnough(spawnAnywhere), spawnAnywhere];
+  for (const pool of pools) {
+    if (pool.length > 0) {
+      const cl = randomOf(pool);
+      return { pos: cellToWorld(activeMap, activeGrid, cl.c, cl.r), opts: {} };
+    }
+  }
+  return { pos: { x: 0, z: 0 }, opts: {} }; // unreachable on any real map
+}
 initWaves({
   spawn: (typeId, pos, opts) => spawnEnemy(typeId, pos, opts),
   onWaveStart: (n) => {
     setWave(n);
     showWaveBanner(n);
   },
+  pickEntry,
 });
 
 // — Scoring → HUD —

@@ -673,19 +673,54 @@ try {
   }
   assertTrue('section8', 'wave counts are non-decreasing (1..12)', monotonic);
 
-  // Fog-bank coverage (pass 8.1): every spawn point must sit INSIDE a bank
-  // volume, or that zombie pops into view instead of walking out of the murk.
-  // Back bank covers z <= BACK_Z + DEPTH.BACK; side banks cover
-  // |x| >= WIDTH/2 - DEPTH.SIDE. Retuning spawn points or bank depths without
-  // keeping them consistent fails HERE, not in the game.
+  // Fog-bank coverage (pass 8.1, reworked for 4.3c): every PERIMETER
+  // SPAWN CELL on the chosen edges (north/east/west — main's set) must
+  // sit INSIDE a bank volume, or that zombie pops into view instead of
+  // walking out of the murk. The south edge is excluded BECAUSE it sits
+  // 1.4 m short of the front bank — this probe is why. Window entries are
+  // exempt by design: materializing at the glass IS the dread beat, and
+  // the loiter makes the appearance intentional.
   const { CONFIG: CFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const { MAPS: S8MAPS } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  const { parseLayout: s8parse, cellToWorld: s8c2w, perimeterSpawnCells: s8perim } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
   const bank = CFG.FOG.BANK;
   const inBack = (p) => p.z <= CFG.RANGE.BACK_Z + bank.DEPTH.BACK;
   const inSide = (p) => Math.abs(p.x) >= CFG.RANGE.WIDTH / 2 - bank.DEPTH.SIDE;
-  const uncovered = WAVES.SPAWN_POINTS.filter((p) => !inBack(p) && !inSide(p));
+  const s8grid = s8parse(S8MAPS.village01);
+  const ring = s8perim(s8grid, ['north', 'east', 'west']);
+  const uncovered = ring
+    .map((cl) => s8c2w(S8MAPS.village01, s8grid, cl.c, cl.r))
+    .filter((p) => !inBack(p) && !inSide(p));
   assertTrue('section8',
-    `all ${WAVES.SPAWN_POINTS.length} spawn points sit inside the fog bank (uncovered: ${uncovered.length})`,
-    uncovered.length === 0);
+    `all ${ring.length} perimeter spawn cells (N/E/W ring) sit inside the fog bank (uncovered: ${uncovered.length})`,
+    ring.length > 0 && uncovered.length === 0);
+
+  // Entry mixes (4.3c): the table carries them, the extension creeps the
+  // window share to its cap, and entryKinds honours the arithmetic.
+  for (const [i, row] of WAVES.TABLE.entries()) {
+    assertTrue('section8', `table wave ${i + 1} entry mix valid`,
+      !!row.entry && row.entry.perimeter >= 0 && row.entry.window >= 0
+      && (row.entry.perimeter + row.entry.window) > 0);
+  }
+  assertTrue('section8', 'wave 1 is perimeter-only (onboarding)',
+    waveSpec(1).entry.window === 0);
+  const farSpec = waveSpec(99);
+  assertNear('section8', 'window share caps far out', farSpec.entry.window, EXTEND.WINDOW_CAP);
+  assertTrue('section8', 'SPAWN block sane (loiter MIN<MAX, player dist > 0)',
+    WAVES.SPAWN.WINDOW_LOITER_MS.MIN < WAVES.SPAWN.WINDOW_LOITER_MS.MAX
+    && WAVES.SPAWN.MIN_PLAYER_DIST > 0);
+  const { entryKinds } = await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const noShuffle = () => 0; // deterministic Fisher–Yates
+  assertTrue('section8', 'entryKinds {1,0}: all perimeter',
+    entryKinds(5, { perimeter: 1, window: 0 }, noShuffle).every((k) => k === 'perimeter'));
+  assertTrue('section8', 'entryKinds {0,1}: all window',
+    entryKinds(5, { perimeter: 0, window: 1 }, noShuffle).every((k) => k === 'window'));
+  const mixed = entryKinds(5, { perimeter: 0.5, window: 0.5 }, noShuffle);
+  assertTrue('section8', `entryKinds 5 @ 50/50 rounds to 3 windows (got ${mixed.filter((k) => k === 'window').length})`,
+    mixed.length === 5 && mixed.filter((k) => k === 'window').length === 3);
+  assertTrue('section8', 'entryKinds length always equals count',
+    entryKinds(9, { perimeter: 0.7, window: 0.3 }, Math.random).length === 9);
 } catch (err) {
   failures.push({ file: 'section8', err });
   console.log(`  FAIL   section 8 threw: ${err.message}`);
@@ -1274,6 +1309,32 @@ try {
   const late = climbPose(0.88, rest);
   assertTrue('section14', 'climb: the trail leg hauls over LATE in the drop',
     early.hipR > 0.1 && late.hipR < -0.3);
+
+  // Spawn geometry (4.3c): the exterior flood knows streets from rooms
+  // without hints; the ring and window spots derive from it. Pinned to
+  // the measured village truths; house01's zeros are ITS truth (its
+  // boundary is the house wall) — the picker's fallback chain covers it.
+  const { exteriorCells, perimeterSpawnCells, windowEntrySpots } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+  const sgGrid = navParse(NAV_MAPS.village01);
+  const vExt = exteriorCells(sgGrid);
+  assertTrue('section14', `village: exterior region is the streets (${vExt.size} cells, expected 318)`,
+    vExt.size === 318);
+  assertTrue('section14', 'village: a room interior is NOT exterior; a street IS',
+    !vExt.has('3,6') && vExt.has('1,1'));
+  const vRing = perimeterSpawnCells(sgGrid, ['north', 'east', 'west']);
+  assertTrue('section14', `village: N/E/W spawn ring has 65 cells, all walkable (got ${vRing.length})`,
+    vRing.length === 65 && vRing.every(({ c, r }) => sgGrid.walkable(c, r)));
+  const vSpots = windowEntrySpots(sgGrid);
+  assertTrue('section14', `village: every window is an entry spot (${vSpots.length}/6)`,
+    vSpots.length === 6);
+  assertTrue('section14', 'village: every spot: outside on the street, inside in a room',
+    vSpots.every((s) => vExt.has(`${s.outC},${s.outR}`) && !vExt.has(`${s.inC},${s.inR}`)
+      && sgGrid.walkable(s.outC, s.outR) && sgGrid.walkable(s.inC, s.inR)));
+  const hGrid = navParse(NAV_MAPS.house01);
+  assertTrue('section14', 'house01: no exterior, no ring, no entry spots (its boundary IS the wall)',
+    exteriorCells(hGrid).size === 0 && perimeterSpawnCells(hGrid).length === 0
+    && windowEntrySpots(hGrid).length === 0);
 
   // The reach resolve (the wall-clip fix): the front of the body — arms
   // and head, ~1.0 m past the feet circle — must stay out of walls the

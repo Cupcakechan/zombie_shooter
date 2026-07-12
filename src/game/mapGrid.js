@@ -101,6 +101,94 @@ export function worldToCell(map, grid, x, z) {
   };
 }
 
+// The EXTERIOR region (4.3c): every walkable cell reachable from the map
+// boundary WITHOUT passing through a door or window — i.e. the streets
+// and plaza, never a room interior. This is how spawn geometry knows a
+// window's outside from its inside without any hand-authored hints: flood
+// from all boundary walkables treating 'D' and 'W' as solid (rooms are
+// sealed without their openings). Returns a Set of 'c,r' keys.
+export function exteriorCells(grid) {
+  const { cols, rows } = grid;
+  const out = new Set();
+  const open = (c, r) => grid.at(c, r) === '.' || grid.at(c, r) === 'P';
+  const queue = [];
+  for (let c = 0; c < cols; c++) {
+    for (const r of [0, rows - 1]) {
+      if (open(c, r) && !out.has(`${c},${r}`)) { out.add(`${c},${r}`); queue.push([c, r]); }
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    for (const c of [0, cols - 1]) {
+      if (open(c, r) && !out.has(`${c},${r}`)) { out.add(`${c},${r}`); queue.push([c, r]); }
+    }
+  }
+  let head = 0;
+  while (head < queue.length) {
+    const [c, r] = queue[head];
+    head += 1;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc;
+      const nr = r + dr;
+      const key = `${nc},${nr}`;
+      if (!open(nc, nr) || out.has(key)) continue;
+      out.add(key);
+      queue.push([nc, nr]);
+    }
+  }
+  return out;
+}
+
+// Grid-derived perimeter spawn candidates (4.3c): walkable cells on the
+// map's outermost ring — inside the fog bank, outside every building.
+// Replaces hand-authored SPAWN_POINTS (two of which sat inside wall
+// cells, working only via frame-one resolver ejection — LESSONS).
+// `edges` selects which sides of the ring qualify: the village's SOUTH
+// edge (row rows−1, z +2.6) sits 1.4 m short of the front fog bank
+// (z ≥ 4), so spawning there would pop into view — main passes
+// north/east/west and the suite proves the chosen set fully bank-covered.
+export function perimeterSpawnCells(grid, edges = ['north', 'south', 'east', 'west']) {
+  const { cols, rows } = grid;
+  const wantN = edges.includes('north');
+  const wantS = edges.includes('south');
+  const wantW = edges.includes('west');
+  const wantE = edges.includes('east');
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const onEdge = (wantN && r === 0) || (wantS && r === rows - 1)
+        || (wantW && c === 0) || (wantE && c === cols - 1);
+      if (!onEdge) continue;
+      if (grid.walkable(c, r)) cells.push({ c, r });
+    }
+  }
+  return cells;
+}
+
+// Window entry spots (4.3c): for every CONNECTED window (both
+// perpendicular neighbors walkable), which side is the street and which
+// is the room — via the exterior flood, exactly one of the two must be
+// exterior. Windows violating that (edge windows facing off-map, or a
+// window between two rooms) are silently excluded: not entry-capable.
+// Returns [{ wc, wr, outC, outR, inC, inR }].
+export function windowEntrySpots(grid) {
+  const ext = exteriorCells(grid);
+  const spots = [];
+  for (const { c, r } of grid.windows) {
+    for (const [dc, dr] of [[0, 1], [1, 0]]) { // the two perpendicular axes
+      const a = { c: c - dc, r: r - dr };
+      const b = { c: c + dc, r: r + dr };
+      if (!grid.walkable(a.c, a.r) || !grid.walkable(b.c, b.r)) continue;
+      const aExt = ext.has(`${a.c},${a.r}`);
+      const bExt = ext.has(`${b.c},${b.r}`);
+      if (aExt === bExt) continue; // both rooms or both streets: not an entry
+      const outside = aExt ? a : b;
+      const inside = aExt ? b : a;
+      spots.push({ wc: c, wr: r, outC: outside.c, outR: outside.r, inC: inside.c, inR: inside.r });
+    }
+  }
+  return spots;
+}
+
 // Collision (pass 4.2): every BLOCKED cell (walls, window sills, fountain)
 // becomes part of a 2D AABB, run-merged along rows exactly like the visual
 // geometry — the colliders and the boxes derive from the same cells, so
