@@ -79,7 +79,7 @@ FOG: {
     // Waves-mode distance fog (pass 8.2): pulled way in so the WHOLE arena
     // sits in murk — the back wall (30 m) is fully swallowed and zombies
     // resolve out of the haze as they close. Range keeps NEAR/FAR above.
-    WAVES: { NEAR: 1, FAR: 13 },
+    WAVES: { NEAR: 3, FAR: 13 },
     BANK: {
       HEIGHT: 5, // curtain height — matches RANGE.WALL_HEIGHT
       LAYERS: 3, // translucent curtains per wall
