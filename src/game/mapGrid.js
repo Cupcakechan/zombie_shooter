@@ -113,5 +113,22 @@ export function buildColliders(map, grid) {
       c = end + 1;
     }
   }
+  // The fence is solid (4.2b): thick bands extending OUTWARD from the
+  // boundary line — the inner face sits exactly at the visible fence, and
+  // the metre of invisible solid beyond it means a body on the line always
+  // ejects INWARD (the suite probe caught the thin-box version ejecting to
+  // the wrong side). The arena clamp beyond is backstop.
+  const t = 0.15 / 2;   // visible fence half-thickness (inner face offset)
+  const BAND = 1.0;     // invisible solid depth beyond the line
+  const wCell = cellToWorld(map, grid, 0, 0);
+  const eCell = cellToWorld(map, grid, grid.cols - 1, grid.rows - 1);
+  const west = wCell.x - map.CELL / 2;
+  const east = eCell.x + map.CELL / 2;
+  const north = wCell.z - map.CELL / 2;
+  const south = eCell.z + map.CELL / 2;
+  boxes.push({ minX: west - BAND, maxX: east + BAND, minZ: north - BAND, maxZ: north + t });
+  boxes.push({ minX: west - BAND, maxX: east + BAND, minZ: south - t, maxZ: south + BAND });
+  boxes.push({ minX: west - BAND, maxX: west + t, minZ: north, maxZ: south });
+  boxes.push({ minX: east - t, maxX: east + BAND, minZ: north, maxZ: south });
   return boxes;
 }

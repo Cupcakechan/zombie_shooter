@@ -1055,6 +1055,15 @@ try {
     }
     assertNear('section13', `${id}: every blocked cell is solid`, blockedUncovered, 0);
     assertNear('section13', `${id}: no walkable cell centre is solid`, walkableCovered, 0);
+
+    // Fence solidity (4.2b): a body standing ON the boundary line gets
+    // pushed back inside — the visible edge is the real edge.
+    const { resolveCircleAABBs: solve } =
+      await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+    const northLine = tl.z - map.CELL / 2;
+    const onFence = solve(map.ANCHOR.x, northLine, boxes, 0.3);
+    assertTrue('section13', `${id}: the fence line is solid (pushed to z ${onFence.z.toFixed(2)})`,
+      onFence.z > northLine);
   }
 } catch (err) {
   failures.push({ file: 'section13', err });

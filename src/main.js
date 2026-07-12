@@ -95,7 +95,19 @@ camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
 scene.add(camera);
 
 // — Gun viewmodel: parented to the camera so it rides every look movement —
-camera.add(createGun());
+// The viewmodel lives on RENDER LAYER 1 (4.2b): the world renders first,
+// the depth buffer is cleared, then the gun renders on top — so it can
+// never clip into a wall the player stands against. The muzzle light stays
+// on BOTH layers so it still lights the world.
+const gunModel = createGun();
+gunModel.traverse((o) => {
+  o.layers.set(1);
+  if (o.isLight) o.layers.enable(0);
+});
+camera.add(gunModel);
+// The scene's lights must also light layer 1, or the gun renders black.
+scene.traverse((o) => { if (o.isLight) o.layers.enable(1); });
+renderer.autoClear = false;
 
 // — Fog bank: Waves-only atmosphere, built once and toggled per round (see
 // the COUNTDOWN handler). Zombies spawn inside it and fade in as they
@@ -443,5 +455,12 @@ renderer.setAnimationLoop(() => {
     else updateWaves(dtMs); // spawning + intermissions only run while playing
   }
 
+  // Two-pass render (4.2b): world (layer 0), clear depth, gun (layer 1).
+  renderer.clear();
+  camera.layers.set(0);
   renderer.render(scene, camera);
+  renderer.clearDepth();
+  camera.layers.set(1);
+  renderer.render(scene, camera);
+  camera.layers.set(0);
 });
