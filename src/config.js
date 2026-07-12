@@ -90,6 +90,9 @@ export const CONFIG = {
     MAX_HITS: 5,            // arcade health: hits before game over
     DAMAGE_SHAKE_MS: 120,   // camera kick duration on taking a hit
     DAMAGE_SHAKE_AMP: 0.02, // radians of pitch wobble
+    MOVE_SPEED: 4.5,        // m/s — comfortably outpaces capped zombies (1.68)
+    WALL_MARGIN: 0.6,       // camera keeps this far from any wall
+    BODY_RADIUS: 0.3,       // player's solid circle vs zombie bodies
   },
-  DEBUG: { SPAWN_ZOMBIE: true },
+  DEBUG: {},
 };

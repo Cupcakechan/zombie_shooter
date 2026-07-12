@@ -47,3 +47,30 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   suddenly black but unlit materials (grid/line/basic) still visible = a NaN
   light uniform; check the last-touched light value first.* Corollary:
   paste-in config edits need an existence probe, not just a parse.
+
+## 2026-07-11 — the missing-key class struck twice: config (again) and its registry twin was still open
+- What broke / what happened: first W press → black screen, HUD/reticle
+  alive, zero console errors. The movement config paste
+  (PLAYER.MOVE_SPEED / WALL_MARGIN / BODY_RADIUS) hadn't landed →
+  `speedMps` undefined → NaN camera position → NaN view matrix. Suite
+  Section 5 (built from the NaN-light incident) named all three keys on
+  its first run and the fix was one paste. Bonus find in the same suite
+  output: `DEBUG: { SPAWN_ZOMBIE: true }` still present — the pass-5a
+  retirement edit had ALSO never landed, invisible because nothing reads
+  the flag, but armed to fail the SHIP gate at deploy time.
+- Root cause: the same class as 2026-07-11 (NaN-light) — paste-in edits
+  are unverified landings; dead-but-harmless misses (the DEBUG line)
+  evade even symptom-based discovery.
+- Verification gap it exposed: (1) the registry-side twin was still
+  open — the leaf sweep validates fields that EXIST; a MISSING registry
+  field (e.g. BODY_RADIUS) NaNs identically and was invisible; (2) a
+  RETIRED config key has no guard at all — nothing asserts absence.
+- Plug shipped: enemy-registry required-keys schema in Section 5
+  (28 numeric fields per type, extend with the registry), negative-
+  tested by name (`proto_zombie.BODY_RADIUS got undefined`, exit 1).
+  Retired-key absence remains unguarded — accepted: the SHIP gate
+  catches truthy DEBUG leftovers, and stale keys are inert by
+  convention (config is read-only via CONFIG.<path> scans).
+- Route: dev-method candidate — after any paste-in edit, run the suite
+  BEFORE playing (testing step 1 exists precisely for this class); a
+  diagnostic signature earns its keep the second time it fires.

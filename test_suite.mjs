@@ -461,6 +461,36 @@ try {
   }
   assertTrue('section5', `registry sweep found >= 10 leaves (found ${leafCount})`, leafCount >= 10);
 
+  // Enemy-registry SCHEMA — the sweep above validates fields that EXIST;
+  // this names the fields that MUST exist. A missing registry number NaNs
+  // exactly like a missing config key (2026-07-11 movement incident,
+  // branch (b)) — extend this list when enemies gain required fields.
+  const ENEMY_REQUIRED = [
+    'HP', 'BODY_RADIUS', 'WALK_SPEED', 'STOP_DISTANCE',
+    'COLORS.SKIN', 'COLORS.CLOTH',
+    'ANIM.BOB_AMP', 'ANIM.BOB_FREQ', 'ANIM.SWAY_AMP', 'ANIM.SWAY_FREQ',
+    'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE',
+    'COMBAT.FLINCH_MS', 'COMBAT.STAGGER_MS', 'COMBAT.KNOCKBACK',
+    'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
+    'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
+    'ATTACK.REAR_RAD', 'ATTACK.THRUST_RAD',
+    'DEATH.FALL_MS', 'DEATH.LIE_MS', 'DEATH.FADE_MS', 'DEATH.CORPSE_LIFT',
+  ];
+  let enemySchemaFails = 0;
+  for (const [typeId, type] of Object.entries(ENEMY_TYPES)) {
+    for (const fieldPath of ENEMY_REQUIRED) {
+      const v = resolvePath(type, fieldPath);
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        enemySchemaFails++;
+        console.log(`  FAIL   enemy schema: ${typeId}.${fieldPath} got ${JSON.stringify(v)}`);
+        failures.push({ file: 'section5', err: new Error(`enemy schema ${typeId}.${fieldPath}`) });
+      }
+    }
+  }
+  if (enemySchemaFails === 0) {
+    console.log(`  ok     enemy schema: ${Object.keys(ENEMY_TYPES).length} type(s) × ${ENEMY_REQUIRED.length} required numeric fields present`);
+  }
+
   // SHIP gate: with the SHIP env var set, every DEBUG flag must be false.
   const truthyFlags = Object.entries(CONFIG.DEBUG || {})
     .filter(([, v]) => v)
