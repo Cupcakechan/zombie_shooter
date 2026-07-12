@@ -329,3 +329,42 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: skill reference (html-game.md) — "when a trigger distance and a
   collision standoff coexist, encode their ordering as a named suite
   invariant; a silent violation is a freeze, not an error."
+
+## 2026-07-12 — `node --check` passes a MISSING import; the un-importable entry file is where it hides
+
+- What broke / what happened: 4.3c's `pickEntry` in main.js referenced
+  `WAVES` with no import. `node --check` passed (parse only, no binding
+  analysis — the already-recorded limit, now in its third shape: dup
+  import, doubled brace, and now a MISSING binding). The standing plug —
+  actually running the module import — cannot run on main.js (canvas/DOM
+  deps), so the entry file is EXACTLY where binding errors survive both
+  gates. Caught pre-delivery by a grep whose empty output was the signal.
+- Root cause: the one file that can't be import-executed is the one file
+  every wiring pass touches.
+- Plug shipped: when adding any new identifier to a DOM-coupled file,
+  grep-verify its import in the same breath ("silence where output was
+  expected is a failure signal" — the edit-script rule, applied to
+  imports). Related probe-catch, same pass: spawning a body INSIDE its
+  own collision standoff produces a frame-one settling scoot — spawn AT
+  the standoff (corollary of the trigger-vs-standoff ordering entry).
+- Route: dev-method / html-game.md — "for files the import-run can't
+  reach, grep every new identifier's import before delivery."
+
+## 2026-07-12 — two checkpoint blocks in one message: only the second ran, and `git add .` swallowed the first pass
+
+- What broke / what happened: the 4.3b.2 pass checkpoint and the docs
+  checkpoint were delivered in the same message, sequenced by prose.
+  Only the docs block was run; its `git add .` faithfully staged the
+  climb-pose code, so one commit contains both the pass and the wrap.
+  Nothing lost (tree correct, suite green) — but the history is
+  mislabeled and the one-pass-per-commit record broke. The prose warning
+  ("if any src file shows, STOP") did not survive contact.
+- Root cause: `git add .` is the swallowing mechanism; prose sequencing
+  is not a mechanism at all.
+- Plug shipped: docs-only checkpoints now use a SCOPED add
+  (`git add PROJECT_HANDOFF.md LESSONS.md`) — skipping the pass
+  checkpoint then leaves the code visibly uncommitted instead of
+  silently absorbed. Claude also avoids delivering two checkpoint blocks
+  in one message when sequencing matters.
+- Route: dev-method GI candidate — "scoped adds for docs commits; never
+  two checkpoint blocks in one message."
