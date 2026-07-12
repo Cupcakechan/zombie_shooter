@@ -22,6 +22,9 @@ import {
 import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
 } from './render/bloodFX.js';
+import {
+  initCasings, spawnCasing, updateCasings, resetCasings,
+} from './render/casings.js';
 import { computeMove, clampToArena, resolveCircleObstacles } from './game/movement.js';
 import { initShooting } from './game/shooting.js';
 import {
@@ -107,6 +110,22 @@ function handlePlayerHit(damage) {
 // spawns is decided per-mode in the COUNTDOWN enter handler below.
 initTargets(scene);
 initBloodFX(scene);
+initCasings(scene);
+
+// Ejection: the port sits just above/forward of the gun in camera space;
+// localToWorld turns it into the world point the casing spawns at. Scratch
+// vector reused per shot — no allocation in the fire path.
+const EJECT_PORT = new THREE.Vector3();
+function ejectCasing() {
+  EJECT_PORT.set(
+    CONFIG.GUN.OFFSET_X,
+    CONFIG.GUN.OFFSET_Y + CONFIG.CASINGS.PORT_UP,
+    CONFIG.GUN.OFFSET_Z + CONFIG.CASINGS.PORT_FWD,
+  );
+  camera.localToWorld(EJECT_PORT);
+  spawnCasing(EJECT_PORT, getLook().yaw);
+}
+
 initEnemies(scene, {
   onPlayerHit: handlePlayerHit,
   onEnemyKilled: (typeId, pos) => {
@@ -146,6 +165,7 @@ initShooting({
   canFire: () => getState() === States.PLAYING,
   onHit: (mesh, point, rayDir) => {
     kick();
+    ejectCasing();
     if (mesh.userData.kind === 'enemy') {
       // Burst first: damageEnemy may start the death, and the killing-blow
       // spray should erupt from where the bullet actually landed.
@@ -162,6 +182,7 @@ initShooting({
   },
   onMiss: () => {
     kick();
+    ejectCasing();
     if (mode !== 'range') return; // Waves owns no range scoring
     registerMiss();
     refreshHud();
@@ -218,6 +239,7 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetScoring();
     resetEnemies();
     resetBloodFX(); // stains and droplets belong to the round that made them
+    resetCasings();
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
@@ -330,6 +352,7 @@ renderer.setAnimationLoop(() => {
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
     updateEnemies(dtMs, camera.position);
     updateBloodFX(dtMs); // droplets keep falling through a resume countdown
+    updateCasings(dtMs);
   }
   if (st === States.PLAYING) {
     if (mode === 'range') setTimer(getRemainingS());

@@ -114,6 +114,22 @@ FOG: {
     MAX_PARTICLES: 64,      // hard pool caps: worst case cost is fixed
     MAX_POOLS: 24,
   },
+// — Casings (pass 8.4): ejected brass, pooled like BLOOD —
+  CASINGS: {
+    SIZE: 0.035,          // metres — shell length (cross-section is half)
+    COLOR: 0xb08d2f,      // brass
+    PORT_UP: 0.06,        // ejection port offset from the gun, camera-space
+    PORT_FWD: 0.2,        //   (up and toward the muzzle)
+    EJECT_SPEED: 1.6,     // m/s to the player's right
+    EJECT_UP: 2.2,        // m/s upward arc
+    JITTER: 0.5,          // random velocity spread per axis
+    SPIN: 12,             // rad/s max tumble on each axis
+    GRAVITY: 9,           // m/s² — matches BLOOD.GRAVITY
+    RESTITUTION: 0.35,    // energy kept by the single bounce
+    LINGER_MS: 3000,      // rest on the floor this long
+    VANISH_MS: 250,       // then shrink away over this
+    MAX: 40,              // hard pool cap
+  },
 
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',

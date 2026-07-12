@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 20;
+const MIN_EXPECTED_MODULES = 21;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -377,6 +377,13 @@ try {
     'BLOOD.POOL_FADE_MS': 'number', 'BLOOD.COLOR': 'number',
     'BLOOD.POOL_COLOR': 'number', 'BLOOD.MAX_PARTICLES': 'number',
     'BLOOD.MAX_POOLS': 'number',
+    'CASINGS.SIZE': 'number', 'CASINGS.COLOR': 'number',
+    'CASINGS.PORT_UP': 'number', 'CASINGS.PORT_FWD': 'number',
+    'CASINGS.EJECT_SPEED': 'number', 'CASINGS.EJECT_UP': 'number',
+    'CASINGS.JITTER': 'number', 'CASINGS.SPIN': 'number',
+    'CASINGS.GRAVITY': 'number', 'CASINGS.RESTITUTION': 'number',
+    'CASINGS.LINGER_MS': 'number', 'CASINGS.VANISH_MS': 'number',
+    'CASINGS.MAX': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
     'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
@@ -561,6 +568,16 @@ try {
     poolPhase(PB.POOL_LINGER_MS + PB.POOL_FADE_MS / 2, PB.POOL_LINGER_MS, PB.POOL_FADE_MS).opacity, 0.5);
   assertTrue('section6', 'pool past fade is done',
     poolPhase(PB.POOL_LINGER_MS + PB.POOL_FADE_MS, PB.POOL_LINGER_MS, PB.POOL_FADE_MS).phase === 'done');
+
+  // Casing timeline (pass 8.4): same relative-boundary convention.
+  const { landedScale } = await import(pathToFileURL(join('src', 'render', 'casings.js')).href);
+  const CC = BCFG.CASINGS;
+  assertTrue('section6', 'casing t=0 rests at full scale',
+    landedScale(0, CC.LINGER_MS, CC.VANISH_MS).scale === 1);
+  assertNear('section6', 'casing vanish midpoint scale',
+    landedScale(CC.LINGER_MS + CC.VANISH_MS / 2, CC.LINGER_MS, CC.VANISH_MS).scale, 0.5);
+  assertTrue('section6', 'casing past vanish is done',
+    landedScale(CC.LINGER_MS + CC.VANISH_MS, CC.LINGER_MS, CC.VANISH_MS).phase === 'done');
 } catch (err) {
   failures.push({ file: 'section6', err });
   console.log(`  FAIL   section 6 threw: ${err.message}`);
