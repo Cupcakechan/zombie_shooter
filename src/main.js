@@ -375,16 +375,19 @@ renderer.setAnimationLoop(() => {
   }
 
   // The round clock ticks through countdown AND play; PAUSED starves it,
-  // which is exactly what freezes the timer (and the zombies).
+  // which is exactly what freezes the timer.
   if (st === States.COUNTDOWN || st === States.PLAYING) {
     updateRound(dtMs);
     updateTargets(dtMs); // pops may finish during a resume countdown
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
-    updateEnemies(dtMs, camera.position);
-    updateBloodFX(dtMs); // droplets keep falling through a resume countdown
-    updateCasings(dtMs);
   }
   if (st === States.PLAYING) {
+    // The WORLD only simulates while playing (7a.5 fix): during a resume
+    // countdown the player can't move or shoot, so zombies advancing through
+    // the 3-2-1 was a free hit — everything freezes with the player now.
+    updateEnemies(dtMs, camera.position);
+    updateBloodFX(dtMs);
+    updateCasings(dtMs);
     if (mode === 'range') setTimer(getRemainingS());
     else updateWaves(dtMs); // spawning + intermissions only run while playing
   }
