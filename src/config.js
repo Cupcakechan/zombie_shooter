@@ -64,9 +64,9 @@ export const CONFIG = {
 
   // — Range environment (shell) —
   RANGE: {
-    WIDTH: 30,                // x spans ±WIDTH/2
-    BACK_Z: -30,              // far wall
-    FRONT_Z: 4,               // wall behind the player (player stands at z=0)
+    WIDTH: 36,                // x spans ±WIDTH/2
+    BACK_Z: -36,              // far wall
+    FRONT_Z: 6,               // wall behind the player (player stands at z=0)
     WALL_HEIGHT: 5,
   },
 FOG: {
