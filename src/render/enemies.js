@@ -75,6 +75,10 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // Spawn fade-in (pass 8.1): counts down to 0 = fully emerged. Guarded —
     // a type without a SPAWN block simply appears at full opacity, no crash.
     spawnFadeT: type.SPAWN?.FADE_MS ?? 0,
+    // Leg-swing blend (pass 7a follow-up): eases 1 when walking, 0 when
+    // rooted (attack/stagger/arrived) so legs PLANT instead of freezing
+    // mid-stride during the attack telegraph.
+    legBlend: 0,
   };
   // Emerging from the fog bank: start invisible; the update loop fades in.
   if (rec.spawnFadeT > 0) {
@@ -290,6 +294,7 @@ export function updateEnemies(dtMs, playerPos) {
     }
 
     // Stagger pauses movement; attacks also root the zombie in place.
+    let walking = false;
     if (rec.staggerT > 0) {
       rec.staggerT -= dtMs;
     } else if (!rec.attackPhase) {
@@ -300,8 +305,14 @@ export function updateEnemies(dtMs, playerPos) {
         group.position.x += (dx / dist) * step;
         group.position.z += (dz / dist) * step;
         rec.walked += step;
+        walking = true;
       }
     }
+    // Legs blend in while walking and plant when rooted; the ~8/s rate
+    // settles in ~0.15 s — fast enough that the attack stance reads planted
+    // before the windup tell finishes.
+    const legTarget = walking ? 1 : 0;
+    rec.legBlend += (legTarget - rec.legBlend) * Math.min(1, dtMs * 0.008);
 
     // — Procedural shamble. Bob and sway are locked to distance WALKED so
     // stride stays consistent if WALK_SPEED is retuned; sway blends in a slow
@@ -311,6 +322,16 @@ export function updateEnemies(dtMs, playerPos) {
     group.rotation.z =
       Math.sin(rec.walked * A.SWAY_FREQ + rec.t * A.IDLE_SWAY_FREQ) * A.SWAY_AMP;
     group.rotation.x = A.LEAN;
+
+    // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
+    // each step lands on a bob peak — stride-locked like everything else.
+    // Guarded: an old parts map without legs simply keeps them still.
+    if (rec.parts.legL && rec.parts.legR) {
+      const swing =
+        Math.sin(rec.walked * A.BOB_FREQ) * (A.LEG_SWING ?? 0) * rec.legBlend;
+      rec.parts.legL.rotation.x = swing;
+      rec.parts.legR.rotation.x = -swing;
+    }
 
     // The idle arm wobble only runs when the attack doesn't own the arms.
     if (!rec.attackPhase) {

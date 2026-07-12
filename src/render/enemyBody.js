@@ -37,21 +37,26 @@ export function buildBody(type) {
   const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
   const headY = chestY + B.CHEST.H / 2 * Math.cos(B.CHEST.HUNCH) + B.HEAD.H / 2 - 0.06;
 
-  // Feet: dark ground anchors, toes forward.
+  // Legs: origin at the HIP (geometry translated downward) so rotation.x
+  // swings the whole leg there — same pivot trick as the arms at the
+  // shoulder. Feet are CHILDREN, riding the swing; at rest (rotation 0)
+  // they sit exactly on the ground.
+  const legGeo = new THREE.BoxGeometry(B.LEG.W, B.LEG.LEN, B.LEG.D);
+  legGeo.translate(0, -B.LEG.LEN / 2, 0); // leg extends DOWN from the hip
+  const legL = new THREE.Mesh(legGeo, cloth);
+  legL.position.set(-B.LEG.X, hipTop, 0);
+  const legR = new THREE.Mesh(legGeo.clone(), cloth);
+  legR.position.set(B.LEG.X, hipTop, 0);
+  group.add(legL, legR);
+
+  // Feet: dark ground anchors, toes forward, children of their legs.
   const footGeo = new THREE.BoxGeometry(B.FOOT.W, B.FOOT.H, B.FOOT.D);
   const footL = new THREE.Mesh(footGeo, feetMat);
-  footL.position.set(-B.LEG.X, B.FOOT.H / 2, B.FOOT.FWD);
+  footL.position.set(0, -(B.LEG.LEN + B.FOOT.H / 2), B.FOOT.FWD);
+  legL.add(footL);
   const footR = new THREE.Mesh(footGeo.clone(), feetMat);
-  footR.position.set(B.LEG.X, B.FOOT.H / 2, B.FOOT.FWD);
-  group.add(footL, footR);
-
-  // Legs: short and stiff — the shamble reads in the upper body.
-  const legGeo = new THREE.BoxGeometry(B.LEG.W, B.LEG.LEN, B.LEG.D);
-  const legL = new THREE.Mesh(legGeo, cloth);
-  legL.position.set(-B.LEG.X, B.FOOT.H + B.LEG.LEN / 2, 0);
-  const legR = new THREE.Mesh(legGeo.clone(), cloth);
-  legR.position.set(B.LEG.X, B.FOOT.H + B.LEG.LEN / 2, 0);
-  group.add(legL, legR);
+  footR.position.set(0, -(B.LEG.LEN + B.FOOT.H / 2), B.FOOT.FWD);
+  legR.add(footR);
 
   // Belly: the narrower lower torso the chest hunches over.
   const belly = new THREE.Mesh(
@@ -118,7 +123,7 @@ export function buildBody(type) {
 
   return {
     group,
-    parts: { armL, armR, head, jaw },
+    parts: { armL, armR, legL, legR, head, jaw },
     materials: [skin, cloth, feetMat, eyeMat],
   };
 }

@@ -41,6 +41,7 @@ export const ENEMY_TYPES = {
       IDLE_SWAY_FREQ: 0.0018, // radians per ms — keeps a STOPPED zombie subtly alive
       LEAN: 0.12,         // constant forward lean, radians
       ARM_WOBBLE: 0.08,   // radians of raised-arm bounce
+      LEG_SWING: 0.5,     // radians of alternating hip swing while walking
     },
     COMBAT: {
       FLINCH_MS: 100,     // red flash on taking a hit

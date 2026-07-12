@@ -502,7 +502,7 @@ try {
     'BODY.ARM.Y', 'BODY.ARM.FWD', 'BODY.ARM.REST_RAD',
     'BODY.HAND.SIZE',
     'ANIM.BOB_AMP', 'ANIM.BOB_FREQ', 'ANIM.SWAY_AMP', 'ANIM.SWAY_FREQ',
-    'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE',
+    'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE', 'ANIM.LEG_SWING',
     'COMBAT.FLINCH_MS', 'COMBAT.STAGGER_MS', 'COMBAT.KNOCKBACK',
     'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
     'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
@@ -823,6 +823,15 @@ try {
 
   // Jaw hangs BELOW the head centre.
   assertTrue('section11', 'jaw hangs below the head centre', worldOf(parts.jaw).y < headW.y);
+
+  // Legs pivot at the hip and carry their feet — a foot left parented to
+  // the group would stay planted while the leg swings through it.
+  for (const side of ['legL', 'legR']) {
+    const leg = parts[side];
+    assertTrue('section11', `${side} exists in the parts map`, !!leg);
+    const foot = leg && leg.children.find((c) => c.isMesh);
+    assertTrue('section11', `${side} carries a foot child`, !!foot);
+  }
 
   // Arms: rest pose points the hands forward of the shoulders (dangling
   // reach), and both arms carry a hand child riding the swing pivot.
