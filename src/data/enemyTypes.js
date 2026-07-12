@@ -35,9 +35,9 @@ export const ENEMY_TYPES = {
     },
     ANIM: {
       BOB_AMP: 0.06,      // metres of vertical bob
-      BOB_FREQ: 4.0,      // radians per metre WALKED — stride-locked, not time-locked
+      BOB_FREQ: 2.6,      // radians per metre WALKED — stride-locked; ~1 step/s: long slow lurching strides (7a.4)
       SWAY_AMP: 0.10,     // radians of side-to-side roll
-      SWAY_FREQ: 2.0,     // radians per metre walked — HALF of BOB_FREQ: one roll per step, phase-locked to the stride
+      SWAY_FREQ: 1.3,     // MUST stay BOB_FREQ / 2: one roll per step, phase-locked to the stride
       IDLE_SWAY_FREQ: 0.0018, // radians per ms — keeps a STOPPED zombie subtly alive
       LEAN: 0.12,         // constant forward lean, radians
       ARM_WOBBLE: 0.08,   // radians of raised-arm bounce
@@ -45,6 +45,7 @@ export const ENEMY_TYPES = {
       KNEE_REST: 0.15,    // permanent knee bend — the shuffle-crouch stance
       KNEE_BEND: 0.55,    // extra knee bend at mid-swing (quarter-stride lag)
       ELBOW_BEND: 0.45,   // rest elbow droop; the strike extends it to 0
+      LIMP: 0.5,          // fraction removed from the RIGHT knee's bend — the stiff-leg drag
     },
     COMBAT: {
       FLINCH_MS: 100,     // red flash on taking a hit

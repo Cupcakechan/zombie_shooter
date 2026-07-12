@@ -349,8 +349,11 @@ export function updateEnemies(dtMs, playerPos) {
         const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
         rec.parts.shinL.rotation.x =
           (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
+        // The limp (7a.4): the RIGHT knee bends only a fraction of the
+        // left's — a stiff leg that drags instead of stepping.
         rec.parts.shinR.rotation.x =
-          (A.KNEE_REST ?? 0) + pulse * Math.max(0, -Math.sin(p - KNEE_LAG));
+          (A.KNEE_REST ?? 0)
+          + pulse * (1 - (A.LIMP ?? 0)) * Math.max(0, -Math.sin(p - KNEE_LAG));
       }
     }
 
