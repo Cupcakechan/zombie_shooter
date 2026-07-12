@@ -80,6 +80,11 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // mid-stride during the attack telegraph.
     legBlend: 0,
     elbowFactor: 1, // scales the elbow droop; attack phases drive it (7a.2)
+    // Idle sway phase is ACCUMULATED, never scaled (7a.7 fix): multiplying
+    // the raw elapsed time by a changing blend swept the phase through
+    // dozens of radians whenever legBlend moved — the whole-body shake on
+    // every shot and strike. An integral can't jump.
+    idlePhase: 0,
   };
   // Emerging from the fog bank: start invisible; the update loop fades in.
   if (rec.spawnFadeT > 0) {
@@ -332,13 +337,12 @@ export function updateEnemies(dtMs, playerPos) {
     // BOB_AMP is the dip depth; legBlend keeps a standing zombie at 0.
     group.position.y =
       -A.BOB_AMP * Math.max(0, Math.sin(p - Math.PI / 2)) * rec.legBlend;
-    // Sway is stride-locked while walking (SWAY_FREQ = half the step
-    // frequency rolls the body onto each planted foot, in phase forever);
-    // the IDLE time term breathes ONLY when stopped — while walking it used
-    // to beat against the stride and read as an irregular waddle (7a.3).
+    // Sway is stride-locked while walking; the idle breathing advances as an
+    // INTEGRATED phase (rate scaled by stillness) — continuous by
+    // construction, so blend transitions can never kick the body (7a.7).
+    rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
     group.rotation.z =
-      Math.sin(rec.walked * A.SWAY_FREQ
-        + rec.t * A.IDLE_SWAY_FREQ * (1 - rec.legBlend)) * A.SWAY_AMP;
+      Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * A.SWAY_AMP;
     group.rotation.x = A.LEAN;
 
     // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
@@ -363,11 +367,12 @@ export function updateEnemies(dtMs, playerPos) {
         const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
         rec.parts.shinL.rotation.x =
           (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
-        // The limp (7a.4): the RIGHT knee bends only a fraction of the
-        // left's — a stiff leg that drags instead of stepping.
+        // The DRAG (7a.7): the bad shin doesn't pulse at all — it locks at a
+        // constant backward cock (0.5 rad at LIMP 1, structural) so the toe
+        // points down and scrapes along as the body pulls the leg. LIMP
+        // remains the one knob: hip loss, trail, and this cock all scale.
         rec.parts.shinR.rotation.x =
-          (A.KNEE_REST ?? 0)
-          + pulse * (1 - (A.LIMP ?? 0)) * Math.max(0, -Math.sin(p - KNEE_LAG));
+          (A.KNEE_REST ?? 0) + limp * 0.5 * rec.legBlend;
       }
     }
 
