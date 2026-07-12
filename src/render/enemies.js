@@ -8,6 +8,7 @@ import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
 import { WAVES } from '../data/waveTable.js';
 import { buildBody } from './enemyBody.js';
+import { resolveCircleAABBs } from '../game/movement.js';
 import { createSecondOrder } from '../game/secondOrder.js';
 
 // ————— Pure math (suite-tested) —————
@@ -35,6 +36,7 @@ export function deathPhase(dieT, D) {
 // ————— Stateful enemy management —————
 
 let sceneRef = null;
+let mapColliders = []; // set by main per map (4.2); empty = open arena
 let onPlayerHitCb = null;
 let onEnemyKilledCb = null;
 const records = []; // see spawnEnemy for the record shape
@@ -44,6 +46,13 @@ export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
   sceneRef = scene;
   onPlayerHitCb = onPlayerHit || null;
   onEnemyKilledCb = onEnemyKilled || null;
+}
+
+// The map's wall colliders (4.2). Zombies can't pass walls either — until
+// 4.3 gives them navigation they PILE against the buildings, which reads
+// as horde pressure, not a bug.
+export function setMapColliders(boxes) {
+  mapColliders = boxes || [];
 }
 
 export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
@@ -446,6 +455,20 @@ export function updateEnemies(dtMs, playerPos) {
       ra.group.position.z -= nz * push;
       rb.group.position.x += nx * push;
       rb.group.position.z += nz * push;
+    }
+  }
+
+  // — Map collision LAST (4.2): walls win over steering and separation, so
+  // neither a step nor a crowd shove can push a body through a building.
+  if (mapColliders.length > 0) {
+    for (const rec of records) {
+      if (rec.dying) continue;
+      const solved = resolveCircleAABBs(
+        rec.group.position.x, rec.group.position.z,
+        mapColliders, rec.type.BODY_RADIUS,
+      );
+      rec.group.position.x = solved.x;
+      rec.group.position.z = solved.z;
     }
   }
 }

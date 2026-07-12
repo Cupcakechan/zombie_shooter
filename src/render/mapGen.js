@@ -22,6 +22,9 @@ export function buildMap(map) {
   const addBox = (mat, w, h, d, x, y, z) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     mesh.position.set(x, y, z);
+    // Every map mesh is a raycast occluder (4.2): a wall eats the bullet.
+    // Heights are real, so shooting OVER a sill or the fence works naturally.
+    mesh.userData.kind = 'wall';
     group.add(mesh);
   };
 

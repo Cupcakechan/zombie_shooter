@@ -37,6 +37,43 @@ export function clampToArena(x, z, bounds) {
 // obstacles don't move. One pass is enough at our densities — two zombies
 // overlapping the player simultaneously already means trouble anyway.
 // obstacles: [{ x, z, radius }]; playerRadius: the player's own body circle.
+// Push a circle out of axis-aligned boxes (pass 4.2: map walls). Two
+// sweeps so a corner that pushes into a neighbouring box still resolves;
+// each overlap exits along the SHALLOWEST axis, which is what produces
+// natural wall sliding.
+export function resolveCircleAABBs(x, z, boxes, radius) {
+  let px = x;
+  let pz = z;
+  for (let pass = 0; pass < 2; pass++) {
+    for (const b of boxes) {
+      const nx = Math.max(b.minX, Math.min(px, b.maxX));
+      const nz = Math.max(b.minZ, Math.min(pz, b.maxZ));
+      const dx = px - nx;
+      const dz = pz - nz;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= radius * radius) continue;
+      if (d2 > 1e-12) {
+        // Outside the box but overlapping the edge: push along the normal.
+        const d = Math.sqrt(d2);
+        px = nx + (dx / d) * radius;
+        pz = nz + (dz / d) * radius;
+      } else {
+        // Centre INSIDE the box: exit along the shallowest penetration axis.
+        const left = px - (b.minX - radius);
+        const right = (b.maxX + radius) - px;
+        const near = pz - (b.minZ - radius);
+        const far = (b.maxZ + radius) - pz;
+        const m = Math.min(left, right, near, far);
+        if (m === left) px = b.minX - radius;
+        else if (m === right) px = b.maxX + radius;
+        else if (m === near) pz = b.minZ - radius;
+        else pz = b.maxZ + radius;
+      }
+    }
+  }
+  return { x: px, z: pz };
+}
+
 export function resolveCircleObstacles(x, z, obstacles, playerRadius) {
   let px = x;
   let pz = z;

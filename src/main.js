@@ -16,7 +16,7 @@ import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
 import { buildMap } from './render/mapGen.js';
 import { MAPS, ACTIVE_MAP_ID } from './data/maps.js';
-import { parseLayout, playerWorldStart } from './game/mapGrid.js';
+import { parseLayout, playerWorldStart, buildColliders } from './game/mapGrid.js';
 import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -24,7 +24,7 @@ import {
 } from './render/targets.js';
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
-  getEnemyHittables, getLivingPositions, damageEnemy,
+  getEnemyHittables, getLivingPositions, damageEnemy, setMapColliders,
 } from './render/enemies.js';
 import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
@@ -32,7 +32,9 @@ import {
 import {
   initCasings, spawnCasing, updateCasings, resetCasings,
 } from './render/casings.js';
-import { computeMove, clampToArena, resolveCircleObstacles } from './game/movement.js';
+import {
+  computeMove, clampToArena, resolveCircleObstacles, resolveCircleAABBs,
+} from './game/movement.js';
 import { initShooting } from './game/shooting.js';
 import {
   registerHit, registerMiss, resetScoring,
@@ -103,10 +105,19 @@ camera.add(createGun());
 // beeline through them (4.3); both are the named next passes.
 const activeMap = MAPS[ACTIVE_MAP_ID];
 const houseMap = buildMap(activeMap);
+// Map meshes double as raycast occluders (4.2): a wall eats the bullet.
+const mapWallMeshes = [];
 // Where this map says the player starts (4.1b: the map owns the start).
-const mapStart = playerWorldStart(activeMap, parseLayout(activeMap));
+const activeGrid = parseLayout(activeMap);
+const mapStart = playerWorldStart(activeMap, activeGrid);
+// Wall colliders (4.2): derived from the same cells as the geometry, so
+// the visual walls and the solid walls cannot disagree. Waves-only via the
+// per-mode setter below; the player-side resolve gates on the same array.
+const mapColliders = buildColliders(activeMap, activeGrid);
+let activeColliders = [];
 houseMap.visible = false;
 scene.add(houseMap);
+houseMap.traverse((c) => { if (c.isMesh) mapWallMeshes.push(c); });
 
 const fogBank = createFogBank();
 fogBank.visible = false;
@@ -194,7 +205,9 @@ function refreshHud() {
 // shot kicks the gun.
 initShooting({
   camera,
-  getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
+  getHittables: () => (mode === 'waves'
+    ? [...getTargetHittables(), ...getEnemyHittables(), ...mapWallMeshes]
+    : [...getTargetHittables(), ...getEnemyHittables()]),
   canFire: () => getState() === States.PLAYING && ammoCanFire(),
   onHit: (mesh, point, rayDir) => {
     kick();
@@ -212,6 +225,12 @@ initShooting({
           : CONFIG.BLOOD.HIT_PARTICLES;
         spawnBurst(point, rayDir, n);
       }
+      return;
+    }
+    if (mesh.userData.kind === 'wall') {
+      // The wall ate the bullet (4.2): the shot was real (kick, casing,
+      // round consumed above) — it just hit architecture. Waves is
+      // scoring-neutral, so nothing else to do.
       return;
     }
     // hitTarget() can only refuse an already-popping sphere; hittables are
@@ -290,6 +309,8 @@ onEnter(States.COUNTDOWN, (prev) => {
     if (mode === 'range') {
       fogBank.visible = false; // Range stays a crisp, clean shooting range
       houseMap.visible = false;
+      activeColliders = [];
+      setMapColliders([]);
       scene.fog.near = CONFIG.FOG.NEAR;
       scene.fog.far = CONFIG.FOG.FAR;
       resetTargets();
@@ -299,6 +320,8 @@ onEnter(States.COUNTDOWN, (prev) => {
     } else {
       fogBank.visible = true; // Waves: the murk the zombies walk out of
       houseMap.visible = true;
+      activeColliders = mapColliders;
+      setMapColliders(mapColliders);
       // Whole-arena murk (pass 8.2): distance fog pulled in for Waves only.
       // Camera-relative is RIGHT here — "everything past ~26 m is haze"
       // should follow the player; the perimeter banks stay the thickest part.
@@ -392,8 +415,13 @@ renderer.setAnimationLoop(() => {
       const resolved = resolveCircleObstacles(
         clamped.x, clamped.z, getLivingPositions(), CONFIG.PLAYER.BODY_RADIUS,
       );
-      camera.position.x = resolved.x;
-      camera.position.z = resolved.z;
+      // Walls resolve LAST (4.2): neither the step nor a zombie shove can
+      // put the player inside a building wall.
+      const walled = resolveCircleAABBs(
+        resolved.x, resolved.z, activeColliders, CONFIG.PLAYER.BODY_RADIUS,
+      );
+      camera.position.x = walled.x;
+      camera.position.z = walled.z;
     }
   }
 

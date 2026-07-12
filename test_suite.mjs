@@ -732,6 +732,27 @@ try {
   assertNear('section9', 'pushout stays on the approach axis', r.z, 0);
   r = resolveCircleObstacles(2, 0, [{ x: 0, z: 0, radius: 0.45 }], 0.3);
   assertNear('section9', 'clear of the circle: untouched', r.x, 2);
+
+  // Circle-vs-AABB (pass 4.2): the wall resolver. One unit box, radius 0.3.
+  const { resolveCircleAABBs } = await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+  const box = [{ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }];
+  assertNear('section9', 'AABB: pushed off the +x face',
+    resolveCircleAABBs(1.1, 0, box, 0.3).x, 1.3);
+  assertNear('section9', 'AABB: pushed off the -z face',
+    resolveCircleAABBs(0, -1.2, box, 0.3).z, -1.3);
+  const corner = resolveCircleAABBs(1.15, 1.15, box, 0.3);
+  assertTrue('section9', 'AABB: corner exits along the diagonal (dist = radius)',
+    Math.abs(Math.hypot(corner.x - 1, corner.z - 1) - 0.3) < 1e-9);
+  const inside = resolveCircleAABBs(0.9, 0.1, box, 0.3);
+  assertNear('section9', 'AABB: centre inside exits the shallow axis', inside.x, 1.3);
+  const clearPt = resolveCircleAABBs(2.0, 2.0, box, 0.3);
+  assertTrue('section9', 'AABB: clear point untouched',
+    clearPt.x === 2.0 && clearPt.z === 2.0);
+  // Wall sliding: a point pressed diagonally into a face keeps its lateral
+  // coordinate — the resolve is normal-only, so motion along the wall lives.
+  const slide = resolveCircleAABBs(0.5, 1.2, box, 0.3);
+  assertTrue('section9', 'AABB: face resolve preserves lateral position (sliding)',
+    slide.x === 0.5 && Math.abs(slide.z - 1.3) < 1e-9);
 } catch (err) {
   failures.push({ file: 'section9', err });
   console.log(`  FAIL   section 9 threw: ${err.message}`);
@@ -1013,6 +1034,27 @@ try {
     assertTrue('section13', `${id}: player start inside the map extent`,
       start.x > tl.x - map.CELL && start.x < br.x + map.CELL
       && start.z > tl.z - map.CELL && start.z < br.z + map.CELL);
+
+    // Colliders (4.2): derived from the same cells as the geometry — assert
+    // total agreement: every BLOCKED cell centre sits inside a collider, and
+    // NO walkable cell centre does (a wall you can walk through, or a floor
+    // that blocks, both fail here by name).
+    const { buildColliders } = await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+    const boxes = buildColliders(map, grid);
+    const insideAny = (x, z) => boxes.some((b) =>
+      x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ);
+    let blockedUncovered = 0;
+    let walkableCovered = 0;
+    for (let rr = 0; rr < grid.rows; rr++) {
+      for (let cc = 0; cc < grid.cols; cc++) {
+        const w = cellToWorld(map, grid, cc, rr);
+        const ch = grid.at(cc, rr);
+        if ('#WF'.includes(ch) && !insideAny(w.x, w.z)) blockedUncovered += 1;
+        if (grid.walkable(cc, rr) && insideAny(w.x, w.z)) walkableCovered += 1;
+      }
+    }
+    assertNear('section13', `${id}: every blocked cell is solid`, blockedUncovered, 0);
+    assertNear('section13', `${id}: no walkable cell centre is solid`, walkableCovered, 0);
   }
 } catch (err) {
   failures.push({ file: 'section13', err });

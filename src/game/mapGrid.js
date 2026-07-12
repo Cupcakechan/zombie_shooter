@@ -87,3 +87,31 @@ export function cellToWorld(map, grid, c, r) {
 export function playerWorldStart(map, grid) {
   return cellToWorld(map, grid, grid.playerStart.c, grid.playerStart.r);
 }
+
+// Collision (pass 4.2): every BLOCKED cell (walls, window sills, fountain)
+// becomes part of a 2D AABB, run-merged along rows exactly like the visual
+// geometry — the colliders and the boxes derive from the same cells, so
+// they cannot disagree. The fence is NOT here: the arena clamp already
+// bounds movement at the map edge.
+export function buildColliders(map, grid) {
+  const blocked = (c, r) => 'W#F'.includes(grid.at(c, r));
+  const boxes = [];
+  for (let r = 0; r < grid.rows; r++) {
+    let c = 0;
+    while (c < grid.cols) {
+      if (!blocked(c, r)) { c += 1; continue; }
+      let end = c;
+      while (end + 1 < grid.cols && blocked(end + 1, r)) end += 1;
+      const a = cellToWorld(map, grid, c, r);
+      const b = cellToWorld(map, grid, end, r);
+      boxes.push({
+        minX: a.x - map.CELL / 2,
+        maxX: b.x + map.CELL / 2,
+        minZ: a.z - map.CELL / 2,
+        maxZ: b.z + map.CELL / 2,
+      });
+      c = end + 1;
+    }
+  }
+  return boxes;
+}
