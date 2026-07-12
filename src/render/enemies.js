@@ -342,8 +342,14 @@ export function updateEnemies(dtMs, playerPos) {
     if (rec.parts.legL && rec.parts.legR) {
       const p = rec.walked * A.BOB_FREQ;
       const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
+      const limp = A.LIMP ?? 0;
       rec.parts.legL.rotation.x = swing;
-      rec.parts.legR.rotation.x = -swing;
+      // The bad leg barely swings AND trails behind (7a.5): reduced hip
+      // amplitude plus a constant backward offset — it drags rather than
+      // steps. The 0.25 rad full-limp trail is structural; LIMP stays the
+      // one knob (it scales the trail, the hip loss, and the knee below).
+      rec.parts.legR.rotation.x =
+        -swing * (1 - limp) + limp * 0.25 * rec.legBlend;
       if (rec.parts.shinL && rec.parts.shinR) {
         const KNEE_LAG = Math.PI / 2;
         const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
