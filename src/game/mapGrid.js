@@ -88,6 +88,19 @@ export function playerWorldStart(map, grid) {
   return cellToWorld(map, grid, grid.playerStart.c, grid.playerStart.r);
 }
 
+// The inverse of cellToWorld (pass 4.3): which cell CONTAINS a world point.
+// ROUND, not floor — cellToWorld returns cell CENTRES, so the containing
+// cell is the nearest centre (each cell spans centre ± CELL/2). May return
+// out-of-range indices for points beyond the map; callers treat those as
+// off-grid (the field returns null there and zombies fall back to the
+// beeline).
+export function worldToCell(map, grid, x, z) {
+  return {
+    c: Math.round((x - map.ANCHOR.x) / map.CELL + (grid.cols - 1) / 2),
+    r: Math.round((z - map.ANCHOR.z) / map.CELL + (grid.rows - 1) / 2),
+  };
+}
+
 // Collision (pass 4.2): every BLOCKED cell (walls, window sills, fountain)
 // becomes part of a 2D AABB, run-merged along rows exactly like the visual
 // geometry — the colliders and the boxes derive from the same cells, so

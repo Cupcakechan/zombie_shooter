@@ -8,8 +8,10 @@ import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
 import { WAVES } from '../data/waveTable.js';
 import { buildBody } from './enemyBody.js';
-import { resolveCircleAABBs } from '../game/movement.js';
+import { resolveBodyWithReach, segmentClearOfAABBs } from '../game/movement.js';
 import { createSecondOrder } from '../game/secondOrder.js';
+import { worldToCell } from '../game/mapGrid.js';
+import { CONFIG } from '../config.js';
 
 // ————— Pure math (suite-tested) —————
 
@@ -33,6 +35,17 @@ export function deathPhase(dieT, D) {
   return { phase: 'done', k: 1 };
 }
 
+// Rate-limited turn toward a target yaw (4.3 feel fix): the flow field's
+// directions are 8-way QUANTIZED, so assigning yaw directly snapped the
+// body 45–90° at every cell boundary. This turns through the angle
+// instead, shortest arc — atan2(sin,cos) wraps the difference into
+// (−π, π] without modulo seam bugs — clamped to maxStep per call. Pure:
+// suite Section 14 proves the wrap, the clamp, and exact arrival.
+export function turnToward(current, target, maxStep) {
+  const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + Math.max(-maxStep, Math.min(maxStep, diff));
+}
+
 // ————— Stateful enemy management —————
 
 let sceneRef = null;
@@ -48,11 +61,19 @@ export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
   onEnemyKilledCb = onEnemyKilled || null;
 }
 
-// The map's wall colliders (4.2). Zombies can't pass walls either — until
-// 4.3 gives them navigation they PILE against the buildings, which reads
-// as horde pressure, not a bug.
+// The map's wall colliders (4.2). Zombies can't pass walls either; with the
+// flow field (4.3) they route around buildings and through doorways, and
+// still press against walls only on the final beeline approach.
 export function setMapColliders(boxes) {
   mapColliders = boxes || [];
+}
+
+// The flow field (4.3): { field, map, grid } from main, or null to clear
+// (Range has no map; null also means "degrade to the pre-4.3 beeline", so
+// a missing field can never strand a wave).
+let nav = null;
+export function setFlowField(navigation) {
+  nav = navigation || null;
 }
 
 export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
@@ -79,6 +100,11 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     meshes: [],
     hp: type.HP,
     walked: 0, t: 0,
+    // Unit vector toward the player, cached each update (4.3): knockback
+    // needs "away from the player" and can no longer derive it from yaw
+    // once navigation faces a zombie along its PATH. Zero until the first
+    // update — a hit landing that same frame simply skips the knockback.
+    towardPlayer: { x: 0, z: 0 },
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
@@ -216,11 +242,13 @@ export function damageEnemy(mesh) {
   // zombie pays a full cycle for the failed attempt.
   rec.attackPhase = null;
 
-  // Knockback straight away from the player. The body always faces the
-  // player (yaw), so "away" is the facing direction reversed.
-  const yaw = rec.group.rotation.y;
-  rec.group.position.x -= Math.sin(yaw) * rec.type.COMBAT.KNOCKBACK;
-  rec.group.position.z -= Math.cos(yaw) * rec.type.COMBAT.KNOCKBACK;
+  // Knockback straight away from the player, from the normal CACHED by the
+  // update loop — yaw stopped meaning "faces the player" when navigation
+  // (4.3) started facing zombies along their path. Same numbers as the old
+  // yaw form whenever the zombie IS facing the player (sin/cos of that yaw
+  // are exactly dx/dist, dz/dist).
+  rec.group.position.x -= rec.towardPlayer.x * rec.type.COMBAT.KNOCKBACK;
+  rec.group.position.z -= rec.towardPlayer.z * rec.type.COMBAT.KNOCKBACK;
 
   const killed = rec.hp <= 0;
   if (killed) startDeath(rec);
@@ -278,9 +306,26 @@ export function updateEnemies(dtMs, playerPos) {
     const dx = playerPos.x - group.position.x;
     const dz = playerPos.z - group.position.z;
     const dist = Math.hypot(dx, dz);
+    if (dist > 1e-6) {
+      rec.towardPlayer.x = dx / dist;
+      rec.towardPlayer.z = dz / dist;
+    }
 
-    // Always face the player, moving or stopped (yaw only).
-    group.rotation.y = Math.atan2(dx, dz);
+    // Line of sight (4.3 LOS fix): every proximity decision below — the
+    // beeline switch, the stop ring, attack start, damage landing — gates
+    // on actually SEEING the player. Straight-line distance through a wall
+    // froze zombies mid-beeline (a face-on pushout has no tangential
+    // component to slide on) and let swipes land across wall corners.
+    // No colliders (Range) = always true, so Range is untouched.
+    const los = mapColliders.length === 0
+      || segmentClearOfAABBs(
+        group.position.x, group.position.z, playerPos.x, playerPos.z, mapColliders,
+      );
+
+    // Facing is a TARGET now, applied through turnToward below — never
+    // assigned directly (the snap Daniel reported). Default target: the
+    // player; a field-following step overrides it with the walk direction.
+    let targetYaw = Math.atan2(dx, dz);
 
     // Hit flash decays over FLINCH_MS.
     if (rec.flashT > 0) {
@@ -305,9 +350,9 @@ export function updateEnemies(dtMs, playerPos) {
           rec.attackPhase = 'strike';
           rec.attackT = 0;
           // Damage lands at the START of the strike — the windup was the
-          // player's window to cancel it (shoot) or, now that the player
-          // can move, DODGE it: out of reach at this moment = a whiff.
-          const inRange = dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+          // player's window to cancel it (shoot), DODGE out of reach, or
+          // (4.3) break line of sight around a corner: no LOS = a whiff.
+          const inRange = los && dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
           if (inRange && onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
         }
       } else if (rec.attackPhase === 'strike') {
@@ -324,8 +369,9 @@ export function updateEnemies(dtMs, playerPos) {
         if (rec.attackT >= AT.RECOVER_MS) rec.attackPhase = null;
       }
     } else {
-      // Start an attack when close enough, off cooldown, and not staggered.
-      const inReach = dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+      // Start an attack when close enough, VISIBLE (4.3 — no swipes
+      // through wall corners), off cooldown, and not staggered.
+      const inReach = los && dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
       if (inReach && rec.cooldownT <= 0 && rec.staggerT <= 0) {
         rec.attackPhase = 'windup';
         rec.attackT = 0;
@@ -338,12 +384,36 @@ export function updateEnemies(dtMs, playerPos) {
     if (rec.staggerT > 0) {
       rec.staggerT -= dtMs;
     } else if (!rec.attackPhase) {
+      // The stop ring only exists when the player is VISIBLE (4.3): a
+      // zombie must never "arrive" at a player it can't reach through a
+      // wall — without LOS it keeps navigating.
       const step = advanceDistance(
-        dist, type.WALK_SPEED * rec.speedMult, dtMs, type.STOP_DISTANCE,
+        dist, type.WALK_SPEED * rec.speedMult, dtMs,
+        los ? type.STOP_DISTANCE : 0,
       );
       if (step > 0 && dist > 1e-6) {
-        group.position.x += (dx / dist) * step;
-        group.position.z += (dz / dist) * step;
+        // Direction (4.3): descend the flow field when far OR when the
+        // player isn't visible — the beeline is only trusted with a clear
+        // line (its face-on wall pushout has no slide component, the
+        // corner-tuck freeze). Inside NAV.BEELINE_DIST with LOS, beeline
+        // (the final approach). No field / no answer for this cell —
+        // graceful: the pre-4.3 behavior. Separation and the wall resolve
+        // below then blend/clamp the step exactly as before.
+        let mx = dx / dist;
+        let mz = dz / dist;
+        if (nav && (!los || dist > CONFIG.NAV.BEELINE_DIST)) {
+          const cell = worldToCell(
+            nav.map, nav.grid, group.position.x, group.position.z,
+          );
+          const dir = nav.field.dirAt(cell.c, cell.r);
+          if (dir) {
+            mx = dir.x;
+            mz = dir.z;
+            targetYaw = Math.atan2(mx, mz); // face the path
+          }
+        }
+        group.position.x += mx * step;
+        group.position.z += mz * step;
         rec.walked += step;
         walking = true;
       }
@@ -353,6 +423,15 @@ export function updateEnemies(dtMs, playerPos) {
     // before the windup tell finishes.
     const legTarget = walking ? 1 : 0;
     rec.legBlend += (legTarget - rec.legBlend) * Math.min(1, dtMs * 0.008);
+
+    // Turn the body toward its target heading at a shambler's pace —
+    // movement direction is already correct this frame; only the FACING
+    // eases, so path-following never lags the field. A 45° field step
+    // resolves in ~0.15 s at the default rate; the brief lean reads as
+    // the body carrying its weight through the turn.
+    group.rotation.y = turnToward(
+      group.rotation.y, targetYaw, (CONFIG.NAV.TURN_RATE * dtMs) / 1000,
+    );
 
     // — Procedural shamble. Bob and sway are locked to distance WALKED so
     // stride stays consistent if WALK_SPEED is retuned; sway blends in a slow
@@ -460,12 +539,16 @@ export function updateEnemies(dtMs, playerPos) {
 
   // — Map collision LAST (4.2): walls win over steering and separation, so
   // neither a step nor a crowd shove can push a body through a building.
+  // The reach probe (4.3 clip fix) keeps the FRONT of the body — arms and
+  // head, ~1.0 m past the feet circle — out of walls the zombie faces.
+  // Guarded: a type without a WALL block resolves exactly as before.
   if (mapColliders.length > 0) {
     for (const rec of records) {
       if (rec.dying) continue;
-      const solved = resolveCircleAABBs(
+      const solved = resolveBodyWithReach(
         rec.group.position.x, rec.group.position.z,
-        mapColliders, rec.type.BODY_RADIUS,
+        rec.group.rotation.y, mapColliders, rec.type.BODY_RADIUS,
+        rec.type.WALL?.REACH ?? 0, rec.type.WALL?.RADIUS ?? 0,
       );
       rec.group.position.x = solved.x;
       rec.group.position.z = solved.z;

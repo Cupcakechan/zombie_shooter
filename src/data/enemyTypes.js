@@ -17,6 +17,10 @@ export const ENEMY_TYPES = {
       LIMB: 0.5,
     },
     BODY_RADIUS: 0.45,    // solid circle for player collision (walk-through-proof)
+    WALL: {               // forward reach vs walls (4.3 clip fix): keeps the
+      REACH: 0.75,        //   raised arms/head (MEASURED ~1.0 m past the feet)
+      RADIUS: 0.25,       //   out of walls the body FACES; feet circle unchanged
+    },
     WALK_SPEED: 1.2,      // m/s base — waves multiply this per waveTable.js
     STOP_DISTANCE: 2,     // m — where it halts and starts attacking
     COLORS: {

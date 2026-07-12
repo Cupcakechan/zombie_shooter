@@ -16,7 +16,8 @@ import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
 import { buildMap } from './render/mapGen.js';
 import { MAPS, ACTIVE_MAP_ID } from './data/maps.js';
-import { parseLayout, playerWorldStart, buildColliders } from './game/mapGrid.js';
+import { parseLayout, playerWorldStart, buildColliders, worldToCell } from './game/mapGrid.js';
+import { buildFlowField } from './game/flowField.js';
 import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -25,6 +26,7 @@ import {
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
   getEnemyHittables, getLivingPositions, damageEnemy, setMapColliders,
+  setFlowField,
 } from './render/enemies.js';
 import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
@@ -127,6 +129,9 @@ const mapStart = playerWorldStart(activeMap, activeGrid);
 // per-mode setter below; the player-side resolve gates on the same array.
 const mapColliders = buildColliders(activeMap, activeGrid);
 let activeColliders = [];
+// The player cell the flow field was last built FROM (4.3). null forces a
+// rebuild on the next PLAYING frame — mode switches reset it.
+let navLastCell = null;
 houseMap.visible = false;
 scene.add(houseMap);
 houseMap.traverse((c) => { if (c.isMesh) mapWallMeshes.push(c); });
@@ -323,6 +328,8 @@ onEnter(States.COUNTDOWN, (prev) => {
       houseMap.visible = false;
       activeColliders = [];
       setMapColliders([]);
+      setFlowField(null); // Range: no map, no field — enemies (targets) N/A
+      navLastCell = null;
       scene.fog.near = CONFIG.FOG.NEAR;
       scene.fog.far = CONFIG.FOG.FAR;
       resetTargets();
@@ -334,6 +341,7 @@ onEnter(States.COUNTDOWN, (prev) => {
       houseMap.visible = true;
       activeColliders = mapColliders;
       setMapColliders(mapColliders);
+      navLastCell = null; // field rebuilds on the first PLAYING frame (4.3)
       // Whole-arena murk (pass 8.2): distance fog pulled in for Waves only.
       // Camera-relative is RIGHT here — "everything past ~26 m is haze"
       // should follow the player; the perimeter banks stay the thickest part.
@@ -448,6 +456,25 @@ renderer.setAnimationLoop(() => {
     // The WORLD only simulates while playing (7a.5 fix): during a resume
     // countdown the player can't move or shoot, so zombies advancing through
     // the 3-2-1 was a free hit — everything freezes with the player now.
+    // Flow field (4.3): rebuilt only when the player CHANGES CELL — one
+    // ~500-cell BFS per change, serving every zombie. A non-walkable cell
+    // (float edge against the fence clamp) keeps the LAST field rather
+    // than seeding a bad one; zombies beeline-fallback per-cell anyway.
+    if (mode === 'waves') {
+      const cell = worldToCell(
+        activeMap, activeGrid, camera.position.x, camera.position.z,
+      );
+      if (!navLastCell || cell.c !== navLastCell.c || cell.r !== navLastCell.r) {
+        if (activeGrid.walkable(cell.c, cell.r)) {
+          setFlowField({
+            field: buildFlowField(activeGrid, cell),
+            map: activeMap,
+            grid: activeGrid,
+          });
+          navLastCell = cell;
+        }
+      }
+    }
     updateEnemies(dtMs, camera.position);
     updateBloodFX(dtMs);
     updateCasings(dtMs);

@@ -90,3 +90,65 @@ export function resolveCircleObstacles(x, z, obstacles, playerRadius) {
   }
   return { x: px, z: pz };
 }
+
+// Line of sight at feet level (4.3 LOS fix): does the 2D segment from
+// (x1,z1) to (x2,z2) stay clear of every box? Slab method per box: clip
+// the segment's t-interval against the X slab then the Z slab; a surviving
+// interval means the segment enters the box. Every proximity decision
+// (beeline switch, stop ring, attack) gates on this — straight-line
+// distance THROUGH a wall froze zombies and let corner swipes land.
+export function segmentClearOfAABBs(x1, z1, x2, z2, boxes) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  for (const b of boxes) {
+    let t0 = 0;
+    let t1 = 1;
+    if (Math.abs(dx) < 1e-12) {
+      // Degenerate X: the segment is a vertical line — outside the X slab
+      // means this box can never be hit.
+      if (x1 < b.minX || x1 > b.maxX) continue;
+    } else {
+      let tA = (b.minX - x1) / dx;
+      let tB = (b.maxX - x1) / dx;
+      if (tA > tB) { const t = tA; tA = tB; tB = t; }
+      t0 = Math.max(t0, tA);
+      t1 = Math.min(t1, tB);
+      if (t0 > t1) continue;
+    }
+    if (Math.abs(dz) < 1e-12) {
+      if (z1 < b.minZ || z1 > b.maxZ) continue;
+    } else {
+      let tA = (b.minZ - z1) / dz;
+      let tB = (b.maxZ - z1) / dz;
+      if (tA > tB) { const t = tA; tA = tB; tB = t; }
+      t0 = Math.max(t0, tA);
+      t1 = Math.min(t1, tB);
+      if (t0 > t1) continue;
+    }
+    return false; // a t-interval survived both slabs: the segment enters
+  }
+  return true;
+}
+
+// Anisotropic body resolve (4.3 clip fix): a zombie is a LONG shape in a
+// SMALL circle — the feet circle is 0.45 m but the raised arms + hunched
+// head reach ~1.0 m forward (MEASURED 0.92 rest / 1.02 with lean), so a
+// body facing a wall buried its whole front half. The circle can't just
+// grow: ≥0.8 m can't pass a 1.6 m doorway. Instead: resolve the feet
+// circle, then a small REACH circle at the arm tips (forward along yaw —
+// +Z-built bodies: forward = (sin yaw, cos yaw), MEASURED), translate the
+// body by the reach pushout, and re-settle the feet. reach = 0 is a
+// byte-identical no-op — types without the WALL block behave as before.
+export function resolveBodyWithReach(x, z, yaw, boxes, bodyRadius, reach, reachRadius) {
+  let p = resolveCircleAABBs(x, z, boxes, bodyRadius);
+  if (reach > 0) {
+    const rx = p.x + Math.sin(yaw) * reach;
+    const rz = p.z + Math.cos(yaw) * reach;
+    const rs = resolveCircleAABBs(rx, rz, boxes, reachRadius);
+    p = { x: p.x + (rs.x - rx), z: p.z + (rs.z - rz) };
+    // The reach pushout moved the whole body — make sure the feet didn't
+    // land inside something behind (rare, but a corner can do it).
+    p = resolveCircleAABBs(p.x, p.z, boxes, bodyRadius);
+  }
+  return p;
+}

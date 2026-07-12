@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 27;
+const MIN_EXPECTED_MODULES = 28;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -389,6 +389,7 @@ try {
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
     'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
+    'NAV.BEELINE_DIST': 'number', 'NAV.TURN_RATE': 'number',
   };
 
   const resolvePath = (obj, path) =>
@@ -1068,6 +1069,250 @@ try {
 } catch (err) {
   failures.push({ file: 'section13', err });
   console.log(`  FAIL   section 13 threw: ${err.message}`);
+}
+
+// ————— Section 14: navigation (pass 4.3 — the flow field) —————
+// The field must be PROVEN here because in play it only shows as feel:
+// coverage (every walkable cell has a distance), strict descent (every
+// direction moves closer — no flats, no cycles), the corner guard (no
+// diagonal shaves a wall corner), and full greedy routing (from EVERY
+// cell, following the field reaches the player — doorway routing included).
+// worldToCell round-trips cellToWorld so zombies read the cell they stand in.
+
+console.log('');
+console.log('— Section 14: navigation (flow field) —');
+try {
+  const { MAPS: NAV_MAPS } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  const { parseLayout: navParse, countWalkable: navCount, cellToWorld: navC2W, worldToCell: navW2C } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+  const { buildFlowField } = await import(pathToFileURL(join('src', 'game', 'flowField.js')).href);
+
+  for (const [id, map] of Object.entries(NAV_MAPS)) {
+    const grid = navParse(map);
+    const start = grid.playerStart;
+    const field = buildFlowField(grid, start);
+    const walkableTotal = navCount(grid);
+
+    // Coverage: every walkable cell is on the field (matches the flood's
+    // guarantee — a covered map cannot strand a zombie).
+    let covered = 0;
+    for (let r = 0; r < grid.rows; r++) {
+      for (let c = 0; c < grid.cols; c++) {
+        if (grid.walkable(c, r) && Number.isFinite(field.distAt(c, r))) covered += 1;
+      }
+    }
+    assertTrue('section14', `${id}: field covers every walkable cell (${covered}/${walkableTotal})`,
+      covered === walkableTotal);
+
+    // The target cell: distance 0, no step (a zombie ON the player's cell
+    // is inside beeline range by definition).
+    assertTrue('section14', `${id}: target cell distance is 0`, field.distAt(start.c, start.r) === 0);
+    assertTrue('section14', `${id}: target cell has no step`, field.stepAt(start.c, start.r) === null);
+
+    // Strict descent + landing legality + the corner guard, every cell.
+    let descentFails = 0;
+    let landingFails = 0;
+    let cornerFails = 0;
+    let dirNormFails = 0;
+    for (let r = 0; r < grid.rows; r++) {
+      for (let c = 0; c < grid.cols; c++) {
+        if (!grid.walkable(c, r) || (c === start.c && r === start.r)) continue;
+        const s = field.stepAt(c, r);
+        if (!s) { descentFails += 1; continue; } // a reached cell must step
+        const nc = c + s.dc;
+        const nr = r + s.dr;
+        if (!grid.walkable(nc, nr)) landingFails += 1;
+        if (!(field.distAt(nc, nr) < field.distAt(c, r))) descentFails += 1;
+        if (s.dc !== 0 && s.dr !== 0
+          && !(grid.walkable(c + s.dc, r) && grid.walkable(c, r + s.dr))) {
+          cornerFails += 1;
+        }
+        const d = field.dirAt(c, r);
+        if (Math.abs(Math.hypot(d.x, d.z) - 1) > 1e-6) dirNormFails += 1;
+      }
+    }
+    assertTrue('section14', `${id}: every step strictly descends: ${descentFails} violations (expected 0)`,
+      descentFails === 0);
+    assertTrue('section14', `${id}: every step lands on a walkable cell: ${landingFails} violations (expected 0)`,
+      landingFails === 0);
+    assertTrue('section14', `${id}: no diagonal shaves a corner: ${cornerFails} violations (expected 0)`,
+      cornerFails === 0);
+    assertTrue('section14', `${id}: every direction is unit length: ${dirNormFails} violations (expected 0)`,
+      dirNormFails === 0);
+
+    // Greedy routing: from EVERY walkable cell, walking the field reaches
+    // the target within cols×rows steps — termination AND doorway routing
+    // in one probe (an interior room only reaches the plaza through its D).
+    let routeFails = 0;
+    const maxSteps = grid.cols * grid.rows;
+    for (let r = 0; r < grid.rows; r++) {
+      for (let c = 0; c < grid.cols; c++) {
+        if (!grid.walkable(c, r)) continue;
+        let cc = c;
+        let cr = r;
+        let steps = 0;
+        while ((cc !== start.c || cr !== start.r) && steps < maxSteps) {
+          const s = field.stepAt(cc, cr);
+          if (!s) break;
+          cc += s.dc;
+          cr += s.dr;
+          steps += 1;
+        }
+        if (cc !== start.c || cr !== start.r) routeFails += 1;
+      }
+    }
+    assertTrue('section14', `${id}: greedy walk reaches the player from every cell: ${routeFails} strandings (expected 0)`,
+      routeFails === 0);
+
+    // worldToCell round-trips cellToWorld for every cell — the zombie reads
+    // the cell it actually stands in.
+    let rtFails = 0;
+    for (let r = 0; r < grid.rows; r++) {
+      for (let c = 0; c < grid.cols; c++) {
+        const w = navC2W(map, grid, c, r);
+        const back = navW2C(map, grid, w.x, w.z);
+        if (back.c !== c || back.r !== r) rtFails += 1;
+      }
+    }
+    assertTrue('section14', `${id}: worldToCell round-trips every cell centre: ${rtFails} misses (expected 0)`,
+      rtFails === 0);
+
+    // Off-field queries answer null/Infinity, never throw — the beeline
+    // fallback's contract.
+    assertTrue('section14', `${id}: blocked cell has no direction`,
+      field.dirAt(0, -1) === null && field.distAt(0, -1) === Infinity);
+
+    // GUARD: an invalid target (a wall cell) yields an all-null field —
+    // a bad seed degrades to the beeline, it does not throw in the loop.
+    let wallCell = null;
+    for (let r = 0; r < grid.rows && !wallCell; r++) {
+      for (let c = 0; c < grid.cols && !wallCell; c++) {
+        if (grid.at(c, r) === '#') wallCell = { c, r };
+      }
+    }
+    const badField = buildFlowField(grid, wallCell);
+    assertTrue('section14', `${id}: a blocked target yields a null field (graceful)`,
+      badField.target === null && badField.stepAt(start.c, start.r) === null);
+  }
+
+  // The corner guard on a hand-built fixture where the diagonal WOULD cut:
+  // target around an L-corner — the corner-adjacent cell must step
+  // orthogonally even though the diagonal is strictly closer.
+  const fixture = {
+    ANCHOR: { x: 0, z: 0 },
+    CELL: 1,
+    layout: [
+      'P#.',
+      '...',
+      '...',
+    ],
+  };
+  const fGrid = navParse(fixture);
+  const fField = buildFlowField(fGrid, fGrid.playerStart);
+  const cutStep = fField.stepAt(2, 0); // the SW diagonal (dist 2) would shave the '#'
+  assertTrue('section14', 'fixture: corner cell steps orthogonally (0,+1), not through the wall corner',
+    !!cutStep && cutStep.dc === 0 && cutStep.dr === 1);
+
+  // turnToward (the feel fix): the body TURNS through quantized field
+  // headings instead of snapping. Wrap, clamp, exact arrival, symmetry.
+  const { turnToward } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  assertTrue('section14', 'turnToward: clamps a big turn to maxStep',
+    Math.abs(turnToward(0, Math.PI / 2, 0.1) - 0.1) < 1e-12);
+  assertTrue('section14', 'turnToward: negative turns clamp symmetrically',
+    Math.abs(turnToward(0, -Math.PI / 2, 0.1) - (-0.1)) < 1e-12);
+  assertTrue('section14', 'turnToward: arrives exactly when the gap is inside maxStep',
+    Math.abs(turnToward(1.0, 1.05, 0.1) - 1.05) < 1e-12);
+  // The ±π seam: from +3.0 to −3.0 rad the SHORT way is +0.283 rad
+  // (through π), never −6.0 the long way round.
+  const seam = turnToward(3.0, -3.0, 10.0);
+  assertTrue('section14', `turnToward: crosses the ±π seam the short way (landed ${seam.toFixed(3)})`,
+    Math.abs(seam - (3.0 + (2 * Math.PI - 6.0))) < 1e-9);
+  assertTrue('section14', 'turnToward: zero gap is a no-op',
+    turnToward(0.7, 0.7, 0.5) === 0.7);
+
+  // The reach resolve (the wall-clip fix): the front of the body — arms
+  // and head, ~1.0 m past the feet circle — must stay out of walls the
+  // body FACES, while sideways sliding and doorway transit are untouched.
+  const { resolveCircleAABBs: plainSolve, resolveBodyWithReach } =
+    await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+  const wallBox = [{ minX: -5, maxX: 5, minZ: 2, maxZ: 4 }]; // a wall to the north (+z)
+
+  // Head-on: facing the wall (yaw 0 → forward +z), starting overlapped —
+  // the body must stand off REACH + RADIUS from the face, not BODY_RADIUS.
+  const headOn = resolveBodyWithReach(0, 1.8, 0, wallBox, 0.45, 0.75, 0.25);
+  assertTrue('section14', `reach: facing a wall stands off arms-length (z ${headOn.z.toFixed(2)}, face at 2)`,
+    Math.abs((2 - headOn.z) - (0.75 + 0.25)) < 1e-9);
+
+  // Parallel: facing along the wall (yaw π/2 → forward +x), pressed to it —
+  // the reach circle runs parallel and must not disturb the feet standoff.
+  const parallel = resolveBodyWithReach(0, 1.6, Math.PI / 2, wallBox, 0.45, 0.75, 0.25);
+  const parallelPlain = plainSolve(0, 1.6, wallBox, 0.45);
+  assertTrue('section14', 'reach: sliding parallel to a wall matches the plain circle exactly',
+    Math.abs(parallel.x - parallelPlain.x) < 1e-9 && Math.abs(parallel.z - parallelPlain.z) < 1e-9);
+
+  // Doorway: a 1.6 m gap between two wall runs; a body centred in the gap,
+  // facing through it, must pass undisturbed.
+  const doorBoxes = [
+    { minX: -5, maxX: -0.8, minZ: 2, maxZ: 3.6 },
+    { minX: 0.8, maxX: 5, minZ: 2, maxZ: 3.6 },
+  ];
+  const doorway = resolveBodyWithReach(0, 2.8, 0, doorBoxes, 0.45, 0.75, 0.25);
+  assertTrue('section14', 'reach: a centred body passes a 1.6 m doorway undisturbed',
+    Math.abs(doorway.x) < 1e-9 && Math.abs(doorway.z - 2.8) < 1e-9);
+
+  // reach = 0 is byte-identical to the plain circle — the guard for types
+  // without a WALL block.
+  const noReach = resolveBodyWithReach(0.3, 1.7, 0, wallBox, 0.45, 0, 0);
+  const noReachPlain = plainSolve(0.3, 1.7, wallBox, 0.45);
+  assertTrue('section14', 'reach: reach 0 is a no-op (identical to the plain resolve)',
+    noReach.x === noReachPlain.x && noReach.z === noReachPlain.z);
+
+  // Registry sanity: any type carrying a WALL block must fit a doorway —
+  // the reach circle radius has to clear the 1.6 m gap's half-width.
+  const { ENEMY_TYPES: WALL_ET } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  for (const [tid, t] of Object.entries(WALL_ET)) {
+    if (!t.WALL) continue;
+    assertTrue('section14', `${tid}: WALL block finite and doorway-passable`,
+      Number.isFinite(t.WALL.REACH) && Number.isFinite(t.WALL.RADIUS)
+      && t.WALL.REACH > 0 && t.WALL.RADIUS > 0 && t.WALL.RADIUS < 0.8 && t.BODY_RADIUS < 0.8);
+  }
+
+  // Line of sight (the through-wall fix): the segment test that gates the
+  // beeline switch, the stop ring, and both attack moments.
+  const { segmentClearOfAABBs } =
+    await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+  const losBox = [{ minX: -1, maxX: 1, minZ: -1, maxZ: 1 }];
+  assertTrue('section14', 'LOS: an open segment is clear',
+    segmentClearOfAABBs(2, 2, 5, 5, losBox) === true);
+  assertTrue('section14', 'LOS: a segment through the box is blocked',
+    segmentClearOfAABBs(-3, 0, 3, 0, losBox) === false);
+  assertTrue('section14', 'LOS: a diagonal through the box corner region is blocked',
+    segmentClearOfAABBs(-2, 0, 0, 2, losBox) === false);
+  assertTrue('section14', 'LOS: a graze passing just outside is clear',
+    segmentClearOfAABBs(-3, 1.05, 3, 1.05, losBox) === true);
+  assertTrue('section14', 'LOS: a degenerate-axis (vertical) segment inside the slab is blocked',
+    segmentClearOfAABBs(0, -3, 0, 3, losBox) === false);
+  assertTrue('section14', 'LOS: a degenerate-axis segment outside the slab is clear',
+    segmentClearOfAABBs(2, -3, 2, 3, losBox) === true);
+  assertTrue('section14', 'LOS: an endpoint inside the box is blocked',
+    segmentClearOfAABBs(0, 0, 5, 0, losBox) === false);
+
+  // Village integration: across a wall = blocked; through a doorway = clear.
+  const losMap = NAV_MAPS.village01;
+  const losGrid = navParse(losMap);
+  const { buildColliders: losBuild } = await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+  const losBoxes = losBuild(losMap, losGrid);
+  const roomSide = navC2W(losMap, losGrid, 3, 6);   // inside the TL west room
+  const outsideWall = navC2W(losMap, losGrid, 3, 8); // outside, across row-7 wall
+  assertTrue('section14', 'village: LOS across an interior wall is blocked',
+    segmentClearOfAABBs(roomSide.x, roomSide.z, outsideWall.x, outsideWall.z, losBoxes) === false);
+  const doorIn = navC2W(losMap, losGrid, 4, 6);     // inside, in line with the D at (4,7)
+  const doorOut = navC2W(losMap, losGrid, 4, 8);    // outside, same column
+  assertTrue('section14', 'village: LOS straight through a doorway is clear',
+    segmentClearOfAABBs(doorIn.x, doorIn.z, doorOut.x, doorOut.z, losBoxes) === true);
+} catch (err) {
+  failures.push({ file: 'section14', err });
+  console.log(`  FAIL   section 14 threw: ${err.message}`);
 }
 
 // ————— Report —————

@@ -153,5 +153,15 @@ FOG: {
     WALL_MARGIN: 0.6,       // camera keeps this far from any wall
     BODY_RADIUS: 0.3,       // player's solid circle vs zombie bodies
   },
+  // — Navigation (pass 4.3): the flow field zombies descend in Waves —
+  NAV: {
+    BEELINE_DIST: 4.0,      // metres — closer than this, ignore the field
+                            //   and walk straight at the player (the final
+                            //   approach; field cell-steps are too coarse
+                            //   for the last couple of metres)
+    TURN_RATE: 5.0,         // rad/s — max body turn speed; a 45° field
+                            //   step eases in ~0.16 s, a full about-face
+                            //   in ~0.63 s (shamblers don't pivot)
+  },
   DEBUG: {},
 };
