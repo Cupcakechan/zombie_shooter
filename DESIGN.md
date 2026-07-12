@@ -2,7 +2,9 @@
 
 Repo: https://github.com/Cupcakechan/zombie_shooter.git
 Local: C:\Users\danie\Documents\HTML Projects\zombie_shooter
-Status: **living document** — updated whenever a decision changes. Current work: Stage 1.
+Status: **living document** — updated whenever a decision changes. Current state:
+Stages 1–3 DONE, pass 7 (creature) COMPLETE, pass 8 shipped (audio deferred),
+pass 9 (reload) shipped. Next candidates: wave kill scoring, dismemberment, maze.
 
 ---
 
@@ -19,21 +21,20 @@ zombie wave shooter.
 | Stage | Name | Adds | Status |
 |---|---|---|---|
 | 1 | Shooting Range | Pointer-lock aim, hitscan shot, targets, scoring, round timer, results | **DONE** |
-| 2 | Zombie Waves — Last-Stand | Zombies approach the player, HP both ways, waves, game over | **Passes 3–6 done; 7 pending, 8 optional** |
+| 2 | Zombie Waves — Last-Stand | Zombies approach the player, HP both ways, waves, game over | **DONE** (passes 3–7 complete; pass-8 audio deferred) |
 | 3 | WASD Arena | Player movement + bounds, zombies that chase | **DONE (pulled forward 2026-07-11, before pass 7)** |
+| 4 | Maze Arena (future) | CoD-Zombies-style maze map: interior walls, spawn windows, zombie navigation (the pathfinding trigger), raycast occluders | **Direction set 2026-07-12; unscheduled** |
 
 > Enemies are **designed through Claude** (Decision B1, 2026-07-11): code-built
-> creatures with procedural animation — the placeholder "proto-zombie" proved the
-> systems; the real designed creatures land via the SDF blend-shell technique.
-> **Pass-7 source of truth (the creature-forge skill no longer exists — lost,
-> lane parked):** repo https://github.com/Cupcakechan/ExperimentProject,
-> subfolder `sdf-blend-shell/` — read in order PROJECT_HANDOFF.md,
-> RESEARCH_TECHNIQUE.md, REFERENCE_FOGLEMAN.md, LESSONS.md. Their stack pins
-> three.js **0.170.0**; ours is r185 — verify every ported API. Their IDEA
-> SHELF already scoped this FPS use (prims as hitboxes → per-part identity →
-> headshots; C2 generator as bestiary; squash spring as flinch). No downloaded
-> models, no GLTFLoader. Octree/Capsule world collision (the research report's
-> path) is deferred unless a real level ever demands it.
+> creatures with procedural animation, no downloaded models, no GLTFLoader.
+> **How pass 7 actually landed (2026-07-12):** the SDF blend-shell pipeline was
+> NOT adopted — Daniel ruled the ExperimentProject research **halted and
+> grain-of-salt** (and prefers this game's look over its creatures), demoting
+> that repo from source-of-truth to reference. What we took instead: the
+> renderer-agnostic anatomy rules, the per-part-hitbox idea, and a ported
+> `secondOrder.js` spring re-proven by our own suite section. The shipped
+> creature is **the Shambler** (see changelog v3.0). Octree/Capsule world
+> collision stays deferred unless a real level demands it.
 
 ### Pass roadmap (decided 2026-07-11 — picks A1 / B1 / C1)
 
@@ -51,9 +52,12 @@ zombie wave shooter.
 6. **Wave manager pass** — data-driven wave table (count / speed / spawn
    points), wave HUD, escalation, object pooling.
 7. **Creature design pass(es)** — designed zombies via the creature-forge
-   pipeline, swapped in behind the registry.
+   pipeline, swapped in behind the registry. **DONE 2026-07-12 (7a–7c: the
+   Shambler + hitboxes + flinch spring; see changelog v3.0 — the pipeline
+   changed, the registry swap-in held exactly as designed).**
 8. **Atmosphere pass (optional)** — positional audio, blood particles/decals,
-   difficulty tuning.
+   difficulty tuning. **Visuals SHIPPED 2026-07-12 (fog bank + murk, blood,
+   casings — changelog v2.10); audio still deferred (needs generated assets).**
 
 **Stage 3 — WASD Arena:** movement + arena bounds as its own stage;
 Octree/Capsule collision only if a real level requires it.
@@ -148,6 +152,8 @@ Fixed **60-second** round. At 0: input stops, targets freeze, RESULTS shows.
 |---|---|
 | Mouse | Look (pointer-locked) |
 | Left click | Fire |
+| WASD | Move (camera-relative, Stage 3) |
+| R | Reload (pass 9; empty-click also auto-reloads) |
 | ESC | Pause (browser exits pointer lock — that *is* the pause) |
 
 ## 7. Tech & architecture
@@ -174,40 +180,59 @@ Fixed **60-second** round. At 0: input stops, targets freeze, RESULTS shows.
 
 ```
 zombie_shooter/
-├── index.html               entry (import map + canvas + overlay roots)
+├── index.html               entry (canvas + overlay roots)
 ├── style.css                single stylesheet at root
 ├── README.md
 ├── DESIGN.md                dev doc — outside the ship set
 ├── PROJECT_HANDOFF.md       session handoff — outside the ship set
+├── LESSONS.md               error record — outside the ship set
 ├── .gitignore
-├── test_suite.mjs           committed module-health suite
+├── test_suite.mjs           committed suite (190 asserts, 12 sections)
 ├── lib/
 │   ├── three.core.js        vendored Three.js r185 (split build) — ships
 │   └── three.module.js      vendored Three.js r185 — ships
 ├── src/
-│   ├── main.js              entry + frame loop
-│   ├── config.js            ALL tunables live here
+│   ├── main.js              entry + frame loop (suite-excluded boot glue)
+│   ├── config.js            ALL tunables (87-key suite-enforced schema)
 │   ├── state.js             screen/game state machine
-│   ├── input.js             pointer lock, mouse look, fire clicks
+│   ├── input.js             pointer lock, look, WASD, fire + R-reload hooks
 │   ├── data/
-│   │   └── targetTypes.js   target registry (Stage 3 zombies join here)
+│   │   ├── targetTypes.js   target registry
+│   │   ├── enemyTypes.js    enemy registry (83 numeric fields/type: BODY,
+│   │   │                    ANIM, COMBAT+squash, ATTACK, HITBOX, SPAWN, DEATH)
+│   │   └── waveTable.js     wave composition + spawn points (arena property)
 │   ├── render/
 │   │   ├── scene.js         range environment (floor, walls, lights, fog)
-│   │   ├── gun.js           viewmodel + recoil
-│   │   └── targets.js       target meshes, spawn slots, pop anim
+│   │   ├── gun.js           viewmodel + recoil + reload dip
+│   │   ├── fogBank.js       perimeter fog curtains (Waves)
+│   │   ├── bloodFX.js       pooled bursts + floor pools
+│   │   ├── casings.js       pooled ejected brass
+│   │   ├── enemyBody.js     the Shambler builder (registry-driven, tagged)
+│   │   ├── targets.js       target meshes, spawn slots, pop anim
+│   │   └── enemies.js       enemy lifecycle: gait, attack, damage, death
 │   ├── game/
 │   │   ├── shooting.js      raycast + hit resolution
 │   │   ├── scoring.js       score / streak / accuracy
-│   │   └── round.js         countdown + timer + round flow
+│   │   ├── round.js         countdown + timer + round flow
+│   │   ├── best.js          personal-best persistence
+│   │   ├── player.js        arcade hits / health
+│   │   ├── movement.js      pure WASD math (measured formulas)
+│   │   ├── waves.js         wave manager (kills/wave/time)
+│   │   ├── ammo.js          magazine + reload rules (pure, suite-proven)
+│   │   └── secondOrder.js   spring-damper (ported; suite Section 12)
 │   └── ui/
-│       └── hud.js           HUD values + screen overlays
-└── assets/                  empty in Stage 1 — placeholders are code-built
+│       └── hud.js           HUD values + screen overlays + ammo counter
+└── assets/                  still empty — everything is code-built
 ```
 
 **Ship set** (what goes to itch later): `index.html`, `style.css`, `src/`,
 `lib/`, `assets/`. Dev docs and the suite stay out of it.
 
-## 8. Tunables (starting values — all live in `src/config.js`)
+## 8. Tunables (Stage-1 starting values — historical)
+
+**`src/config.js` is the authoritative tunables list** (87 keys under a
+suite-enforced schema; the enemy registry adds 83 more per type) — this table
+is the original Stage-1 set, kept for the record:
 
 | Constant | Start value | Note |
 |---|---|---|
@@ -246,18 +271,30 @@ slice blocks on it.
 - [x] Score, streak multiplier, accuracy, and timer all correct (hand-checked math)
 - [x] Personal best persists across reloads
 - [x] Gun feel pass done (recoil + muzzle flash)
-- [ ] `test_suite.mjs` green; no console errors; runs in Chrome + Firefox via Live Server
+- [x] `test_suite.mjs` green; no console errors; runs in Chrome + Firefox via Live Server *(Firefox 8-item once-through passed 2026-07-12 — Stage 1 DoD complete)*
 
 ## 11. Out of scope for Stage 1
 
-Movement (Stage 3), enemies/health (Stage 2), audio, real models, weapon
-variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboards.
+*(Stage-1 list, kept for the record — several items have since shipped:
+movement (Stage 3), enemies/health (Stage 2), reload/ammo (pass 9).)*
+Still out of scope: audio (deferred — needs generated assets), real models
+(never — code-built by design), weapon variety, difficulty modes,
+touch/mobile, settings menu, leaderboards.
 
 ## 12. Open questions
 
 - Game title — `zombie_shooter` is the working name only.
-- Creature design direction (Daniel's call, at roadmap pass 7 via creature-forge).
-- Whether ammo/reload ever enters (classic wave-shooter pressure lever).
+- **Wave-mode kill scoring** — zombie kills still award nothing; headshots
+  (pass 7b) give the obvious identity (headshot bonus) whenever decided.
+- Reload mode scope — currently BOTH modes; provisional (Daniel accepted in
+  play but never explicitly ruled both-vs-Waves-only).
+- ~~Creature design direction~~ — **RESOLVED 2026-07-12**: Direction A,
+  "the Shambler" + glowing eyes (changelog v3.0).
+- ~~Whether ammo/reload ever enters~~ — **RESOLVED 2026-07-12**: yes, pass 9
+  (changelog v2.11).
+- **Banked ideas:** dismemberment (Daniel, 2026-07-12 — builds on the 7b part
+  tags + per-mesh limbs; casing-tumble physics as the motion reference);
+  the maze arena (Stage 4 row above).
 
 ---
 
@@ -275,3 +312,6 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v2.7 (threat pass, 5b, pick B): zombie telegraphed swipe (windup 300 ms arms-rear tell → strike lands damage → recover; cooldown 1200 ms start-to-start, suite-asserted ≥ phase sum); pinned — a hit CANCELS an in-progress attack and the cooldown keeps running; player = 5 arcade hits (hearts HUD), red vignette + 120 ms camera kick per hit; GAMEOVER state (kills + survival time, Try Again, Quit); waves kills/time counters live in main until the pass-6 wave manager absorbs them.*
 *2026-07-11 — v2.8 (wave manager, pass 6): cleared-based waves — intermission (2.5 s, "WAVE N" banner, first one waits for the first PLAYING frame so it never collides with the 3-2-1) → staggered spawns (800 ms gaps, 5 spawn points cycled from a random offset) → all dead → next; `waveTable.js` data (5 hand-tuned waves + endless EXTEND formula, speed capped ×1.4, suite-pinned relatively); per-spawn speed multiplier; O(n²) pairwise crowd separation (0.9 m); kills/time/wave absorbed into `waves.js`; enemy SPAWN moved out of the registry (arena property); pooling DEFERRED until a measured frame drop.*
 *2026-07-11 — v2.9 (movement, Stage 3 pulled forward before pass 7): camera-relative WASD (MEASURED vs r185: forward = (−sinY, −cosY)); normalized diagonals; arena clamp (WALL_MARGIN 0.6); player-vs-zombie circle resolve (0.3 + 0.45 — walking through the mob would void being surrounded); stuck-key guard clears WASD on lock loss; the strike now RANGE-CHECKS at the damage moment — backing out of reach makes it whiff (movement is defence); `movement.js` pure + suite Section 9. Pass-7 source relocated: creature-forge skill LOST → ExperimentProject repo `sdf-blend-shell/` (see §2 note).*
+*2026-07-12 — v2.10 (atmosphere, pass 8.1–8.4): perimeter fog bank (fixed layered curtains hugging the walls, per-wall depths, canvas-gradient texture, Waves-only) + zombie spawn fade-in (registry SPAWN.FADE_MS 600, kill mid-fade snaps opaque); Waves whole-arena distance murk (FOG.WAVES, Daniel-tuned to NEAR 3 / FAR 13 — tension over visibility, flankers appear unannounced BY DESIGN); blood (pooled cube bursts at the exact raycast point sprayed off the ray, kill eruption + floor pools 8 s linger / 1 s fade, 3-blob CSS screen splatter on player damage, hard caps 64/24); brass casings (muzzle-anchored — PORT_FWD −0.45 after a camera-space sign fix, tumble, one dampened bounce, 3 s linger, cap 40); suite gained the fog-coverage invariant (every spawn point inside a bank) and the pool/casing pure timelines. Audio remains the deferred tail of pass 8.*
+*2026-07-12 — v2.11 (reload, pass 9 — resolves the §12 ammo question): magazine 12 (4 kills at zombie HP 3), unlimited reserve; R reloads manually, an empty click auto-reloads; RELOAD_MS 1200 EQUALS the zombie attack cooldown on purpose (reloading in melee range risks a hit); firing blocked while reloading, movement free; gun-dip sine telegraph (GUN.RELOAD_DIP, position.y only — recoil owns z/rotation); bottom-right `N / 12` counter, red at ≤ LOW_AT 3; reload ticks ONLY in PLAYING (pause freezes it mid-dip); pure rules in `game/ammo.js`, suite Section 10. Applies in BOTH modes — provisional; pre-pass-9 Range personal bests were earned under infinite ammo.*
+*2026-07-12 — v3.0 (CREATURE, pass 7 complete — 7a body/gait, 7b hitboxes, 7c flinch): the SDF pipeline was NOT adopted (ExperimentProject demoted — halted research, grain of salt; Daniel prefers this look); pass 7 became anatomy + hitboxes + springs. **The Shambler** (Direction A + glowing eyes): registry-driven body (`BODY` block — a future enemy type is pure data) — oversized forward-jutting head, hanging jaw, hunched chest, two-segment arms/legs (joints at 55%), dark feet, unlit fog-free amber eyes that appear in the murk before the body. Gait converged over 8 browser rounds (the normal shape of feel work — LESSONS): stride phase drives everything; good left leg steps (lagged knee pulse), bad right leg PINNED — trails, shin locked in a toe-scrape, body rolls onto the good side and SINKS once per stride (BOB_AMP is a dip, not a bob); sway stride-locked (SWAY_FREQ must stay BOB_FREQ/2); idle breathing is an integrated per-enemy phase (scaling accumulated phase caused the shot/strike shake — LESSONS); LIMP is the one limp knob. Attack is an overhead raise-and-slam with elbows extending through the strike. World-freeze fix: enemies/FX simulate only in PLAYING (zombies no longer advance through a resume 3-2-1). Hitboxes: every mesh part-tagged; HITBOX table HEAD 3 / TORSO 1 / LIMB 0.5 (fractional HP; headshot one-shots + double burst; untagged falls back to torso — suite-guarded). Flinch: ported `secondOrder.js` spring (provenance header; OUR suite Section 12 proves the behaviors), hits kick a squash toward the feet (kick→peak ≈ ×0.022 at f5 ζ0.4; Daniel-tuned KICK 2). Suite at 24 modules / 190 asserts, Sections 11 (body geometry, measured headless) + 12 (springs) new. Dismemberment banked (§12).*
