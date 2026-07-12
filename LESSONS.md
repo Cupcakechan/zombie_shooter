@@ -74,3 +74,49 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: dev-method candidate — after any paste-in edit, run the suite
   BEFORE playing (testing step 1 exists precisely for this class); a
   diagnostic signature earns its keep the second time it fires.
+
+## 2026-07-12 — camera-space sign flip put the ejection port behind the gun
+
+- What broke / what happened: brass casings visibly popped out of the gun's
+  REAR. The port was computed as `OFFSET_Z + PORT_FWD` with `PORT_FWD: 0.2` —
+  but camera space runs **−Z forward**, so a positive "forward" offset walked
+  the port backward toward the eye. The config comment said "toward the
+  muzzle" while the sign did the opposite. Caught by Daniel in play; no check
+  could have seen it.
+- Root cause: a signed offset in a frame whose forward axis is negative reads
+  naturally and points backward; the value was derived by feel instead of
+  read from the geometry it claimed to match.
+- Verification gap it exposed: FX anchor points aren't tied to the geometry
+  they reference — the true muzzle position already existed as a literal in
+  gun.js (`flash.position` at gun-local `(0, 0.03, -0.45)`) and the port
+  should have been read from it, not re-invented.
+- Plug shipped: port re-anchored to the measured muzzle-flash point
+  (`PORT_UP: 0.03`, `PORT_FWD: -0.45`), sign convention documented next to
+  the value; handoff MEASURED list gains the frame convention (−Z forward,
+  "forward" offsets are negative).
+- Route: dev-method / html-game.md candidate — *when placing FX relative to
+  existing geometry, read the anchor from the geometry's source file; never
+  re-derive by feel. The sign convention of the frame goes in the comment
+  beside the value.*
+
+## 2026-07-12 — Claude-side: `git pull` aborts on sandbox scratch copies but prints `Updating x..y`
+
+- What broke / what happened: twice in one session, `git pull` in Claude's
+  working clone ABORTED on untracked-file collisions — the delivery files
+  Claude had applied locally for testing are, by construction, the same files
+  arriving in Daniel's next push — while still printing an optimistic
+  `Updating old..new` line. Both times the existing tip-verification rule
+  (`git log -1` + grep one changed value) caught the stale tree before any
+  work built on it.
+- Root cause: applying deliveries in the clone for suite runs guarantees a
+  collision with the very push that ships them; pull's abort output is easy
+  to misread under tail-truncation.
+- Verification gap it exposed: none new — the handoff's "a pull can abort and
+  still print Updating x..y" rule worked as designed; but the recovery was
+  re-derived ad hoc the first time.
+- Plug shipped: session-hygiene rule — after any delivery, Claude's clone
+  never `git pull`s; it always runs `git fetch origin && git reset --hard
+  origin/main`, then verifies the tip, greps one value known to have changed,
+  and confirms the key docs still exist.
+- Route: dev-method candidate (session-hygiene / git section) — *a clone that
+  applies deliveries locally must sync by fetch+reset, never pull.*
