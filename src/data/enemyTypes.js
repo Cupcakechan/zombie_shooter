@@ -34,8 +34,8 @@ export const ENEMY_TYPES = {
       HAND:  { SIZE: 0.16 },
     },
     ANIM: {
-      BOB_AMP: 0.06,      // metres of vertical bob
-      BOB_FREQ: 2.6,      // radians per metre WALKED — stride-locked; ~1 step/s: long slow lurching strides (7a.4)
+      BOB_AMP: 0.05,      // metres of once-per-stride DIP onto the bad leg (7a.6 — was a symmetric bob)
+      BOB_FREQ: 2.6,      // stride phase, radians per metre WALKED — drives legs, knees, and the dip together
       SWAY_AMP: 0.10,     // radians of side-to-side roll
       SWAY_FREQ: 1.3,     // MUST stay BOB_FREQ / 2: one roll per step, phase-locked to the stride
       IDLE_SWAY_FREQ: 0.0018, // radians per ms — keeps a STOPPED zombie subtly alive

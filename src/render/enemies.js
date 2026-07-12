@@ -322,7 +322,16 @@ export function updateEnemies(dtMs, playerPos) {
     // stride stays consistent if WALK_SPEED is retuned; sway blends in a slow
     // time term so a stopped zombie still breathes instead of freezing.
     const A = type.ANIM;
-    group.position.y = Math.abs(Math.sin(rec.walked * A.BOB_FREQ)) * A.BOB_AMP;
+    // Stride phase drives everything below (legs, knees, the dip) so the
+    // gait stays coherent under any retune.
+    const p = rec.walked * A.BOB_FREQ;
+    // The limp dip (7a.6): the old symmetric |sin| bob VAULTED the body over
+    // each step — at slow cadence that read as skipping. An injured walk
+    // does the opposite: the body stays level and DROPS once per stride as
+    // weight lands on the bad right leg (= while the good left leg swings).
+    // BOB_AMP is the dip depth; legBlend keeps a standing zombie at 0.
+    group.position.y =
+      -A.BOB_AMP * Math.max(0, Math.sin(p - Math.PI / 2)) * rec.legBlend;
     // Sway is stride-locked while walking (SWAY_FREQ = half the step
     // frequency rolls the body onto each planted foot, in phase forever);
     // the IDLE time term breathes ONLY when stopped — while walking it used
@@ -340,7 +349,6 @@ export function updateEnemies(dtMs, playerPos) {
     // shuffle-crouch. max(0,·) keeps knees from ever bending forward.
     // Guarded: an old parts map without legs/shins simply keeps them still.
     if (rec.parts.legL && rec.parts.legR) {
-      const p = rec.walked * A.BOB_FREQ;
       const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
       const limp = A.LIMP ?? 0;
       rec.parts.legL.rotation.x = swing;
