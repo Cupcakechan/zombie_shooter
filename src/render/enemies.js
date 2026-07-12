@@ -327,6 +327,7 @@ export function updateEnemies(dtMs, playerPos) {
     // stride stays consistent if WALK_SPEED is retuned; sway blends in a slow
     // time term so a stopped zombie still breathes instead of freezing.
     const A = type.ANIM;
+    const limp = A.LIMP ?? 0;
     // Stride phase drives everything below (legs, knees, the dip) so the
     // gait stays coherent under any retune.
     const p = rec.walked * A.BOB_FREQ;
@@ -341,8 +342,12 @@ export function updateEnemies(dtMs, playerPos) {
     // INTEGRATED phase (rate scaled by stillness) — continuous by
     // construction, so blend transitions can never kick the body (7a.7).
     rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
+    // Weight lives on the GOOD left leg (7a.8): a constant roll bias on top
+    // of the sway — positive rotation.z tips the top toward −X, the good
+    // side. 0.16 rad at LIMP 1 is structural; LIMP scales it.
     group.rotation.z =
-      Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * A.SWAY_AMP;
+      Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * A.SWAY_AMP
+      + limp * 0.16 * rec.legBlend;
     group.rotation.x = A.LEAN;
 
     // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
@@ -354,25 +359,22 @@ export function updateEnemies(dtMs, playerPos) {
     // Guarded: an old parts map without legs/shins simply keeps them still.
     if (rec.parts.legL && rec.parts.legR) {
       const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
-      const limp = A.LIMP ?? 0;
       rec.parts.legL.rotation.x = swing;
-      // The bad leg barely swings AND trails behind (7a.5): reduced hip
-      // amplitude plus a constant backward offset — it drags rather than
-      // steps. The 0.25 rad full-limp trail is structural; LIMP stays the
-      // one knob (it scales the trail, the hip loss, and the knee below).
-      rec.parts.legR.rotation.x =
-        -swing * (1 - limp) + limp * 0.25 * rec.legBlend;
+      // LITERAL drag (7a.8): the bad leg never steps — no swing component at
+      // all. It PINS at a backward trail and gets pulled along by the body.
+      rec.parts.legR.rotation.x = limp > 0
+        ? limp * 0.4 * rec.legBlend
+        : -swing;
       if (rec.parts.shinL && rec.parts.shinR) {
         const KNEE_LAG = Math.PI / 2;
         const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
         rec.parts.shinL.rotation.x =
           (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
-        // The DRAG (7a.7): the bad shin doesn't pulse at all — it locks at a
-        // constant backward cock (0.5 rad at LIMP 1, structural) so the toe
-        // points down and scrapes along as the body pulls the leg. LIMP
-        // remains the one knob: hip loss, trail, and this cock all scale.
+        // The dragging shin (7a.8): locked at a deep backward cock — with
+        // the pinned thigh above, the toe points down and scrapes the
+        // ground as the body pulls the whole leg. 0.8 rad at LIMP 1.
         rec.parts.shinR.rotation.x =
-          (A.KNEE_REST ?? 0) + limp * 0.5 * rec.legBlend;
+          (A.KNEE_REST ?? 0) + limp * 0.8 * rec.legBlend;
       }
     }
 
