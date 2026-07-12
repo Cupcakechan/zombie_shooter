@@ -19,6 +19,9 @@ import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
   getEnemyHittables, getLivingPositions, damageEnemy,
 } from './render/enemies.js';
+import {
+  initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
+} from './render/bloodFX.js';
 import { computeMove, clampToArena, resolveCircleObstacles } from './game/movement.js';
 import { initShooting } from './game/shooting.js';
 import {
@@ -36,7 +39,7 @@ import {
   initHud, showForState, flashLockHint,
   setScore, setMultiplier, setCountdown, setTimer,
   setHearts, setWave, setKills, showWaveBanner,
-  flashDamage, showGameOver, showResults,
+  flashDamage, flashBloodSplatter, showGameOver, showResults,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -95,6 +98,7 @@ function handlePlayerHit(damage) {
   damagePlayer(damage);
   setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
   flashDamage();
+  flashBloodSplatter();
   shakeT = CONFIG.PLAYER.DAMAGE_SHAKE_MS;
   if (isDead()) setState(States.GAMEOVER);
 }
@@ -102,11 +106,18 @@ function handlePlayerHit(damage) {
 // — Targets + enemies: modules initialised empty-handed; what actually
 // spawns is decided per-mode in the COUNTDOWN enter handler below.
 initTargets(scene);
+initBloodFX(scene);
 initEnemies(scene, {
   onPlayerHit: handlePlayerHit,
-  onEnemyKilled: () => {
+  onEnemyKilled: (typeId, pos) => {
     notifyKill();
     setKills(getKills());
+    // The kill payoff: a floor stain under the body + an upward eruption
+    // (no ray direction on purpose — a fountain reads as the finisher).
+    if (pos) {
+      spawnPool(pos.x, pos.z);
+      spawnBurst({ x: pos.x, y: 1.1, z: pos.z }, null, CONFIG.BLOOD.KILL_PARTICLES);
+    }
   },
 });
 
@@ -133,9 +144,12 @@ initShooting({
   camera,
   getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
   canFire: () => getState() === States.PLAYING,
-  onHit: (mesh) => {
+  onHit: (mesh, point, rayDir) => {
     kick();
     if (mesh.userData.kind === 'enemy') {
+      // Burst first: damageEnemy may start the death, and the killing-blow
+      // spray should erupt from where the bullet actually landed.
+      if (point) spawnBurst(point, rayDir, CONFIG.BLOOD.HIT_PARTICLES);
       damageEnemy(mesh);
       return;
     }
@@ -203,6 +217,7 @@ onEnter(States.COUNTDOWN, (prev) => {
   if (fresh) {
     resetScoring();
     resetEnemies();
+    resetBloodFX(); // stains and droplets belong to the round that made them
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
@@ -314,6 +329,7 @@ renderer.setAnimationLoop(() => {
     updateTargets(dtMs); // pops may finish during a resume countdown
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
     updateEnemies(dtMs, camera.position);
+    updateBloodFX(dtMs); // droplets keep falling through a resume countdown
   }
   if (st === States.PLAYING) {
     if (mode === 'range') setTimer(getRemainingS());

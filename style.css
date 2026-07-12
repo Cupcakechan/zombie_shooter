@@ -58,6 +58,42 @@ body {
   100% { opacity: 0; }
 }
 
+/* — Blood splatter (pass 8.3): three code-drawn blobs near the screen edges,
+   flashed on player damage. Always in the DOM, invisible until .flash runs;
+   the container is rotated randomly from JS so hits vary. pointer-events
+   off — same rule as the vignette, damage feedback must never eat a click. */
+#blood-splatter {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#blood-splatter.flash {
+  animation: splatter-fade 1100ms ease-out;
+}
+
+#blood-splatter .blob {
+  position: absolute;
+  border-radius: 50%;
+  /* An off-centre radial gradient reads as a splat, not a circle. */
+  background: radial-gradient(circle at 35% 40%,
+    rgba(122, 18, 18, 0.85) 0%,
+    rgba(122, 18, 18, 0.55) 35%,
+    rgba(122, 18, 18, 0) 70%);
+  filter: blur(1px);
+}
+
+#blood-splatter .b1 { width: 34vmin; height: 30vmin; top: -6vmin;   left: 8vmin; }
+#blood-splatter .b2 { width: 26vmin; height: 28vmin; bottom: -8vmin; right: 6vmin; }
+#blood-splatter .b3 { width: 18vmin; height: 16vmin; top: 40%;      left: -5vmin; }
+
+@keyframes splatter-fade {
+  0%   { opacity: 1; }
+  25%  { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
 /* — HUD bars (Range top bar and Waves top bar share the layout) —
    pointer-events off: the HUD must never eat a click. */
 #hud,

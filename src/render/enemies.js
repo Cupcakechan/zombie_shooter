@@ -179,7 +179,14 @@ function startDeath(rec) {
   // Zero the shamble pose so the fall pivots cleanly around the feet.
   rec.group.rotation.z = 0;
   rec.group.position.y = 0;
-  if (onEnemyKilledCb) onEnemyKilledCb(rec.type.id);
+  // Position rides along so FX can place a floor pool under the kill —
+  // an extra arg, so existing id-only listeners are unaffected.
+  if (onEnemyKilledCb) {
+    onEnemyKilledCb(rec.type.id, {
+      x: rec.group.position.x,
+      z: rec.group.position.z,
+    });
+  }
 }
 
 function setFlash(rec, intensity) {

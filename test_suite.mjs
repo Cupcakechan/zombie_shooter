@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 19;
+const MIN_EXPECTED_MODULES = 20;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -370,6 +370,13 @@ try {
     'COLORS.GRID_MAJOR': 'number', 'COLORS.GRID_MINOR': 'number',
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
     'STORAGE_KEY': 'string',
+    'BLOOD.HIT_PARTICLES': 'number', 'BLOOD.KILL_PARTICLES': 'number',
+    'BLOOD.PARTICLE_SIZE': 'number', 'BLOOD.PARTICLE_SPEED': 'number',
+    'BLOOD.PARTICLE_LIFE_MS': 'number', 'BLOOD.GRAVITY': 'number',
+    'BLOOD.POOL_RADIUS': 'number', 'BLOOD.POOL_LINGER_MS': 'number',
+    'BLOOD.POOL_FADE_MS': 'number', 'BLOOD.COLOR': 'number',
+    'BLOOD.POOL_COLOR': 'number', 'BLOOD.MAX_PARTICLES': 'number',
+    'BLOOD.MAX_POOLS': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
     'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
@@ -542,6 +549,18 @@ try {
     deathPhase(D.FALL_MS + D.LIE_MS + D.FADE_MS / 2, D).k, 0.5);
   assertTrue('section6', 'timeline ends in done',
     deathPhase(D.FALL_MS + D.LIE_MS + D.FADE_MS, D).phase === 'done');
+
+  // Blood-pool timeline (pass 8.3): same relative-boundary convention as the
+  // death timeline — retuning LINGER/FADE never breaks these.
+  const { poolPhase } = await import(pathToFileURL(join('src', 'render', 'bloodFX.js')).href);
+  const { CONFIG: BCFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const PB = BCFG.BLOOD;
+  assertTrue('section6', 'pool t=0 is solid at full opacity',
+    poolPhase(0, PB.POOL_LINGER_MS, PB.POOL_FADE_MS).opacity === 1);
+  assertNear('section6', 'pool fade midpoint opacity',
+    poolPhase(PB.POOL_LINGER_MS + PB.POOL_FADE_MS / 2, PB.POOL_LINGER_MS, PB.POOL_FADE_MS).opacity, 0.5);
+  assertTrue('section6', 'pool past fade is done',
+    poolPhase(PB.POOL_LINGER_MS + PB.POOL_FADE_MS, PB.POOL_LINGER_MS, PB.POOL_FADE_MS).phase === 'done');
 } catch (err) {
   failures.push({ file: 'section6', err });
   console.log(`  FAIL   section 6 threw: ${err.message}`);

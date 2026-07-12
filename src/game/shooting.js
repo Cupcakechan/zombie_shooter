@@ -32,7 +32,10 @@ export function initShooting({ camera, getHittables, onHit, onMiss, canFire } = 
     const hits = raycaster.intersectObjects(getHittables(), false);
 
     if (hits.length > 0) {
-      if (onHit) onHit(hits[0].object);
+      // The intersection carries the exact world-space hit point; the ray
+      // direction lets FX spray away from the bullet's travel. Extra args —
+      // existing single-arg callers are unaffected.
+      if (onHit) onHit(hits[0].object, hits[0].point, raycaster.ray.direction);
     } else if (onMiss) {
       // Unused this pass — the scoring pass subscribes here for streak resets.
       onMiss();

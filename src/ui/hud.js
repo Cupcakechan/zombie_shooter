@@ -31,6 +31,7 @@ export function initHud({
     countdown: 'countdown',
     waveBanner: 'wave-banner',
     vignette: 'damage-vignette',
+    splatter: 'blood-splatter',
     btnRange: 'btn-range',
     btnWaves: 'btn-waves',
     btnAgain: 'btn-again',
@@ -174,6 +175,16 @@ export function flashDamage() {
   els.vignette.classList.remove('flash');
   void els.vignette.offsetWidth;
   els.vignette.classList.add('flash');
+}
+
+// Screen blood splatter on taking damage (pass 8.3): same restart-the-CSS-
+// animation trick as the vignette; a random rotation each hit so repeated
+// hits don't paint an identical pattern.
+export function flashBloodSplatter() {
+  els.splatter.style.transform = `rotate(${Math.floor(Math.random() * 360)}deg)`;
+  els.splatter.classList.remove('flash');
+  void els.splatter.offsetWidth;
+  els.splatter.classList.add('flash');
 }
 
 export function showGameOver({ kills, wave, seconds }) {

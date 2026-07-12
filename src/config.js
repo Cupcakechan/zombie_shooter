@@ -76,7 +76,7 @@ FOG: {
     // Waves-mode distance fog (pass 8.2): pulled way in so the WHOLE arena
     // sits in murk — the back wall (30 m) is fully swallowed and zombies
     // resolve out of the haze as they close. Range keeps NEAR/FAR above.
-    WAVES: { NEAR: 1, FAR: 10 },
+    WAVES: { NEAR: 1, FAR: 13 },
     BANK: {
       HEIGHT: 5, // curtain height — matches RANGE.WALL_HEIGHT
       LAYERS: 3, // translucent curtains per wall
@@ -96,6 +96,23 @@ FOG: {
     HEMI_SKY: 0x89a08c,
     HEMI_GROUND: 0x0e120f,
     SUN: 0xfff1d6,
+  },
+
+// — Blood (pass 8.3): world bursts + floor pools; screen splatter is CSS —
+  BLOOD: {
+    HIT_PARTICLES: 10,      // burst size for a landed shot
+    KILL_PARTICLES: 22,     // extra burst on the killing blow
+    PARTICLE_SIZE: 0.06,    // metres — little cubes, matching the blocky look
+    PARTICLE_SPEED: 2.2,    // m/s initial spray speed
+    PARTICLE_LIFE_MS: 600,  // shrink-to-nothing lifetime
+    GRAVITY: 9,             // m/s² pulling droplets down
+    POOL_RADIUS: 0.4,       // metres — floor stain size (randomly scaled ±)
+    POOL_LINGER_MS: 8000,   // stain holds fully visible this long
+    POOL_FADE_MS: 1000,     // then fades out over this
+    COLOR: 0x7a1212,        // droplet red
+    POOL_COLOR: 0x4a0d0d,   // stain dark red — reads as dried
+    MAX_PARTICLES: 64,      // hard pool caps: worst case cost is fixed
+    MAX_POOLS: 24,
   },
 
   // — Persistence (consumed by the results pass) —
