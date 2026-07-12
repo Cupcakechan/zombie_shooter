@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 23;
+const MIN_EXPECTED_MODULES = 24;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -506,6 +506,7 @@ try {
     'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE', 'ANIM.LEG_SWING',
     'ANIM.KNEE_REST', 'ANIM.KNEE_BEND', 'ANIM.ELBOW_BEND', 'ANIM.LIMP',
     'COMBAT.FLINCH_MS', 'COMBAT.STAGGER_MS', 'COMBAT.KNOCKBACK',
+    'COMBAT.SQUASH_F', 'COMBAT.SQUASH_ZETA', 'COMBAT.SQUASH_KICK',
     'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
     'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
     'ATTACK.REAR_RAD', 'ATTACK.THRUST_RAD',
@@ -882,6 +883,70 @@ try {
 } catch (err) {
   failures.push({ file: 'section11', err });
   console.log(`  FAIL   section 11 threw: ${err.message}`);
+}
+
+// ————— Section 12: spring behaviors (pass 7c) —————
+// secondOrder.js is PORTED from halted research (see its provenance header)
+// — nothing trusted on provenance. These are OUR probes of the claims the
+// flinch relies on. All simulated at 60 fps in Node.
+
+console.log('');
+console.log('— Section 12: spring behaviors —');
+try {
+  const { createSecondOrder } = await import(pathToFileURL(join('src', 'game', 'secondOrder.js')).href);
+  const DT = 1 / 60;
+  const sim = (s, target, frames) => {
+    let peak = -Infinity, trough = Infinity, last = 0;
+    for (let i = 0; i < frames; i++) {
+      last = s.update(target, DT);
+      if (last > peak) peak = last;
+      if (last < trough) trough = last;
+    }
+    return { peak, trough, last };
+  };
+
+  // Critically damped step: approaches 1, never overshoots.
+  const crit = sim(createSecondOrder(5, 1, 1, 0), 1, 180);
+  assertTrue('section12', `critical damping never overshoots (peak ${crit.peak.toFixed(4)})`,
+    crit.peak <= 1.0001);
+  assertTrue('section12', `critical damping settles (last ${crit.last.toFixed(4)})`,
+    Math.abs(crit.last - 1) < 0.01);
+
+  // Underdamped step: overshoots, then settles — the flinch look.
+  const under = sim(createSecondOrder(5, 0.4, 1, 0), 1, 240);
+  assertTrue('section12', `underdamped overshoots (peak ${under.peak.toFixed(3)})`,
+    under.peak > 1.05);
+  assertTrue('section12', 'underdamped still settles',
+    Math.abs(under.last - 1) < 0.01);
+
+  // Kick: lurches up, rebounds below zero (the stretch), settles back to 0.
+  const k = createSecondOrder(5, 0.4, 1, 0);
+  k.kick(11.5);
+  const kick = sim(k, 0, 240);
+  assertTrue('section12', `kick peaks near the measured 0.25 (${kick.peak.toFixed(3)})`,
+    kick.peak > 0.2 && kick.peak < 0.3);
+  assertTrue('section12', `kick rebounds into stretch (trough ${kick.trough.toFixed(3)})`,
+    kick.trough < -0.02);
+  assertTrue('section12', 'kick settles back to zero', Math.abs(kick.last) < 0.01);
+
+  // Pause safety: dt 0 holds exactly; no drift over many held frames.
+  const pz = createSecondOrder(5, 0.4, 1, 0);
+  pz.kick(5);
+  pz.update(0, DT);
+  const held = pz.value;
+  for (let i = 0; i < 100; i++) pz.update(0, 0);
+  assertNear('section12', 'dt=0 holds the value exactly', pz.value, held);
+
+  // Undersampling: a stiff spring at a huge dt stays finite (the clamp).
+  const stiff = createSecondOrder(20, 0.3, 1, 0);
+  let finite = true;
+  for (let i = 0; i < 60; i++) {
+    if (!Number.isFinite(stiff.update(1, 0.25))) finite = false;
+  }
+  assertTrue('section12', 'stability clamp survives 4 Hz undersampling of a 20 Hz spring', finite);
+} catch (err) {
+  failures.push({ file: 'section12', err });
+  console.log(`  FAIL   section 12 threw: ${err.message}`);
 }
 
 // ————— Report —————

@@ -58,6 +58,11 @@ export const ENEMY_TYPES = {
       FLINCH_MS: 100,     // red flash on taking a hit
       STAGGER_MS: 200,    // movement pause per hit
       KNOCKBACK: 0.15,    // metres shoved away from the player per hit
+      // Hit-flinch squash spring (pass 7c) — MEASURED at 60 fps: kick 11.5
+      // gives a 25% squash peak, 5% stretch rebound, settled in ~350 ms.
+      SQUASH_F: 5,        // spring frequency, Hz
+      SQUASH_ZETA: 0.4,   // underdamped: the overshoot IS the flinch look
+      SQUASH_KICK: 11.5,  // velocity impulse per hit
     },
     ATTACK: {             // telegraphed swipe (player-forgiving convention)
       RANGE_SLACK: 0.5,   // attacks within STOP_DISTANCE + this (covers knockback drift)

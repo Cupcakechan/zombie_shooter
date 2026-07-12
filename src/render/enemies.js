@@ -8,6 +8,7 @@ import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
 import { WAVES } from '../data/waveTable.js';
 import { buildBody } from './enemyBody.js';
+import { createSecondOrder } from '../game/secondOrder.js';
 
 // ————— Pure math (suite-tested) —————
 
@@ -85,6 +86,12 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // dozens of radians whenever legBlend moved — the whole-body shake on
     // every shot and strike. An integral can't jump.
     idlePhase: 0,
+    // Hit-flinch squash spring (7c): kicked in damageEnemy, applied to the
+    // group scale each frame. Guarded params — a type without them gets a
+    // sane spring that's simply never kicked.
+    squash: createSecondOrder(
+      type.COMBAT.SQUASH_F ?? 5, type.COMBAT.SQUASH_ZETA ?? 0.4, 1, 0,
+    ),
   };
   // Emerging from the fog bank: start invisible; the update loop fades in.
   if (rec.spawnFadeT > 0) {
@@ -147,6 +154,7 @@ function startDeath(rec) {
   // Zero the shamble pose so the fall pivots cleanly around the feet.
   rec.group.rotation.z = 0;
   rec.group.position.y = 0;
+  rec.group.scale.set(1, 1, 1); // the flinch dies with it — corpses fall un-squashed
   // Position rides along so FX can place a floor pool under the kill —
   // an extra arg, so existing id-only listeners are unaffected.
   if (onEnemyKilledCb) {
@@ -192,6 +200,7 @@ export function damageEnemy(mesh) {
   rec.hp -= partDamage(rec.type, part);
   rec.flashT = rec.type.COMBAT.FLINCH_MS;
   rec.staggerT = rec.type.COMBAT.STAGGER_MS;
+  rec.squash.kick(rec.type.COMBAT.SQUASH_KICK ?? 0); // the physical flinch
 
   // Counterplay (pinned 5b): a hit CANCELS an in-progress attack — including
   // mid-windup — and the cooldown set at attack start keeps running, so the
@@ -341,6 +350,12 @@ export function updateEnemies(dtMs, playerPos) {
     // time term so a stopped zombie still breathes instead of freezing.
     const A = type.ANIM;
     const limp = A.LIMP ?? 0;
+    // Hit-flinch squash (7c): the spring compresses the body toward the
+    // feet (group origin) and rebounds with a slight stretch. Clamped so a
+    // rapid mag-dump can never scale through zero; width compensates half
+    // the compression for a volume-ish read.
+    const sq = Math.max(-0.2, Math.min(0.5, rec.squash.update(0, dtMs / 1000)));
+    group.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
     // Stride phase drives everything below (legs, knees, the dip) so the
     // gait stays coherent under any retune.
     const p = rec.walked * A.BOB_FREQ;
