@@ -172,12 +172,24 @@ function setArms(rec, rotX) {
   rec.parts.armR.rotation.x = rotX;
 }
 
-// Returns true if the hit landed on a living enemy.
+// Pure lookup, exported for the suite: which damage a part deals for a type.
+// Untagged meshes and missing tables fall back to torso-tier 1 — a tagging
+// slip must never zero the gun.
+export function partDamage(type, part) {
+  const HB = type.HITBOX;
+  if (part === 'head') return HB?.HEAD ?? 1;
+  if (part === 'limb') return HB?.LIMB ?? 1;
+  return HB?.TORSO ?? 1;
+}
+
+// Returns null on a dead/unknown mesh; on a landed hit returns
+// { part, killed } — truthy, so old boolean-style callers keep working.
 export function damageEnemy(mesh) {
   const rec = byMesh.get(mesh);
-  if (!rec || rec.dying) return false;
+  if (!rec || rec.dying) return null;
 
-  rec.hp -= 1;
+  const part = mesh.userData.part || 'torso';
+  rec.hp -= partDamage(rec.type, part);
   rec.flashT = rec.type.COMBAT.FLINCH_MS;
   rec.staggerT = rec.type.COMBAT.STAGGER_MS;
 
@@ -192,8 +204,9 @@ export function damageEnemy(mesh) {
   rec.group.position.x -= Math.sin(yaw) * rec.type.COMBAT.KNOCKBACK;
   rec.group.position.z -= Math.cos(yaw) * rec.type.COMBAT.KNOCKBACK;
 
-  if (rec.hp <= 0) startDeath(rec);
-  return true;
+  const killed = rec.hp <= 0;
+  if (killed) startDeath(rec);
+  return { part, killed };
 }
 
 export function updateEnemies(dtMs, playerPos) {

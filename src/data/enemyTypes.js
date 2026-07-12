@@ -8,7 +8,14 @@
 export const ENEMY_TYPES = {
   proto_zombie: {
     id: 'proto_zombie',
-    HP: 3,                // hits to kill (any body part counts)
+    HP: 3,                // hits to kill (per-part damage below — pass 7b)
+    // Per-part damage (pass 7b): the skill layer. At HP 3 — head one-shots,
+    // torso is the reliable three-shot center mass, limb spray is punished.
+    HITBOX: {
+      HEAD: 3,
+      TORSO: 1,
+      LIMB: 0.5,
+    },
     BODY_RADIUS: 0.45,    // solid circle for player collision (walk-through-proof)
     WALK_SPEED: 1.2,      // m/s base — waves multiply this per waveTable.js
     STOP_DISTANCE: 2,     // m — where it halts and starts attacking

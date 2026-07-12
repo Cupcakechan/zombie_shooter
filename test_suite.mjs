@@ -488,6 +488,7 @@ try {
   // branch (b)) — extend this list when enemies gain required fields.
   const ENEMY_REQUIRED = [
     'HP', 'BODY_RADIUS', 'WALK_SPEED', 'STOP_DISTANCE',
+    'HITBOX.HEAD', 'HITBOX.TORSO', 'HITBOX.LIMB',
     'COLORS.SKIN', 'COLORS.CLOTH', 'COLORS.FEET', 'COLORS.EYES',
     'BODY.FOOT.W', 'BODY.FOOT.H', 'BODY.FOOT.D', 'BODY.FOOT.FWD',
     'BODY.LEG.W', 'BODY.LEG.LEN', 'BODY.LEG.D', 'BODY.LEG.X', 'BODY.LEG.KNEE_AT',
@@ -806,6 +807,30 @@ try {
   });
   assertTrue('section11', `lowest mesh point sits on the ground (${minY.toFixed(3)})`,
     Math.abs(minY) < 0.03);
+
+  // Hitbox coverage (7b): every mesh carries a VALID part tag — an untagged
+  // mesh silently deals torso damage, exactly the class the schemas catch.
+  const VALID_PARTS = new Set(['head', 'torso', 'limb']);
+  const partCounts = { head: 0, torso: 0, limb: 0 };
+  let untagged = 0;
+  group.traverse((c) => {
+    if (!c.isMesh) return;
+    if (VALID_PARTS.has(c.userData.part)) partCounts[c.userData.part] += 1;
+    else untagged += 1;
+  });
+  assertNear('section11', 'every mesh carries a valid part tag (untagged)', untagged, 0);
+  assertTrue('section11',
+    `all three tiers present (head ${partCounts.head}, torso ${partCounts.torso}, limb ${partCounts.limb})`,
+    partCounts.head >= 2 && partCounts.torso >= 2 && partCounts.limb >= 8);
+
+  // Damage tiers are exactly the registry's (pure lookup, fallback-guarded).
+  const { partDamage } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  assertNear('section11', 'head damage matches registry', partDamage(zb, 'head'), zb.HITBOX.HEAD);
+  assertNear('section11', 'torso damage matches registry', partDamage(zb, 'torso'), zb.HITBOX.TORSO);
+  assertNear('section11', 'limb damage matches registry', partDamage(zb, 'limb'), zb.HITBOX.LIMB);
+  assertNear('section11', 'untagged part falls back to torso tier',
+    partDamage(zb, undefined), zb.HITBOX.TORSO);
+  assertNear('section11', 'missing HITBOX table falls back to 1', partDamage({}, 'head'), 1);
 
   // The head LEADS: its world position is forward (+Z) of the group origin
   // and above the chest stack's midpoint.

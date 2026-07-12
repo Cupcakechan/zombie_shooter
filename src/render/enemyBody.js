@@ -21,6 +21,14 @@ export function buildBody(type) {
   const B = type.BODY;
   const group = new THREE.Group();
 
+  // Hitbox part tags (pass 7b): damageEnemy reads userData.part to pick the
+  // damage tier from the type's HITBOX table. Tag at creation, per mesh —
+  // an untagged mesh falls back to torso damage (guarded in enemies.js).
+  const tag = (mesh, part) => {
+    mesh.userData.part = part;
+    return mesh;
+  };
+
   const skin = new THREE.MeshStandardMaterial({ color: type.COLORS.SKIN, roughness: 0.9 });
   const cloth = new THREE.MeshStandardMaterial({ color: type.COLORS.CLOTH, roughness: 0.95 });
   const feetMat = new THREE.MeshStandardMaterial({ color: type.COLORS.FEET, roughness: 1.0 });
@@ -48,16 +56,16 @@ export function buildBody(type) {
   const shinGeo = new THREE.BoxGeometry(B.LEG.W * 0.92, shinLen + 0.04, B.LEG.D * 0.92);
   shinGeo.translate(0, -(shinLen + 0.04) / 2 + 0.02, 0); // slight overlap hides the knee join
 
-  const legL = new THREE.Mesh(thighGeo, cloth);
+  const legL = tag(new THREE.Mesh(thighGeo, cloth), 'limb');
   legL.position.set(-B.LEG.X, hipTop, 0);
-  const shinL = new THREE.Mesh(shinGeo, cloth);
+  const shinL = tag(new THREE.Mesh(shinGeo, cloth), 'limb');
   shinL.position.set(0, -thighLen, 0); // the knee
   shinL.rotation.x = type.ANIM.KNEE_REST;
   legL.add(shinL);
 
-  const legR = new THREE.Mesh(thighGeo.clone(), cloth);
+  const legR = tag(new THREE.Mesh(thighGeo.clone(), cloth), 'limb');
   legR.position.set(B.LEG.X, hipTop, 0);
-  const shinR = new THREE.Mesh(shinGeo.clone(), cloth);
+  const shinR = tag(new THREE.Mesh(shinGeo.clone(), cloth), 'limb');
   shinR.position.set(0, -thighLen, 0);
   shinR.rotation.x = type.ANIM.KNEE_REST;
   legR.add(shinR);
@@ -65,26 +73,26 @@ export function buildBody(type) {
 
   // Feet: dark ground anchors, toes forward, riding the shins.
   const footGeo = new THREE.BoxGeometry(B.FOOT.W, B.FOOT.H, B.FOOT.D);
-  const footL = new THREE.Mesh(footGeo, feetMat);
+  const footL = tag(new THREE.Mesh(footGeo, feetMat), 'limb');
   footL.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
   footL.rotation.x = -type.ANIM.KNEE_REST; // flat-footed under the shuffle bend
   shinL.add(footL);
-  const footR = new THREE.Mesh(footGeo.clone(), feetMat);
+  const footR = tag(new THREE.Mesh(footGeo.clone(), feetMat), 'limb');
   footR.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
   footR.rotation.x = -type.ANIM.KNEE_REST;
   shinR.add(footR);
 
   // Belly: the narrower lower torso the chest hunches over.
-  const belly = new THREE.Mesh(
+  const belly = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.BELLY.W, B.BELLY.H, B.BELLY.D), cloth,
-  );
+  ), 'torso');
   belly.position.set(0, bellyY, 0);
   group.add(belly);
 
   // Chest: wider, pushed forward and tilted — the question-mark spine.
-  const chest = new THREE.Mesh(
+  const chest = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.CHEST.W, B.CHEST.H, B.CHEST.D), cloth,
-  );
+  ), 'torso');
   chest.position.set(0, chestY, B.CHEST.FWD);
   chest.rotation.x = B.CHEST.HUNCH; // positive = top toward +Z = forward
   group.add(chest);
@@ -93,24 +101,24 @@ export function buildBody(type) {
   // face tilted up (negative X pitches the +Z face upward) — the lolling
   // under-the-brow stare. Jaw and eyes are CHILDREN so any future head
   // animation carries them for free.
-  const head = new THREE.Mesh(
+  const head = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.HEAD.W, B.HEAD.H, B.HEAD.D), skin,
-  );
+  ), 'head');
   head.position.set(0, headY, B.CHEST.FWD + B.HEAD.FWD);
   head.rotation.z = B.HEAD.COCK;
   head.rotation.x = B.HEAD.TILT;
   group.add(head);
 
-  const jaw = new THREE.Mesh(
+  const jaw = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.JAW.W, B.JAW.H, B.JAW.D), skin,
-  );
+  ), 'head');
   jaw.position.set(0, -(B.HEAD.H / 2 + B.JAW.DROP), B.JAW.FWD);
   head.add(jaw);
 
   const eyeGeo = new THREE.BoxGeometry(B.EYE.SIZE, B.EYE.SIZE, B.EYE.SIZE);
-  const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+  const eyeL = tag(new THREE.Mesh(eyeGeo, eyeMat), 'head');
   eyeL.position.set(-B.EYE.X, B.EYE.Y, B.HEAD.D / 2 + B.EYE.FWD);
-  const eyeR = new THREE.Mesh(eyeGeo.clone(), eyeMat);
+  const eyeR = tag(new THREE.Mesh(eyeGeo.clone(), eyeMat), 'head');
   eyeR.position.set(B.EYE.X, B.EYE.Y, B.HEAD.D / 2 + B.EYE.FWD);
   head.add(eyeL, eyeR);
 
@@ -126,28 +134,28 @@ export function buildBody(type) {
   const foreGeo = new THREE.BoxGeometry(B.ARM.W * 0.92, foreLen + 0.04, B.ARM.D * 0.92);
   foreGeo.translate(0, (foreLen + 0.04) / 2 - 0.02, 0); // overlap hides the elbow join
 
-  const armL = new THREE.Mesh(upperGeo, skin);
+  const armL = tag(new THREE.Mesh(upperGeo, skin), 'limb');
   armL.position.set(-B.ARM.X, B.ARM.Y, B.ARM.FWD);
   armL.rotation.x = B.ARM.REST_RAD;
-  const foreL = new THREE.Mesh(foreGeo, skin);
+  const foreL = tag(new THREE.Mesh(foreGeo, skin), 'limb');
   foreL.position.set(0, upperLen, 0); // the elbow
   foreL.rotation.x = type.ANIM.ELBOW_BEND;
   armL.add(foreL);
 
-  const armR = new THREE.Mesh(upperGeo.clone(), skin);
+  const armR = tag(new THREE.Mesh(upperGeo.clone(), skin), 'limb');
   armR.position.set(B.ARM.X, B.ARM.Y, B.ARM.FWD);
   armR.rotation.x = B.ARM.REST_RAD;
-  const foreR = new THREE.Mesh(foreGeo.clone(), skin);
+  const foreR = tag(new THREE.Mesh(foreGeo.clone(), skin), 'limb');
   foreR.position.set(0, upperLen, 0);
   foreR.rotation.x = type.ANIM.ELBOW_BEND;
   armR.add(foreR);
   group.add(armL, armR);
 
   const handGeo = new THREE.BoxGeometry(B.HAND.SIZE, B.HAND.SIZE, B.HAND.SIZE);
-  const handL = new THREE.Mesh(handGeo, skin);
+  const handL = tag(new THREE.Mesh(handGeo, skin), 'limb');
   handL.position.set(0, foreLen + B.HAND.SIZE / 2 - 0.06, 0);
   foreL.add(handL);
-  const handR = new THREE.Mesh(handGeo.clone(), skin);
+  const handR = tag(new THREE.Mesh(handGeo.clone(), skin), 'limb');
   handR.position.set(0, foreLen + B.HAND.SIZE / 2 - 0.06, 0);
   foreR.add(handR);
 

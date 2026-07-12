@@ -189,10 +189,16 @@ initShooting({
     consumeRound();
     setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
     if (mesh.userData.kind === 'enemy') {
-      // Burst first: damageEnemy may start the death, and the killing-blow
-      // spray should erupt from where the bullet actually landed.
-      if (point) spawnBurst(point, rayDir, CONFIG.BLOOD.HIT_PARTICLES);
-      damageEnemy(mesh);
+      // Damage first so the burst can size itself: a headshot sprays double
+      // (the reward has to READ). The kill eruption + pool fire inside via
+      // the onEnemyKilled callback, same frame.
+      const res = damageEnemy(mesh);
+      if (point) {
+        const n = res && res.part === 'head'
+          ? CONFIG.BLOOD.HIT_PARTICLES * 2
+          : CONFIG.BLOOD.HIT_PARTICLES;
+        spawnBurst(point, rayDir, n);
+      }
       return;
     }
     // hitTarget() can only refuse an already-popping sphere; hittables are
