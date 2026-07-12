@@ -46,6 +46,52 @@ export function turnToward(current, target, maxStep) {
   return current + Math.max(-maxStep, Math.min(maxStep, diff));
 }
 
+// The climb timeline (4.3b.2), pure in k ∈ [0,1]: REACH the sill (arms
+// rise to a plant), MOUNT it (body up, LEAD leg swings high over), DROP
+// inside (lead plants, the TRAIL leg — the Shambler's drag leg — hauls
+// over LATE, catching on the sill the way the limp promises). Returns
+// every rig channel plus h, the piecewise progress along the vault's
+// spatial anchors (from → sill-outer → sill-centre → landing). rest is
+// { REST, ELBOW, KNEE, LEAN, sillH } so the pose starts and ends EXACTLY
+// on the walk pose — the suite pins k=0/k=1 to it and the phase
+// boundaries to continuity, because a pop here reads as a glitch, not a
+// climb. Structural phase constants live here on purpose; promote one to
+// the registry only when a feel report names it.
+const CLIMB = { REACH_END: 0.25, MOUNT_END: 0.65 };
+const smooth = (t) => t * t * (3 - 2 * t); // smoothstep: eases both ends
+export function climbPose(k, rest) {
+  const { REST, ELBOW, KNEE, LEAN, sillH } = rest;
+  const PLANT = REST - 1.1; // shoulders at the sill plant, up-forward
+  if (k <= CLIMB.REACH_END) {
+    const t = smooth(k / CLIMB.REACH_END);
+    return {
+      h: 0.3 * t, y: 0, pitch: LEAN + 0.15 * t,
+      shoulder: REST + (PLANT - REST) * t, elbow: ELBOW * (1 - 0.7 * t),
+      hipL: 0, kneeL: KNEE, hipR: 0, kneeR: KNEE,
+    };
+  }
+  if (k <= CLIMB.MOUNT_END) {
+    const t = smooth((k - CLIMB.REACH_END) / (CLIMB.MOUNT_END - CLIMB.REACH_END));
+    return {
+      h: 0.3 + 0.3 * t, y: sillH * t, pitch: LEAN + 0.15 + 0.3 * t,
+      shoulder: PLANT + 0.6 * t, elbow: ELBOW * 0.3, // pressing: body rises past the hands
+      hipL: -1.3 * t, kneeL: KNEE + 1.2 * smooth(Math.min(1, t * 1.6)),
+      hipR: 0.3 * t, kneeR: KNEE + 0.95 * t, // the drag leg hangs, deep-bent
+    };
+  }
+  const t = smooth((k - CLIMB.MOUNT_END) / (1 - CLIMB.MOUNT_END));
+  const haul = smooth(Math.min(1, t / 0.6));       // the trail leg's LATE swing
+  const settle = smooth(Math.max(0, (t - 0.6) / 0.4)); // then everything lands
+  return {
+    h: 0.6 + 0.4 * t, y: sillH * (1 - t) * (1 - t), // accelerating drop
+    pitch: LEAN + 0.45 * (1 - t),
+    shoulder: (PLANT + 0.6) + (REST - (PLANT + 0.6)) * t, elbow: ELBOW * (0.3 + 0.7 * t),
+    hipL: -1.3 * (1 - t), kneeL: KNEE + 1.2 * (1 - t),
+    hipR: 0.3 - 1.1 * haul + 0.8 * settle, // over the sill late, then to rest (0.3−1.1+0.8 = 0)
+    kneeR: KNEE + 0.95 * (1 - haul * 0.5) - 0.475 * settle, // releases as it clears
+  };
+}
+
 // ————— Stateful enemy management —————
 
 let sceneRef = null;
@@ -364,18 +410,48 @@ export function updateEnemies(dtMs, playerPos) {
     // it stays HITTABLE, and hits kick the squash spring as usual; that
     // free-hit window is the price of window entry. Hits do not interrupt
     // the climb. Killed mid-vault → startDeath drops it back OUTSIDE.
+    // 4.3b.2: the float became a CLIMB — climbPose drives the whole rig
+    // through reach/mount/drop, and the body travels piecewise through
+    // the vault's spatial anchors (from → sill-outer → sill-centre →
+    // landing) instead of one straight lerp.
     if (rec.vault) {
       const v = rec.vault;
       v.t += dtMs;
       const k = Math.min(1, v.t / v.ms);
-      group.position.x = v.fromX + (v.toX - v.fromX) * k;
-      group.position.z = v.fromZ + (v.toZ - v.fromZ) * k;
-      // Feet arc over the sill; pitch forward at the top of the haul.
-      group.position.y = Math.sin(Math.PI * k) * v.peakY;
-      group.rotation.x = type.ANIM.LEAN + 0.35 * Math.sin(Math.PI * k);
+      const pose = climbPose(k, v.rest);
+      // h ∈ [0,1] runs through three equal-length segments of the anchor
+      // chain: [from→sill-outer], [sill-outer→sill-centre], [sill-centre→
+      // landing] at h 0–0.3–0.6–1.0 (climbPose emits those breakpoints).
+      let ax; let az; let bx; let bz; let seg;
+      if (pose.h <= 0.3) {
+        ax = v.fromX; az = v.fromZ; bx = v.sillX; bz = v.sillZ; seg = pose.h / 0.3;
+      } else if (pose.h <= 0.6) {
+        ax = v.sillX; az = v.sillZ; bx = v.midX; bz = v.midZ; seg = (pose.h - 0.3) / 0.3;
+      } else {
+        ax = v.midX; az = v.midZ; bx = v.toX; bz = v.toZ; seg = (pose.h - 0.6) / 0.4;
+      }
+      group.position.x = ax + (bx - ax) * seg;
+      group.position.z = az + (bz - az) * seg;
+      group.position.y = pose.y;
+      group.rotation.x = pose.pitch;
       group.rotation.y = turnToward(
         group.rotation.y, v.yaw, (CONFIG.NAV.TURN_RATE * dtMs) / 1000,
       );
+      // Drive the rig (guarded per part — an old parts map just holds).
+      rec.parts.armL.rotation.x = pose.shoulder;
+      rec.parts.armR.rotation.x = pose.shoulder;
+      if (rec.parts.foreL && rec.parts.foreR) {
+        rec.parts.foreL.rotation.x = pose.elbow;
+        rec.parts.foreR.rotation.x = pose.elbow;
+      }
+      if (rec.parts.legL && rec.parts.legR) {
+        rec.parts.legL.rotation.x = pose.hipL;
+        rec.parts.legR.rotation.x = pose.hipR;
+        if (rec.parts.shinL && rec.parts.shinR) {
+          rec.parts.shinL.rotation.x = pose.kneeL;
+          rec.parts.shinR.rotation.x = pose.kneeR;
+        }
+      }
       // Flash decay and the squash spring keep running so a shot climber
       // still flinches (frozen springs pop on landing otherwise).
       if (rec.flashT > 0) {
@@ -386,6 +462,7 @@ export function updateEnemies(dtMs, playerPos) {
       group.scale.set(1 + vsq * 0.5, 1 - vsq, 1 + vsq * 0.5);
       if (k >= 1) {
         group.position.y = 0;
+        group.rotation.x = type.ANIM.LEAN;
         releaseClimb(rec); // the queue advances: the waiter promotes next frame
         rec.vault = null;  // landed inside; normal logic resumes next frame
       }
@@ -539,20 +616,33 @@ export function updateEnemies(dtMs, playerPos) {
                 slot.climber = rec;
                 if (slot.waiter === rec) slot.waiter = null;
                 rec.waitingAt = null;
-                const far = cellToWorld(
-                  nav.map, nav.grid, cell.c + 2 * s.dc, cell.r + 2 * s.dr,
-                );
+                // Spatial anchors (4.3b.2): reach the sill's outer face,
+                // mount its centre, drop just inside the far face — a
+                // climb THROUGH the window, not a leap to the far cell.
+                const half = nav.map.CELL / 2;
+                const landIn = half + type.BODY_RADIUS + 0.15;
                 rec.vault = {
                   t: 0,
                   ms: type.VAULT.MS,
                   fromX: group.position.x,
                   fromZ: group.position.z,
-                  toX: far.x,
-                  toZ: far.z,
-                  // Feet clear the sill by a boot's height (structural).
-                  peakY: (nav.map.WINDOW_SILL_H ?? 1.0) + 0.25,
+                  sillX: wC.x - s.dc * half * 0.9,
+                  sillZ: wC.z - s.dr * half * 0.9,
+                  midX: wC.x,
+                  midZ: wC.z,
+                  toX: wC.x + s.dc * landIn,
+                  toZ: wC.z + s.dr * landIn,
                   yaw: Math.atan2(s.dc, s.dr),
                   key,
+                  // The pose's rest bundle: the climb starts and ends
+                  // EXACTLY on the walk pose (suite-pinned continuity).
+                  rest: {
+                    REST: type.BODY?.ARM?.REST_RAD ?? Math.PI / 2,
+                    ELBOW: type.ANIM.ELBOW_BEND ?? 0,
+                    KNEE: type.ANIM.KNEE_REST ?? 0,
+                    LEAN: type.ANIM.LEAN,
+                    sillH: nav.map.WINDOW_SILL_H ?? 1.0,
+                  },
                 };
                 continue; // the vault owns the body from the next frame
               }

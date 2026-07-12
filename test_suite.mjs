@@ -1231,6 +1231,50 @@ try {
   assertTrue('section14', 'turnToward: zero gap is a no-op',
     turnToward(0.7, 0.7, 0.5) === 0.7);
 
+  // The climb timeline (4.3b.2): the pose must start and end EXACTLY on
+  // the walk rest (a pop at handoff reads as a glitch), stay continuous
+  // across phase boundaries, top out at sill height, and haul the TRAIL
+  // leg over LATE (the limp reading through the climb).
+  const { climbPose } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const rest = { REST: 1.85, ELBOW: 0.45, KNEE: 0.15, LEAN: 0.12, sillH: 1.0 };
+  const CH = ['h', 'y', 'pitch', 'shoulder', 'elbow', 'hipL', 'kneeL', 'hipR', 'kneeR'];
+  const p0 = climbPose(0, rest);
+  assertTrue('section14', 'climb: k=0 is the walk rest pose',
+    p0.y === 0 && p0.shoulder === rest.REST && p0.elbow === rest.ELBOW
+    && p0.hipL === 0 && p0.hipR === 0 && p0.kneeL === rest.KNEE
+    && p0.kneeR === rest.KNEE && p0.pitch === rest.LEAN && p0.h === 0);
+  const p1 = climbPose(1, rest);
+  assertTrue('section14', 'climb: k=1 hands back the walk rest pose',
+    Math.abs(p1.y) < 1e-9 && Math.abs(p1.shoulder - rest.REST) < 1e-9
+    && Math.abs(p1.elbow - rest.ELBOW) < 1e-9 && Math.abs(p1.hipL) < 1e-9
+    && Math.abs(p1.hipR) < 1e-9 && Math.abs(p1.kneeL - rest.KNEE) < 1e-9
+    && Math.abs(p1.kneeR - rest.KNEE) < 1e-9 && Math.abs(p1.pitch - rest.LEAN) < 1e-9
+    && Math.abs(p1.h - 1) < 1e-9);
+  let popCount = 0;
+  for (const kb of [0.25, 0.65]) {
+    const a = climbPose(kb - 1e-6, rest);
+    const b = climbPose(kb + 1e-6, rest);
+    for (const ch of CH) if (Math.abs(a[ch] - b[ch]) > 1e-3) popCount += 1;
+  }
+  assertTrue('section14', `climb: continuous across both phase boundaries (${popCount} pops, expected 0)`,
+    popCount === 0);
+  let peakYc = 0;
+  let hMono = true;
+  let prevH = -1;
+  for (let k = 0; k <= 1.0001; k += 0.01) {
+    const p = climbPose(Math.min(1, k), rest);
+    peakYc = Math.max(peakYc, p.y);
+    if (p.h < prevH - 1e-9) hMono = false;
+    prevH = p.h;
+  }
+  assertTrue('section14', `climb: tops out at sill height (peak ${peakYc.toFixed(2)} vs 1.0)`,
+    Math.abs(peakYc - rest.sillH) < 0.02);
+  assertTrue('section14', 'climb: horizontal progress never reverses', hMono);
+  const early = climbPose(0.68, rest);
+  const late = climbPose(0.88, rest);
+  assertTrue('section14', 'climb: the trail leg hauls over LATE in the drop',
+    early.hipR > 0.1 && late.hipR < -0.3);
+
   // The reach resolve (the wall-clip fix): the front of the body — arms
   // and head, ~1.0 m past the feet circle — must stay out of walls the
   // body FACES, while sideways sliding and doorway transit are untouched.

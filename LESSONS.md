@@ -232,3 +232,100 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   not just non-overlap.
 - Route: dev-method / html-game.md candidate — *one-sided barriers =
   thick outward bands + an eject-direction probe.*
+
+## 2026-07-12 — a body's collision proxy must be MEASURED against the built body (anisotropic clip)
+
+- What broke / what happened: zombies' front halves (raised arms + hunched
+  head) clipped through walls they faced once 4.3 sent them inside rooms.
+  The feet circle (BODY_RADIUS 0.45) was honest sideways (body half-width
+  0.31) and wildly wrong forward (MEASURED 0.92 rest / 1.02 with the walk
+  lean — Box3 over the built group in Node).
+- Root cause: an isotropic proxy (one circle) for a long, forward-pointing
+  shape; the mismatch was latent from pass 7 and only became visible when
+  navigation put bodies against walls at close range.
+- Verification gap it exposed: nothing ever compared the BUILT body's
+  extents to the collider the registry claims for it.
+- Plug shipped (fix + sweep + guard): `resolveBodyWithReach` — feet circle
+  + a small forward reach circle at the arm tips (guarded registry `WALL`
+  block; reach 0 = byte-identical no-op); suite probes head-on standoff =
+  REACH+RADIUS exactly, parallel slide unchanged, doorway transit
+  undisturbed, and a doorway-passability invariant on any type with the
+  block.
+- Route: skill reference (html-game.md) — "measure the built artifact's
+  extents against its collision proxy; anisotropic bodies need more than a
+  radius, and the fix must keep doorways passable."
+
+## 2026-07-12 — assigning orientation to a QUANTIZED target teleports it (rate-limit through the angle)
+
+- What broke / what happened: flow-field directions are 8-way quantized;
+  `rotation.y = atan2(...)` (fine when tracking the continuously-moving
+  player) snapped bodies 45–90° at every cell boundary and at the
+  field↔beeline handoff.
+- Root cause: instant assignment only LOOKS smooth when the target itself
+  moves smoothly; discretize the target and the assignment becomes the pop.
+- Plug shipped: pure `turnToward(current, target, maxStep)` — shortest arc
+  via `atan2(sin Δ, cos Δ)` (no modulo seam bugs), clamped per frame by
+  `NAV.TURN_RATE`; the ONLY writer of enemy yaw. Probes: clamp, symmetry,
+  exact arrival, ±π seam crossing, no-op.
+- Route: skill reference (html-game.md) — "any orientation driven by a
+  quantized source gets a rate-limited turn, wrap via atan2(sin,cos)."
+
+## 2026-07-12 — proximity measured THROUGH walls: one root, two faces (frozen beeline, corner swipes)
+
+- What broke / what happened: (1) zombies froze when the player tucked in a
+  corner; (2) swipes landed across wall corners. Node repro falsified the
+  first hypothesis (the stop ring) and named the real one: inside
+  BEELINE_DIST straight-line but LOS-blocked, the zombie beelines dead-on
+  into a wall — a face-on pushout has no tangential component, so it
+  shambles in place forever. The corner swipe was the same defect at
+  attack range (diagonal distance < 2.5 across a corner).
+- Root cause: every proximity decision (beeline switch, stop ring, attack
+  start, damage landing) compared straight-line distance with no
+  line-of-sight test.
+- Verification gap it exposed: the nav suite proved the FIELD; nothing
+  probed the distance-based decisions against blocking geometry.
+- Plug shipped: pure `segmentClearOfAABBs` (2D slab test); one `los` per
+  zombie per frame gates all four decisions; suite probes segment cases +
+  village wall-blocked / doorway-clear; Node repros re-run as the fix's
+  evidence (freeze → routes out the door; zero hits while corner-blocked).
+- Route: SKILL.md earned-rule candidate — "near solid geometry, any
+  distance-triggered behavior needs an LOS gate; and reproduce in the
+  runtime you can instrument BEFORE naming the mechanism — the first
+  hypothesis here was wrong."
+
+## 2026-07-12 — the probe mimicked the defect: an unpinned probe input "killed" nothing
+
+- What broke / what happened: the mid-vault-kill probe FAILED with the
+  corpse 1.44 m from the expected snap point. The code was right — the
+  probe's `traverse`-first mesh was a LIMB (0.5 dmg × 3 = 1.5 < HP 3): the
+  zombie never died, and the measured offset was exactly mid-vault drift
+  minus 3 × KNOCKBACK. Arithmetic on the observed delta identified the
+  probe, not the code.
+- Root cause: an unpinned probe input (whichever mesh traverse finds
+  first) silently selected a different test than intended.
+- Plug shipped: probes now pin the part by tag (`userData.part ===
+  'head'`) and assert the kill result explicitly (`result?.killed`).
+  Related capture from the same session: two DRAFTED DEAD TERMS (`* 0`
+  tail, an always-true clause) reached files and were caught by continuity
+  /exact-value review before delivery — exactness probes are what catch
+  them.
+- Route: SKILL.md earned rule refinement — "one probe, one claim" extends
+  to INPUTS: pin every probe input by identity, never by iteration order;
+  and review formulas/assertions for dead terms — an exact-value probe
+  catches what a threshold probe forgives.
+
+## 2026-07-12 — a proximity trigger INSIDE a collision standoff can never fire (ordering as a named invariant)
+
+- What broke / what happened: nothing shipped — designed around during
+  4.3b. The vault trigger fires at a distance from the window; the reach
+  probe holds the body at CELL/2 + REACH + RADIUS (1.8 m). A trigger
+  radius below the standoff is unreachable: zombies would press sills
+  forever — the same freeze class as the beeline fix, one pass later.
+- Root cause: two independent numbers (a trigger radius, a collision
+  standoff) with a hidden ordering requirement between them.
+- Plug shipped: `VAULT_TRIGGER (2.0) > standoff (1.8)` asserted BY NAME in
+  the suite for every type that both climbs and reaches — a mistune fails
+  before it plays.
+- Route: skill reference (html-game.md) — "when a trigger distance and a
+  collision standoff coexist, encode their ordering as a named suite
+  invariant; a silent violation is a freeze, not an error."
