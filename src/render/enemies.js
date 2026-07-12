@@ -7,6 +7,7 @@
 import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
 import { WAVES } from '../data/waveTable.js';
+import { buildBody } from './enemyBody.js';
 
 // ————— Pure math (suite-tested) —————
 
@@ -38,49 +39,6 @@ let onEnemyKilledCb = null;
 const records = []; // see spawnEnemy for the record shape
 const byMesh = new Map(); // any body mesh -> record
 
-function buildProtoBody(type) {
-  const group = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: type.COLORS.SKIN, roughness: 0.9 });
-  const cloth = new THREE.MeshStandardMaterial({ color: type.COLORS.CLOTH, roughness: 0.95 });
-
-  // Body faces +Z. MEASURED (2026-07-11): rotation.y = atan2(dx, dz) points a
-  // +Z-built body exactly at the player — don't "fix" the axis or the signs.
-
-  // Legs: ground to 0.8
-  const legGeo = new THREE.BoxGeometry(0.16, 0.8, 0.16);
-  const legL = new THREE.Mesh(legGeo, cloth);
-  legL.position.set(-0.12, 0.4, 0);
-  const legR = new THREE.Mesh(legGeo.clone(), cloth);
-  legR.position.set(0.12, 0.4, 0);
-  group.add(legL, legR);
-
-  // Torso: 0.8 to 1.5
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), cloth);
-  torso.position.set(0, 1.15, 0);
-  group.add(torso);
-
-  // Head — with the classic zombie head-cock
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.3), skin);
-  head.position.set(0, 1.66, 0);
-  head.rotation.z = 0.1;
-  group.add(head);
-
-  // Arms — raised straight forward (+Z). Geometry is translated so the mesh
-  // origin sits at the SHOULDER: rotation.x then pivots the whole arm there,
-  // which is what makes wobble and attack swings read as arms.
-  const armGeo = new THREE.BoxGeometry(0.14, 0.6, 0.14);
-  armGeo.translate(0, 0.3, 0); // arm extends +Y from its origin
-  const armL = new THREE.Mesh(armGeo, skin);
-  armL.position.set(-0.22, 1.38, 0.1);
-  armL.rotation.x = Math.PI / 2; // +Y → +Z: arm points forward
-  const armR = new THREE.Mesh(armGeo.clone(), skin);
-  armR.position.set(0.22, 1.38, 0.1);
-  armR.rotation.x = Math.PI / 2;
-  group.add(armL, armR);
-
-  return { group, parts: { armL, armR }, materials: [skin, cloth] };
-}
-
 export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
   sceneRef = scene;
   onPlayerHitCb = onPlayerHit || null;
@@ -98,7 +56,7 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
   // Graceful: a missing position falls back to back-centre rather than NaN.
   const at = pos || { x: 0, z: -28 };
 
-  const { group, parts, materials } = buildProtoBody(type);
+  const { group, parts, materials } = buildBody(type);
   group.position.set(at.x, 0, at.z);
   // Yaw (Y) applied first, then lean (X), then sway (Z) — same YXZ pattern
   // as the camera, so the three rotations compose without fighting.
@@ -191,6 +149,9 @@ function startDeath(rec) {
 
 function setFlash(rec, intensity) {
   for (const m of rec.materials) {
+    // The unlit eye material has no .emissive — skip it, so eyes glow their
+    // own color through a flinch instead of crashing the first hit.
+    if (!m.emissive) continue;
     if (intensity > 0) m.emissive.setHex(0xff2222);
     m.emissiveIntensity = intensity;
   }
@@ -287,13 +248,17 @@ export function updateEnemies(dtMs, playerPos) {
     }
 
     const AT = type.ATTACK;
+    // Arm rest pose comes from the body registry (guarded: a type without a
+    // BODY block falls back to the old straight-forward π/2). Every arm
+    // animation anchors HERE so the rest pose is one data value.
+    const REST = type.BODY?.ARM?.REST_RAD ?? Math.PI / 2;
 
     // — Attack cycle: the arms belong to the attack while a phase runs.
     if (rec.attackPhase) {
       rec.attackT += dtMs;
       if (rec.attackPhase === 'windup') {
         const k = Math.min(1, rec.attackT / AT.WINDUP_MS);
-        setArms(rec, Math.PI / 2 + AT.REAR_RAD * k); // the tell: arms rear back
+        setArms(rec, REST + AT.REAR_RAD * k); // the tell: arms rear back
         if (k >= 1) {
           rec.attackPhase = 'strike';
           rec.attackT = 0;
@@ -305,13 +270,13 @@ export function updateEnemies(dtMs, playerPos) {
         }
       } else if (rec.attackPhase === 'strike') {
         const k = Math.min(1, rec.attackT / AT.STRIKE_MS);
-        setArms(rec, Math.PI / 2 - AT.THRUST_RAD * (1 - k)); // thrust, then ease back
+        setArms(rec, REST - AT.THRUST_RAD * (1 - k)); // thrust, then ease back
         if (k >= 1) {
           rec.attackPhase = 'recover';
           rec.attackT = 0;
         }
       } else { // recover
-        setArms(rec, Math.PI / 2);
+        setArms(rec, REST);
         if (rec.attackT >= AT.RECOVER_MS) rec.attackPhase = null;
       }
     } else {
@@ -351,8 +316,8 @@ export function updateEnemies(dtMs, playerPos) {
     if (!rec.attackPhase) {
       const wob =
         Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
-      rec.parts.armL.rotation.x = Math.PI / 2 + wob;
-      rec.parts.armR.rotation.x = Math.PI / 2 - wob;
+      rec.parts.armL.rotation.x = REST + wob;
+      rec.parts.armR.rotation.x = REST - wob;
     }
   }
 

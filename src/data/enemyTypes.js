@@ -15,6 +15,23 @@ export const ENEMY_TYPES = {
     COLORS: {
       SKIN: 0x7da06a,     // sickly green — distinct from the orange targets
       CLOTH: 0x343b3f,
+      FEET: 0x232527,     // darker ground anchors (anatomy rule: feet read darker)
+      EYES: 0xffb832,     // sickly amber pinpricks — unlit + fog-free (enemyBody.js)
+    },
+    // The Shambler (pass 7a, Direction A): every box dimension lives HERE so
+    // a future enemy type is pure data. Metres; the builder derives the
+    // height stack bottom-up (feet → legs → belly → chest → head), so
+    // retuning one part's size keeps everything attached.
+    BODY: {
+      FOOT:  { W: 0.20, H: 0.10, D: 0.28, FWD: 0.05 },
+      LEG:   { W: 0.17, LEN: 0.68, D: 0.17, X: 0.13 },
+      BELLY: { W: 0.42, H: 0.34, D: 0.26 },
+      CHEST: { W: 0.54, H: 0.44, D: 0.32, FWD: 0.10, HUNCH: 0.30 },
+      HEAD:  { W: 0.40, H: 0.36, D: 0.34, FWD: 0.30, COCK: 0.12, TILT: -0.15 },
+      JAW:   { W: 0.24, H: 0.10, D: 0.20, DROP: 0.06, FWD: 0.08 },
+      EYE:   { SIZE: 0.06, X: 0.09, Y: 0.02, FWD: 0.02 },
+      ARM:   { W: 0.13, LEN: 0.75, D: 0.13, X: 0.23, Y: 1.30, FWD: 0.14, REST_RAD: 1.85 },
+      HAND:  { SIZE: 0.16 },
     },
     ANIM: {
       BOB_AMP: 0.06,      // metres of vertical bob

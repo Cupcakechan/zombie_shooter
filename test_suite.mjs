@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 22;
+const MIN_EXPECTED_MODULES = 23;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -488,7 +488,19 @@ try {
   // branch (b)) — extend this list when enemies gain required fields.
   const ENEMY_REQUIRED = [
     'HP', 'BODY_RADIUS', 'WALK_SPEED', 'STOP_DISTANCE',
-    'COLORS.SKIN', 'COLORS.CLOTH',
+    'COLORS.SKIN', 'COLORS.CLOTH', 'COLORS.FEET', 'COLORS.EYES',
+    'BODY.FOOT.W', 'BODY.FOOT.H', 'BODY.FOOT.D', 'BODY.FOOT.FWD',
+    'BODY.LEG.W', 'BODY.LEG.LEN', 'BODY.LEG.D', 'BODY.LEG.X',
+    'BODY.BELLY.W', 'BODY.BELLY.H', 'BODY.BELLY.D',
+    'BODY.CHEST.W', 'BODY.CHEST.H', 'BODY.CHEST.D', 'BODY.CHEST.FWD',
+    'BODY.CHEST.HUNCH',
+    'BODY.HEAD.W', 'BODY.HEAD.H', 'BODY.HEAD.D', 'BODY.HEAD.FWD',
+    'BODY.HEAD.COCK', 'BODY.HEAD.TILT',
+    'BODY.JAW.W', 'BODY.JAW.H', 'BODY.JAW.D', 'BODY.JAW.DROP', 'BODY.JAW.FWD',
+    'BODY.EYE.SIZE', 'BODY.EYE.X', 'BODY.EYE.Y', 'BODY.EYE.FWD',
+    'BODY.ARM.W', 'BODY.ARM.LEN', 'BODY.ARM.D', 'BODY.ARM.X',
+    'BODY.ARM.Y', 'BODY.ARM.FWD', 'BODY.ARM.REST_RAD',
+    'BODY.HAND.SIZE',
     'ANIM.BOB_AMP', 'ANIM.BOB_FREQ', 'ANIM.SWAY_AMP', 'ANIM.SWAY_FREQ',
     'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE',
     'COMBAT.FLINCH_MS', 'COMBAT.STAGGER_MS', 'COMBAT.KNOCKBACK',
@@ -759,6 +771,73 @@ try {
 } catch (err) {
   failures.push({ file: 'section10', err });
   console.log(`  FAIL   section 10 threw: ${err.message}`);
+}
+
+// ————— Section 11: enemy body geometry (pass 7a) —————
+// Builds a REAL body headless and measures world positions — the guard for
+// the sign-slip class (LESSONS 2026-07-12): "forward" on the body is +Z,
+// feet sit on the ground, the head leads the silhouette. A flipped sign or
+// broken height stack fails HERE, not as a scrambled mesh in the browser.
+
+console.log('');
+console.log('— Section 11: enemy body geometry —');
+try {
+  const { buildBody } = await import(pathToFileURL(join('src', 'render', 'enemyBody.js')).href);
+  const { ENEMY_TYPES: ET } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const THREE = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const zb = ET.proto_zombie;
+  const { group, parts } = buildBody(zb);
+  group.updateMatrixWorld(true);
+
+  const worldOf = (obj) => {
+    const v = new THREE.Vector3();
+    obj.getWorldPosition(v);
+    return v;
+  };
+
+  // Feet on the ground: the lowest mesh bottom sits at ~0.
+  let minY = Infinity;
+  group.traverse((c) => {
+    if (!c.isMesh) return;
+    c.geometry.computeBoundingBox();
+    const bb = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
+    if (bb.min.y < minY) minY = bb.min.y;
+  });
+  assertTrue('section11', `lowest mesh point sits on the ground (${minY.toFixed(3)})`,
+    Math.abs(minY) < 0.03);
+
+  // The head LEADS: its world position is forward (+Z) of the group origin
+  // and above the chest stack's midpoint.
+  const headW = worldOf(parts.head);
+  assertTrue('section11', `head juts forward (+Z world, got ${headW.z.toFixed(2)})`, headW.z > 0.2);
+  assertTrue('section11', `head rides high (y ${headW.y.toFixed(2)})`, headW.y > 1.1);
+
+  // Eyes: children of the head, world z ahead of the head centre (the face
+  // is the +Z side — the exact class of slip that shipped in the casings).
+  const eyes = parts.head.children.filter((c) => c.isMesh && c.material.fog === false);
+  assertNear('section11', 'exactly two fog-free eye meshes', eyes.length, 2);
+  for (const e of eyes) {
+    assertTrue('section11', `eye sits on the face (+Z of head centre, ${worldOf(e).z.toFixed(2)})`,
+      worldOf(e).z > headW.z);
+  }
+
+  // Jaw hangs BELOW the head centre.
+  assertTrue('section11', 'jaw hangs below the head centre', worldOf(parts.jaw).y < headW.y);
+
+  // Arms: rest pose points the hands forward of the shoulders (dangling
+  // reach), and both arms carry a hand child riding the swing pivot.
+  for (const side of ['armL', 'armR']) {
+    const arm = parts[side];
+    const hand = arm.children.find((c) => c.isMesh);
+    assertTrue('section11', `${side} carries a hand child`, !!hand);
+    assertTrue('section11', `${side} hand reaches forward of the shoulder`,
+      worldOf(hand).z > worldOf(arm).z);
+    assertTrue('section11', `${side} hand hangs at/below the shoulder (dangle)`,
+      worldOf(hand).y <= worldOf(arm).y + 0.01);
+  }
+} catch (err) {
+  failures.push({ file: 'section11', err });
+  console.log(`  FAIL   section 11 threw: ${err.message}`);
 }
 
 // ————— Report —————
