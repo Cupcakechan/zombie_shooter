@@ -26,7 +26,7 @@ import {
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
   getEnemyHittables, getLivingPositions, damageEnemy, setMapColliders,
-  setFlowField,
+  setFlowField, getCongestedWindows,
 } from './render/enemies.js';
 import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
@@ -130,8 +130,11 @@ const mapStart = playerWorldStart(activeMap, activeGrid);
 const mapColliders = buildColliders(activeMap, activeGrid);
 let activeColliders = [];
 // The player cell the flow field was last built FROM (4.3). null forces a
-// rebuild on the next PLAYING frame — mode switches reset it.
+// rebuild on the next PLAYING frame — mode switches reset it. The
+// congestion signature (4.3b.1) forces the same rebuild when window queues
+// fill or drain, so full windows drop out of everyone else's route.
 let navLastCell = null;
+let navLastCongSig = '';
 houseMap.visible = false;
 scene.add(houseMap);
 houseMap.traverse((c) => { if (c.isMesh) mapWallMeshes.push(c); });
@@ -330,6 +333,7 @@ onEnter(States.COUNTDOWN, (prev) => {
       setMapColliders([]);
       setFlowField(null); // Range: no map, no field — enemies (targets) N/A
       navLastCell = null;
+      navLastCongSig = '';
       scene.fog.near = CONFIG.FOG.NEAR;
       scene.fog.far = CONFIG.FOG.FAR;
       resetTargets();
@@ -342,6 +346,7 @@ onEnter(States.COUNTDOWN, (prev) => {
       activeColliders = mapColliders;
       setMapColliders(mapColliders);
       navLastCell = null; // field rebuilds on the first PLAYING frame (4.3)
+      navLastCongSig = '';
       // Whole-arena murk (pass 8.2): distance fog pulled in for Waves only.
       // Camera-relative is RIGHT here — "everything past ~26 m is haze"
       // should follow the player; the perimeter banks stay the thickest part.
@@ -464,16 +469,26 @@ renderer.setAnimationLoop(() => {
       const cell = worldToCell(
         activeMap, activeGrid, camera.position.x, camera.position.z,
       );
-      if (!navLastCell || cell.c !== navLastCell.c || cell.r !== navLastCell.r) {
+      // Congested windows (4.3b.1) are priced out of the shared field —
+      // committed climber/waiter pairs are state-driven and unaffected;
+      // everyone else reroutes. The signature makes queue changes rebuild
+      // the field just like a player cell-change does.
+      const congested = getCongestedWindows();
+      const congSig = congested.join(';');
+      const cellChanged =
+        !navLastCell || cell.c !== navLastCell.c || cell.r !== navLastCell.r;
+      if (cellChanged || congSig !== navLastCongSig) {
         if (activeGrid.walkable(cell.c, cell.r)) {
           setFlowField({
             field: buildFlowField(activeGrid, cell, {
               windowCost: CONFIG.NAV.WINDOW_COST, // 4.3b: windows priced in
+              blockedWindows: new Set(congested),
             }),
             map: activeMap,
             grid: activeGrid,
           });
           navLastCell = cell;
+          navLastCongSig = congSig;
         }
       }
     }

@@ -1385,6 +1385,30 @@ try {
   assertTrue('section14', 'fixture: with windows unpriced the room is unreached',
     unpriced.distAt(1, 2) === Infinity && unpriced.stepAt(1, 2) === null);
 
+  // Blocked windows (4.3b.1): a congested window prices out exactly like
+  // an unpriced one — the fixture room drops off the field again.
+  const blockedFix = buildFlowField(wfGrid, wfGrid.playerStart,
+    { windowCost: 6, blockedWindows: new Set(['1,1']) });
+  assertTrue('section14', 'fixture: a blocked window unreaches the room (latch parity)',
+    blockedFix.distAt(1, 1) === Infinity && blockedFix.distAt(1, 2) === Infinity);
+
+  // Village: blocking one window costs nothing in coverage — every
+  // walkable cell still routes via doors and the other windows.
+  const oneBlocked = buildFlowField(losGrid, losGrid.playerStart, {
+    windowCost: NAVCFG.NAV.WINDOW_COST,
+    blockedWindows: new Set(['3,2']),
+  });
+  let blockedCoverage = 0;
+  for (let r = 0; r < losGrid.rows; r++) {
+    for (let c = 0; c < losGrid.cols; c++) {
+      if (losGrid.walkable(c, r) && Number.isFinite(oneBlocked.distAt(c, r))) blockedCoverage += 1;
+    }
+  }
+  assertTrue('section14', `village: full walkable coverage with a window blocked (${blockedCoverage}/${navCount(losGrid)})`,
+    blockedCoverage === navCount(losGrid));
+  assertTrue('section14', 'village: the blocked window itself is off the field',
+    oneBlocked.distAt(3, 2) === Infinity);
+
   // Route preference flips with the price: window vs door, same map.
   // Door route from (1,3) is 6 steps; the window crossing is cost+1.
   const routeFixture = {

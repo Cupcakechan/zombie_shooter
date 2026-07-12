@@ -76,6 +76,35 @@ export function setFlowField(navigation) {
   nav = navigation || null;
 }
 
+// Window queues (4.3b.1): each window holds at most ONE climber and ONE
+// waiter. A third arrival finds the window congested and routes elsewhere
+// — main rebuilds the field without congested windows (see
+// getCongestedWindows). Keys are 'c,r' of the window cell.
+const windowSlots = new Map(); // key -> { climber: rec|null, waiter: rec|null }
+
+function releaseWait(rec) {
+  if (!rec.waitingAt) return;
+  const slot = windowSlots.get(rec.waitingAt.key);
+  if (slot && slot.waiter === rec) slot.waiter = null;
+  rec.waitingAt = null;
+}
+
+function releaseClimb(rec) {
+  if (!rec.vault) return;
+  const slot = windowSlots.get(rec.vault.key);
+  if (slot && slot.climber === rec) slot.climber = null;
+}
+
+// Windows whose queue is full — main prices these OUT of the flow field
+// so everyone not already committed reroutes ("find a different route").
+export function getCongestedWindows() {
+  const out = [];
+  for (const [key, slot] of windowSlots) {
+    if (slot.climber && slot.waiter) out.push(key);
+  }
+  return out;
+}
+
 export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
   const type = ENEMY_TYPES[typeId];
   // Graceful: an unknown id logs and skips — a registry typo must never crash.
@@ -106,8 +135,11 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // update — a hit landing that same frame simply skips the knockback.
     towardPlayer: { x: 0, z: 0 },
     // The in-flight window climb (4.3b): null, or the committed script
-    // { t, ms, fromX, fromZ, toX, toZ, peakY, yaw }.
+    // { t, ms, fromX, fromZ, toX, toZ, peakY, yaw, key }.
     vault: null,
+    // Queued at a window (4.3b.1): null, or { key, wc, wr, dc, dr } —
+    // holding the sill while the window's climber is mid-flight.
+    waitingAt: null,
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
@@ -182,8 +214,11 @@ function startDeath(rec) {
   rec.attackPhase = null;
   // Shot off the sill (4.3b): a climber falls back OUTSIDE — its vault
   // start point — so the corpse never lies inside the wall plane. The
-  // counterplay payoff for shooting the free-hit window.
+  // counterplay payoff for shooting the free-hit window. Either way the
+  // window slots free up (4.3b.1) so the queue advances past a corpse.
+  releaseWait(rec);
   if (rec.vault) {
+    releaseClimb(rec);
     rec.group.position.x = rec.vault.fromX;
     rec.group.position.z = rec.vault.fromZ;
     rec.vault = null;
@@ -351,7 +386,8 @@ export function updateEnemies(dtMs, playerPos) {
       group.scale.set(1 + vsq * 0.5, 1 - vsq, 1 + vsq * 0.5);
       if (k >= 1) {
         group.position.y = 0;
-        rec.vault = null; // landed inside; normal logic resumes next frame
+        releaseClimb(rec); // the queue advances: the waiter promotes next frame
+        rec.vault = null;  // landed inside; normal logic resumes next frame
       }
       continue;
     }
@@ -418,6 +454,7 @@ export function updateEnemies(dtMs, playerPos) {
       // through wall corners), off cooldown, and not staggered.
       const inReach = los && dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
       if (inReach && rec.cooldownT <= 0 && rec.staggerT <= 0) {
+        releaseWait(rec); // a flanked waiter fights — the line moves on
         rec.attackPhase = 'windup';
         rec.attackT = 0;
         rec.cooldownT = AT.COOLDOWN_MS; // start-to-start pacing
@@ -437,6 +474,31 @@ export function updateEnemies(dtMs, playerPos) {
         los ? type.STOP_DISTANCE : 0,
       );
       if (step > 0 && dist > 1e-6) {
+        let hold = false;
+        // — Queued at a window (4.3b.1): hold the sill while this window's
+        // climber is mid-flight. The wait releases the MOMENT the climber
+        // slot frees — the trigger check just below then re-runs with the
+        // CURRENT field, so promotion and abandonment are the same code
+        // path: field still wants the window → claim it and climb; field
+        // moved on → walk away. Drifting off the sill (knockback) also
+        // releases, with slack so a single shove doesn't churn the queue.
+        if (rec.waitingAt) {
+          const w = rec.waitingAt;
+          const slot = windowSlots.get(w.key);
+          const climberBusy = !!(slot && slot.climber);
+          let near = false;
+          if (nav && climberBusy) {
+            const wC = cellToWorld(nav.map, nav.grid, w.wc, w.wr);
+            near = Math.hypot(wC.x - group.position.x, wC.z - group.position.z)
+              <= CONFIG.NAV.VAULT_TRIGGER + 0.5;
+          }
+          if (!nav || !climberBusy || !near) {
+            releaseWait(rec);
+          } else {
+            targetYaw = Math.atan2(w.dc, w.dr); // face the sill: the queue telegraph
+            hold = true;
+          }
+        }
         // Direction (4.3): descend the flow field when far OR when the
         // player isn't visible — the beeline is only trusted with a clear
         // line (its face-on wall pushout has no slide component, the
@@ -446,7 +508,7 @@ export function updateEnemies(dtMs, playerPos) {
         // below then blend/clamp the step exactly as before.
         let mx = dx / dist;
         let mz = dz / dist;
-        if (nav && (!los || dist > CONFIG.NAV.BEELINE_DIST)) {
+        if (!hold && nav && (!los || dist > CONFIG.NAV.BEELINE_DIST)) {
           const cell = worldToCell(
             nav.map, nav.grid, group.position.x, group.position.z,
           );
@@ -461,36 +523,63 @@ export function updateEnemies(dtMs, playerPos) {
           if (s && (type.VAULT?.MS ?? 0) > 0
             && nav.grid.at(cell.c + s.dc, cell.r + s.dr) === 'W'
             && nav.grid.walkable(cell.c + 2 * s.dc, cell.r + 2 * s.dr)) {
-            const wC = cellToWorld(nav.map, nav.grid, cell.c + s.dc, cell.r + s.dr);
+            const wc = cell.c + s.dc;
+            const wr = cell.r + s.dr;
+            const wC = cellToWorld(nav.map, nav.grid, wc, wr);
             const wDist = Math.hypot(wC.x - group.position.x, wC.z - group.position.z);
             if (wDist <= CONFIG.NAV.VAULT_TRIGGER) {
-              const far = cellToWorld(
-                nav.map, nav.grid, cell.c + 2 * s.dc, cell.r + 2 * s.dr,
-              );
-              rec.vault = {
-                t: 0,
-                ms: type.VAULT.MS,
-                fromX: group.position.x,
-                fromZ: group.position.z,
-                toX: far.x,
-                toZ: far.z,
-                // Feet clear the sill by a boot's height (structural).
-                peakY: (nav.map.WINDOW_SILL_H ?? 1.0) + 0.25,
-                yaw: Math.atan2(s.dc, s.dr),
-              };
-              continue; // the vault owns the body from the next frame
+              // The latch (4.3b.1): one climber, one waiter, per window.
+              const key = `${wc},${wr}`;
+              let slot = windowSlots.get(key);
+              if (!slot) {
+                slot = { climber: null, waiter: null };
+                windowSlots.set(key, slot);
+              }
+              if (!slot.climber) {
+                slot.climber = rec;
+                if (slot.waiter === rec) slot.waiter = null;
+                rec.waitingAt = null;
+                const far = cellToWorld(
+                  nav.map, nav.grid, cell.c + 2 * s.dc, cell.r + 2 * s.dr,
+                );
+                rec.vault = {
+                  t: 0,
+                  ms: type.VAULT.MS,
+                  fromX: group.position.x,
+                  fromZ: group.position.z,
+                  toX: far.x,
+                  toZ: far.z,
+                  // Feet clear the sill by a boot's height (structural).
+                  peakY: (nav.map.WINDOW_SILL_H ?? 1.0) + 0.25,
+                  yaw: Math.atan2(s.dc, s.dr),
+                  key,
+                };
+                continue; // the vault owns the body from the next frame
+              }
+              if (!slot.waiter || slot.waiter === rec) {
+                slot.waiter = rec;
+                rec.waitingAt = { key, wc, wr, dc: s.dc, dr: s.dr };
+                targetYaw = Math.atan2(s.dc, s.dr);
+                hold = true;
+              }
+              // Both slots busy: CONGESTED. Walk the field as-is this
+              // frame — main sees the congestion (getCongestedWindows)
+              // and rebuilds the field WITHOUT this window, so the route
+              // changes underfoot within a frame or two.
             }
           }
-          if (dir) {
+          if (!hold && dir) {
             mx = dir.x;
             mz = dir.z;
             targetYaw = Math.atan2(mx, mz); // face the path
           }
         }
-        group.position.x += mx * step;
-        group.position.z += mz * step;
-        rec.walked += step;
-        walking = true;
+        if (!hold) {
+          group.position.x += mx * step;
+          group.position.z += mz * step;
+          rec.walked += step;
+          walking = true;
+        }
       }
     }
     // Legs blend in while walking and plant when rooted; the ~8/s rate
@@ -645,4 +734,5 @@ function disposeEnemy(rec) {
 export function resetEnemies() {
   for (const rec of records) disposeEnemy(rec);
   records.length = 0;
+  windowSlots.clear(); // no stale queue claims across rounds (4.3b.1)
 }

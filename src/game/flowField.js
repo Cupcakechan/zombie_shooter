@@ -38,16 +38,24 @@ const DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 // throw here would land inside the render loop.
 export function buildFlowField(grid, target, opts = {}) {
   const windowCost = Math.max(0, Math.floor(opts.windowCost ?? 0));
+  // 4.3b.1: windows whose queue is FULL (one climber + one waiter) are
+  // handed in here and priced out entirely — everyone else routes around
+  // while the committed pair finishes, which is the "find a different
+  // route" half of the latch. Keys are 'c,r'.
+  const blockedWindows = opts.blockedWindows;
   const { cols, rows } = grid;
   const n = cols * rows;
   const idx = (c, r) => r * cols + c;
   const inBounds = (c, r) => c >= 0 && c < cols && r >= 0 && r < rows;
 
   // What the field may traverse: everything the player walks, plus windows
-  // when they're priced in. (Bodies never STAND in a window — the vault
-  // scripts them across — but the field prices the crossing.)
+  // when they're priced in AND not congested. (Bodies never STAND in a
+  // window — the vault scripts them across — but the field prices the
+  // crossing.)
   const traversable = (c, r) =>
-    grid.walkable(c, r) || (windowCost > 0 && grid.at(c, r) === 'W');
+    grid.walkable(c, r)
+    || (windowCost > 0 && grid.at(c, r) === 'W'
+      && !(blockedWindows && blockedWindows.has(`${c},${r}`)));
   // What a step into a cell costs: the climb is expensive, floor is 1.
   const enterCost = (c, r) => (grid.at(c, r) === 'W' ? windowCost : 1);
 
