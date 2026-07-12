@@ -14,6 +14,7 @@ let lockTarget = null;
 let onLockChangeCb = null;
 let onLockErrorCb = null;
 const fireHandlers = [];
+const reloadHandlers = [];
 
 // Movement key state, tracked by e.code so WASD works on any keyboard
 // layout (AZERTY 'Z' still reports code 'KeyW').
@@ -54,6 +55,9 @@ export function initInput({ onLockChange, onLockError } = {}) {
   document.addEventListener('keydown', (e) => {
     if (!locked) return;
     if (e.code in keys) keys[e.code] = true;
+    // Reload hook (pass 9): same pattern as fire — subscribers attach via
+    // onReload without touching this file. Locked-only, like everything else.
+    if (e.code === 'KeyR') reloadHandlers.forEach((fn) => fn());
   });
   document.addEventListener('keyup', (e) => {
     // Accept keyups even unlocked — releasing outside the lock must never
@@ -89,6 +93,10 @@ export function requestLock(el) {
 
 export function onFire(fn) {
   fireHandlers.push(fn);
+}
+
+export function onReload(fn) {
+  reloadHandlers.push(fn);
 }
 
 // Move axes for the frame loop: x = strafe (−1 left … +1 right),

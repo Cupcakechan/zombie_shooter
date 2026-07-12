@@ -4,6 +4,7 @@
 // Pure DOM: main.js pushes values and the current mode in via setters.
 
 import { States } from '../state.js';
+import { CONFIG } from '../config.js';
 
 const els = {};
 let hintTimer = null;
@@ -44,6 +45,7 @@ export function initHud({
     hudScore: 'hud-score',
     hudMult: 'hud-mult',
     hudTimer: 'hud-timer',
+    hudAmmo: 'hud-ammo',
     hudWaves: 'hud-waves',
     hudHearts: 'hud-hearts',
     hudWave: 'hud-wave',
@@ -102,6 +104,7 @@ export function showForState(state, mode) {
   setVisible(els.crosshair, state === States.PLAYING);
   setVisible(els.hudBar, state === States.PLAYING && mode === 'range');
   setVisible(els.hudWaves, state === States.PLAYING && mode === 'waves');
+  setVisible(els.hudAmmo, state === States.PLAYING); // both modes: it's the gun's HUD, not the mode's
   // Leaving PLAYING always retires the banner (e.g. dying mid-intermission).
   if (state !== States.PLAYING) setVisible(els.waveBanner, false);
 }
@@ -167,6 +170,13 @@ export function showWaveBanner(n) {
   setVisible(els.waveBanner, true);
   if (bannerTimer) clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => setVisible(els.waveBanner, false), 1500);
+}
+
+// Bottom-right ammo counter (pass 9): count while idle, RELOADING while the
+// mag is out, red pill when running dry.
+export function setAmmo(mag, size, reloading) {
+  els.hudAmmo.textContent = reloading ? 'RELOADING\u2026' : `${mag} / ${size}`;
+  els.hudAmmo.classList.toggle('low', !reloading && mag <= CONFIG.AMMO.LOW_AT);
 }
 
 // Red edge-flash on taking damage: restart the CSS animation by removing

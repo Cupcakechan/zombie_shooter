@@ -57,7 +57,10 @@ export const CONFIG = {
   FLASH_INTENSITY: 6,         // point-light peak at the muzzle
 
   // — Gun viewmodel (camera-space offset: right, down, forward) —
-  GUN: { OFFSET_X: 0.28, OFFSET_Y: -0.22, OFFSET_Z: -0.55 },
+  GUN: {
+    OFFSET_X: 0.28, OFFSET_Y: -0.22, OFFSET_Z: -0.55,
+    RELOAD_DIP: 0.18,       // how far the viewmodel dips during a reload
+  },
 
   // — Range environment (shell) —
   RANGE: {
@@ -130,7 +133,13 @@ FOG: {
     VANISH_MS: 250,       // then shrink away over this
     MAX: 40,              // hard pool cap
   },
-
+  // — Ammo (pass 9): finite magazine, unlimited reserve, manual R reload —
+  AMMO: {
+    MAG_SIZE: 12,         // rounds per magazine — 4 kills at zombie HP 3
+    RELOAD_MS: 1200,      // equals the zombie attack cooldown ON PURPOSE:
+                          //   reloading in melee range risks eating a hit
+    LOW_AT: 3,            // HUD counter turns red at/below this
+  },
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',
   // — Debug (dev-only; the suite FAILS any truthy flag when the SHIP env

@@ -69,6 +69,13 @@ export function createGun() {
   return gun;
 }
 
+// Reload progress is INJECTED (main wires ammo.js in) so the render module
+// stays ignorant of game rules — same inversion as shooting's canFire.
+let reloadProgressCb = () => 0;
+export function setReloadProgressSource(fn) {
+  reloadProgressCb = fn;
+}
+
 export function kick() {
   if (!gun) return;
   recoilT = 0;
@@ -85,6 +92,13 @@ export function kick() {
 
 export function updateGun(dtMs) {
   if (!gun) return;
+
+  // — Reload dip (pass 9): a sine envelope over reload progress — 0 at the
+  // ends, full dip at the midpoint — so the gun swings down and back up in
+  // one motion. Writes ONLY position.y; recoil owns z and rotation.x, so the
+  // two never fight. progress 0 (idle) lands y exactly on base.
+  gun.position.y = CONFIG.GUN.OFFSET_Y
+    - Math.sin(reloadProgressCb() * Math.PI) * CONFIG.GUN.RELOAD_DIP;
 
   // — Recoil: instant kick, eased return. amp = (1-k)^2 starts at full
   // deflection and settles with a fast-then-soft curve over RECOIL_MS.

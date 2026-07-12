@@ -7,10 +7,14 @@
 import * as THREE from '../lib/three.module.js';
 import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
-import { initInput, requestLock, getLook, getMoveAxes } from './input.js';
+import { initInput, requestLock, getLook, getMoveAxes, onFire, onReload } from './input.js';
+import {
+  resetAmmo, canFire as ammoCanFire, consumeRound, startReload,
+  updateAmmo, getMag, isReloading, reloadProgress,
+} from './game/ammo.js';
 import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
-import { createGun, kick, updateGun } from './render/gun.js';
+import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
   getHittables as getTargetHittables, hitTarget, updateTargets,
@@ -42,7 +46,7 @@ import {
   initHud, showForState, flashLockHint,
   setScore, setMultiplier, setCountdown, setTimer,
   setHearts, setWave, setKills, showWaveBanner,
-  flashDamage, flashBloodSplatter, showGameOver, showResults,
+  flashDamage, flashBloodSplatter, showGameOver, showResults, setAmmo,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -112,6 +116,22 @@ initTargets(scene);
 initBloodFX(scene);
 initCasings(scene);
 
+// — Reload wiring (pass 9): one entry point so R and the empty click behave
+// identically; startReload() itself refuses full-mag and mid-reload calls.
+function beginReload() {
+  if (startReload()) setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, true);
+}
+onReload(() => {
+  if (getState() === States.PLAYING) beginReload();
+});
+// Clicking on an empty mag never reaches shooting's callbacks (canFire gates
+// it first), so the auto-reload listens to the raw fire hook instead.
+onFire(() => {
+  if (getState() === States.PLAYING && getMag() === 0 && !isReloading()) beginReload();
+});
+// The gun-dip telegraph reads reload progress straight from ammo.
+setReloadProgressSource(reloadProgress);
+
 // Ejection: the port sits just above/forward of the gun in camera space;
 // localToWorld turns it into the world point the casing spawns at. Scratch
 // vector reused per shot — no allocation in the fire path.
@@ -162,10 +182,12 @@ function refreshHud() {
 initShooting({
   camera,
   getHittables: () => [...getTargetHittables(), ...getEnemyHittables()],
-  canFire: () => getState() === States.PLAYING,
+  canFire: () => getState() === States.PLAYING && ammoCanFire(),
   onHit: (mesh, point, rayDir) => {
     kick();
     ejectCasing();
+    consumeRound();
+    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
     if (mesh.userData.kind === 'enemy') {
       // Burst first: damageEnemy may start the death, and the killing-blow
       // spray should erupt from where the bullet actually landed.
@@ -183,6 +205,8 @@ initShooting({
   onMiss: () => {
     kick();
     ejectCasing();
+    consumeRound();
+    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
     if (mode !== 'range') return; // Waves owns no range scoring
     registerMiss();
     refreshHud();
@@ -240,6 +264,8 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetEnemies();
     resetBloodFX(); // stains and droplets belong to the round that made them
     resetCasings();
+    resetAmmo();
+    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
@@ -328,6 +354,10 @@ renderer.setAnimationLoop(() => {
   // WASD, clamped to the arena, then pushed out of living zombie bodies —
   // walking THROUGH the mob would make being surrounded meaningless.
   if (st === States.PLAYING) {
+    // Reload ticks ONLY while playing — a pause freezes it mid-motion, same
+    // rule as the round clock. The completion tick refreshes the counter.
+    if (updateAmmo(dtMs)) setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
+
     const axes = getMoveAxes();
     if (axes.x !== 0 || axes.z !== 0) {
       const { dx, dz } = computeMove(

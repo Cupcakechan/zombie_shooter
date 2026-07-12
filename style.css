@@ -128,6 +128,21 @@ body {
   text-shadow: none;
 }
 
+/* — Ammo counter (pass 9): bottom-right, out of the crosshair's way. The
+   .low state is the "reload NOW" nudge before the auto-reload punishes you. */
+#hud-ammo {
+  position: fixed;
+  right: 22px;
+  bottom: 18px;
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+}
+
+#hud-ammo.low {
+  color: #e04545;
+}
+
 /* Hearts: diamond pips that dim as hits are lost. */
 #hud-hearts {
   gap: 8px;

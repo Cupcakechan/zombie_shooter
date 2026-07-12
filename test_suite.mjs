@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 21;
+const MIN_EXPECTED_MODULES = 22;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -384,6 +384,8 @@ try {
     'CASINGS.GRAVITY': 'number', 'CASINGS.RESTITUTION': 'number',
     'CASINGS.LINGER_MS': 'number', 'CASINGS.VANISH_MS': 'number',
     'CASINGS.MAX': 'number',
+    'AMMO.MAG_SIZE': 'number', 'AMMO.RELOAD_MS': 'number', 'AMMO.LOW_AT': 'number',
+    'GUN.RELOAD_DIP': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
     'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
@@ -718,6 +720,45 @@ try {
 } catch (err) {
   failures.push({ file: 'section9', err });
   console.log(`  FAIL   section 9 threw: ${err.message}`);
+}
+
+// ————— Section 10: ammo + reload invariants —————
+
+console.log('');
+console.log('— Section 10: ammo + reload —');
+try {
+  const A = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
+  const { CONFIG: ACFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const M = ACFG.AMMO.MAG_SIZE;
+  const R = ACFG.AMMO.RELOAD_MS;
+
+  A.resetAmmo();
+  assertNear('section10', 'fresh mag is full', A.getMag(), M);
+  assertTrue('section10', 'full mag can fire', A.canFire());
+  assertTrue('section10', 'reload refused on a full mag', A.startReload() === false);
+
+  for (let i = 0; i < M; i++) A.consumeRound();
+  assertNear('section10', 'mag empty after MAG_SIZE shots', A.getMag(), 0);
+  assertTrue('section10', 'empty mag cannot fire', !A.canFire());
+  assertTrue('section10', 'consume on empty stays at zero (guarded)',
+    (A.consumeRound(), A.getMag() === 0));
+
+  assertTrue('section10', 'reload starts from empty', A.startReload() === true);
+  assertTrue('section10', 'reloading blocks fire', !A.canFire());
+  assertTrue('section10', 'second reload refused mid-reload', A.startReload() === false);
+  assertTrue('section10', 'one tick before done: still reloading',
+    A.updateAmmo(R - 1) === false && A.isReloading());
+  assertTrue('section10', 'completion tick reports true', A.updateAmmo(2) === true);
+  assertNear('section10', 'mag refilled on completion', A.getMag(), M);
+  assertTrue('section10', 'idle after completion', !A.isReloading() && A.canFire());
+
+  // Partial-mag manual reload (the R-key path) works too.
+  A.consumeRound();
+  assertTrue('section10', 'partial mag may reload manually', A.startReload() === true);
+  assertNear('section10', 'progress at half reload', (A.updateAmmo(R / 2), A.reloadProgress()), 0.5);
+} catch (err) {
+  failures.push({ file: 'section10', err });
+  console.log(`  FAIL   section 10 threw: ${err.message}`);
 }
 
 // ————— Report —————
