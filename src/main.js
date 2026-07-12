@@ -7,7 +7,7 @@
 import * as THREE from '../lib/three.module.js';
 import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
-import { initInput, requestLock, getLook } from './input.js';
+import { initInput, requestLock, getLook, getMoveAxes } from './input.js';
 import { createRange } from './render/scene.js';
 import { createGun, kick, updateGun } from './render/gun.js';
 import {
@@ -16,8 +16,9 @@ import {
 } from './render/targets.js';
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
-  getEnemyHittables, damageEnemy,
+  getEnemyHittables, getLivingPositions, damageEnemy,
 } from './render/enemies.js';
+import { computeMove, clampToArena, resolveCircleObstacles } from './game/movement.js';
 import { initShooting } from './game/shooting.js';
 import {
   registerHit, registerMiss, resetScoring,
@@ -47,6 +48,14 @@ let mode = 'range';
 
 // Camera damage-kick state (a brief pitch jolt layered over the look).
 let shakeT = 0;
+
+// Arena bounds for the player, derived once from the wall geometry.
+const ARENA_BOUNDS = {
+  minX: -CONFIG.RANGE.WIDTH / 2 + CONFIG.PLAYER.WALL_MARGIN,
+  maxX: CONFIG.RANGE.WIDTH / 2 - CONFIG.PLAYER.WALL_MARGIN,
+  minZ: CONFIG.RANGE.BACK_Z + CONFIG.PLAYER.WALL_MARGIN,
+  maxZ: CONFIG.RANGE.FRONT_Z - CONFIG.PLAYER.WALL_MARGIN,
+};
 
 // — Renderer —
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -186,6 +195,8 @@ onEnter(States.COUNTDOWN, (prev) => {
   if (fresh) {
     resetScoring();
     resetEnemies();
+    // Fresh rounds start from the spot the arena was designed around.
+    camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
       resetTargets();
       refreshHud();
@@ -258,6 +269,27 @@ renderer.setAnimationLoop(() => {
   }
 
   const st = getState();
+
+  // — Player movement (PLAYING only, matching canFire): camera-relative
+  // WASD, clamped to the arena, then pushed out of living zombie bodies —
+  // walking THROUGH the mob would make being surrounded meaningless.
+  if (st === States.PLAYING) {
+    const axes = getMoveAxes();
+    if (axes.x !== 0 || axes.z !== 0) {
+      const { dx, dz } = computeMove(
+        axes.x, axes.z, yaw, CONFIG.PLAYER.MOVE_SPEED, dtMs,
+      );
+      const clamped = clampToArena(
+        camera.position.x + dx, camera.position.z + dz, ARENA_BOUNDS,
+      );
+      const resolved = resolveCircleObstacles(
+        clamped.x, clamped.z, getLivingPositions(), CONFIG.PLAYER.BODY_RADIUS,
+      );
+      camera.position.x = resolved.x;
+      camera.position.z = resolved.z;
+    }
+  }
+
   // The round clock ticks through countdown AND play; PAUSED starves it,
   // which is exactly what freezes the timer (and the zombies).
   if (st === States.COUNTDOWN || st === States.PLAYING) {

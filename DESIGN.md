@@ -18,14 +18,20 @@ zombie wave shooter.
 
 | Stage | Name | Adds | Status |
 |---|---|---|---|
-| 1 | Shooting Range | Pointer-lock aim, hitscan shot, targets, scoring, round timer, results | **CURRENT — 2 passes left** |
-| 2 | Zombie Waves — Last-Stand | Zombies approach a stationary player, HP both ways, waves, game over | Next |
-| 3 | WASD Arena | Player movement + bounds, zombies that chase | Later |
+| 1 | Shooting Range | Pointer-lock aim, hitscan shot, targets, scoring, round timer, results | **DONE** |
+| 2 | Zombie Waves — Last-Stand | Zombies approach the player, HP both ways, waves, game over | **Passes 3–6 done; 7 pending, 8 optional** |
+| 3 | WASD Arena | Player movement + bounds, zombies that chase | **DONE (pulled forward 2026-07-11, before pass 7)** |
 
 > Enemies are **designed through Claude** (Decision B1, 2026-07-11): code-built
-> creatures with procedural animation — a placeholder "proto-zombie" proves the
-> systems first, then the real designed creatures land via Daniel's creature
-> pipeline (**attach the creature-forge skill for those passes**). No downloaded
+> creatures with procedural animation — the placeholder "proto-zombie" proved the
+> systems; the real designed creatures land via the SDF blend-shell technique.
+> **Pass-7 source of truth (the creature-forge skill no longer exists — lost,
+> lane parked):** repo https://github.com/Cupcakechan/ExperimentProject,
+> subfolder `sdf-blend-shell/` — read in order PROJECT_HANDOFF.md,
+> RESEARCH_TECHNIQUE.md, REFERENCE_FOGLEMAN.md, LESSONS.md. Their stack pins
+> three.js **0.170.0**; ours is r185 — verify every ported API. Their IDEA
+> SHELF already scoped this FPS use (prims as hitboxes → per-part identity →
+> headshots; C2 generator as bestiary; squash spring as flinch). No downloaded
 > models, no GLTFLoader. Octree/Capsule world collision (the research report's
 > path) is deferred unless a real level ever demands it.
 
@@ -268,3 +274,4 @@ variety, reload/ammo, difficulty modes, touch/mobile, settings menu, leaderboard
 *2026-07-11 — v2.6 (mode split, 5a of pick 1): START offers Range / Waves; Waves = untimed last-stand arena (no practice targets, no round clock — suite-pinned) with the zombie in its proper home; `DEBUG.SPAWN_ZOMBIE` retired (DEBUG block + SHIP gate stay for future flags); PAUSED gains Quit to menu; range-as-a-mode open question RESOLVED: yes. Player health, attacks, and game over are 5b.*
 *2026-07-11 — v2.7 (threat pass, 5b, pick B): zombie telegraphed swipe (windup 300 ms arms-rear tell → strike lands damage → recover; cooldown 1200 ms start-to-start, suite-asserted ≥ phase sum); pinned — a hit CANCELS an in-progress attack and the cooldown keeps running; player = 5 arcade hits (hearts HUD), red vignette + 120 ms camera kick per hit; GAMEOVER state (kills + survival time, Try Again, Quit); waves kills/time counters live in main until the pass-6 wave manager absorbs them.*
 *2026-07-11 — v2.8 (wave manager, pass 6): cleared-based waves — intermission (2.5 s, "WAVE N" banner, first one waits for the first PLAYING frame so it never collides with the 3-2-1) → staggered spawns (800 ms gaps, 5 spawn points cycled from a random offset) → all dead → next; `waveTable.js` data (5 hand-tuned waves + endless EXTEND formula, speed capped ×1.4, suite-pinned relatively); per-spawn speed multiplier; O(n²) pairwise crowd separation (0.9 m); kills/time/wave absorbed into `waves.js`; enemy SPAWN moved out of the registry (arena property); pooling DEFERRED until a measured frame drop.*
+*2026-07-11 — v2.9 (movement, Stage 3 pulled forward before pass 7): camera-relative WASD (MEASURED vs r185: forward = (−sinY, −cosY)); normalized diagonals; arena clamp (WALL_MARGIN 0.6); player-vs-zombie circle resolve (0.3 + 0.45 — walking through the mob would void being surrounded); stuck-key guard clears WASD on lock loss; the strike now RANGE-CHECKS at the damage moment — backing out of reach makes it whiff (movement is defence); `movement.js` pure + suite Section 9. Pass-7 source relocated: creature-forge skill LOST → ExperimentProject repo `sdf-blend-shell/` (see §2 note).*

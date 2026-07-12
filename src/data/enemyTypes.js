@@ -9,6 +9,7 @@ export const ENEMY_TYPES = {
   proto_zombie: {
     id: 'proto_zombie',
     HP: 3,                // hits to kill (any body part counts)
+    BODY_RADIUS: 0.45,    // solid circle for player collision (walk-through-proof)
     WALK_SPEED: 1.2,      // m/s base — waves multiply this per waveTable.js
     STOP_DISTANCE: 2,     // m — where it halts and starts attacking
     COLORS: {

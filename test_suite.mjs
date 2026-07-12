@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 17;
+const MIN_EXPECTED_MODULES = 18;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -366,7 +366,8 @@ try {
     'COLORS.HEMI_SKY': 'number', 'COLORS.HEMI_GROUND': 'number', 'COLORS.SUN': 'number',
     'STORAGE_KEY': 'string',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
-    'PLAYER.DAMAGE_SHAKE_AMP': 'number',
+    'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
+    'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
   };
 
   const resolvePath = (obj, path) =>
@@ -583,6 +584,54 @@ try {
 } catch (err) {
   failures.push({ file: 'section8', err });
   console.log(`  FAIL   section 8 threw: ${err.message}`);
+}
+
+// ————— Section 9: player movement math —————
+
+console.log('');
+console.log('— Section 9: player movement math —');
+try {
+  const { computeMove, clampToArena, resolveCircleObstacles } =
+    await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+
+  // Directions at yaw 0 (facing −z; MEASURED vs r185 getWorldDirection).
+  let m = computeMove(0, 1, 0, 4, 1000); // W
+  assertNear('section9', 'W at yaw 0 moves −z (dz)', m.dz, -4);
+  assertNear('section9', 'W at yaw 0 moves −z (dx)', m.dx, 0);
+  m = computeMove(1, 0, 0, 4, 1000); // D
+  assertNear('section9', 'D at yaw 0 strafes +x', m.dx, 4);
+  m = computeMove(0, 1, Math.PI / 2, 4, 1000); // W looking left
+  assertNear('section9', 'W at yaw +90° moves −x', m.dx, -4);
+  assertNear('section9', 'W at yaw +90° has no z drift', m.dz, 0);
+
+  // Diagonals are normalized: same speed as cardinals, split by √2.
+  m = computeMove(1, 1, 0, 4, 1000);
+  assertNear('section9', 'diagonal magnitude equals speed·dt',
+    Math.hypot(m.dx, m.dz), 4);
+  assertNear('section9', 'diagonal splits evenly (dx)', m.dx, 4 / Math.SQRT2);
+
+  // No input, no motion.
+  m = computeMove(0, 0, 1.23, 4, 1000);
+  assertNear('section9', 'zero axes move nothing', Math.hypot(m.dx, m.dz), 0);
+
+  // Arena clamp: exact at the walls.
+  const B = { minX: -14.4, maxX: 14.4, minZ: -29.4, maxZ: 3.4 };
+  let c = clampToArena(99, -99, B);
+  assertNear('section9', 'clamp pins x to maxX', c.x, 14.4);
+  assertNear('section9', 'clamp pins z to minZ', c.z, -29.4);
+  c = clampToArena(1.5, 2.5, B);
+  assertNear('section9', 'inside stays untouched (x)', c.x, 1.5);
+  assertNear('section9', 'inside stays untouched (z)', c.z, 2.5);
+
+  // Obstacle resolve: player pushed OUT to exactly the combined radius.
+  let r = resolveCircleObstacles(0.5, 0, [{ x: 0, z: 0, radius: 0.45 }], 0.3);
+  assertNear('section9', 'overlap resolves to combined radius', r.x, 0.75);
+  assertNear('section9', 'pushout stays on the approach axis', r.z, 0);
+  r = resolveCircleObstacles(2, 0, [{ x: 0, z: 0, radius: 0.45 }], 0.3);
+  assertNear('section9', 'clear of the circle: untouched', r.x, 2);
+} catch (err) {
+  failures.push({ file: 'section9', err });
+  console.log(`  FAIL   section 9 threw: ${err.message}`);
 }
 
 // ————— Report —————

@@ -136,6 +136,21 @@ export function getEnemyHittables() {
   return out;
 }
 
+// Living zombies as solid circles for the player's movement resolve —
+// corpses are walkable (stepping over the fallen is part of the fantasy).
+export function getLivingPositions() {
+  const out = [];
+  for (const rec of records) {
+    if (rec.dying) continue;
+    out.push({
+      x: rec.group.position.x,
+      z: rec.group.position.z,
+      radius: rec.type.BODY_RADIUS,
+    });
+  }
+  return out;
+}
+
 function startDeath(rec) {
   rec.dying = true;
   rec.dieT = 0;
@@ -241,8 +256,10 @@ export function updateEnemies(dtMs, playerPos) {
           rec.attackPhase = 'strike';
           rec.attackT = 0;
           // Damage lands at the START of the strike — the windup was the
-          // player's whole window to cancel it.
-          if (onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
+          // player's window to cancel it (shoot) or, now that the player
+          // can move, DODGE it: out of reach at this moment = a whiff.
+          const inRange = dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+          if (inRange && onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
         }
       } else if (rec.attackPhase === 'strike') {
         const k = Math.min(1, rec.attackT / AT.STRIKE_MS);

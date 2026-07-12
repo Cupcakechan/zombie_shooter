@@ -15,12 +15,26 @@ let onLockChangeCb = null;
 let onLockErrorCb = null;
 const fireHandlers = [];
 
+// Movement key state, tracked by e.code so WASD works on any keyboard
+// layout (AZERTY 'Z' still reports code 'KeyW').
+const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+
+function clearKeys() {
+  keys.KeyW = false;
+  keys.KeyA = false;
+  keys.KeyS = false;
+  keys.KeyD = false;
+}
+
 export function initInput({ onLockChange, onLockError } = {}) {
   onLockChangeCb = onLockChange || null;
   onLockErrorCb = onLockError || null;
 
   document.addEventListener('pointerlockchange', () => {
     locked = document.pointerLockElement != null;
+    // Stuck-key guard: hold W, hit ESC, release W — without this, the
+    // keyup lands outside the lock and the player glides forever on resume.
+    if (!locked) clearKeys();
     if (onLockChangeCb) onLockChangeCb(locked);
   });
 
@@ -35,6 +49,16 @@ export function initInput({ onLockChange, onLockError } = {}) {
     pitch -= e.movementY * CONFIG.MOUSE_SENSITIVITY;
     // Clamp so the camera can't flip over backwards.
     pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!locked) return;
+    if (e.code in keys) keys[e.code] = true;
+  });
+  document.addEventListener('keyup', (e) => {
+    // Accept keyups even unlocked — releasing outside the lock must never
+    // leave a key stuck on.
+    if (e.code in keys) keys[e.code] = false;
   });
 
   // Fire hook exists now so the shooting pass can subscribe without touching
@@ -65,6 +89,15 @@ export function requestLock(el) {
 
 export function onFire(fn) {
   fireHandlers.push(fn);
+}
+
+// Move axes for the frame loop: x = strafe (−1 left … +1 right),
+// z = forward (−1 back … +1 forward). Raw; movement.js normalizes.
+export function getMoveAxes() {
+  return {
+    x: (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0),
+    z: (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0),
+  };
 }
 
 export function getLook() {
