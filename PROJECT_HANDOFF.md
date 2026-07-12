@@ -2,210 +2,178 @@
 
 Repo: https://github.com/Cupcakechan/zombie_shooter.git
 Local: C:\Users\danie\Documents\HTML Projects\zombie_shooter
-Updated: 2026-07-12 — session 2 end, second wrap (first wrap same day at
-`e26555d`). **PASS 7 IS COMPLETE** (7a designed creature + gait, 7b
-per-part hitboxes, 7c flinch spring), on top of the earlier pass 8
-atmosphere + pass 9 reload. HEAD at write time: `eafd815`.
+Updated: 2026-07-12 — session 2 end, THIRD wrap (supersedes the same-day
+first two). This wrap adds **Stage 4 (the village map) passes 4.1–4.2b**
+on top of the completed pass 7 creature, pass 8 atmosphere, and pass 9
+reload. HEAD at write time: `88893e9`.
+
+## 0. NEXT SESSION OPENS WITH (Daniel's kickoff request)
+
+**Deep research: prior-art three.js zombie shooters**, mapped against our
+roadmap (4.3 nav, audio, dismemberment, scoring, more enemy types, more
+environments). Sources Daniel named:
+- https://github.com/rohanvashisht1234/threejs-zombieshooter-game
+- https://github.com/UstymUkhman/YetAnotherZombieHorror
+- https://codepen.io/Data-Bee38/pen/gbYaeeO
+- A LOST project (site + repo gone; the author's post below is the only
+  artifact — preserved verbatim, it's the research lead):
+  > "It's a wave-based survival game with 5 different environments that
+  > change as you progress through waves - forest, city, cave, hospital,
+  > and mall. There are 15 different enemy types including various
+  > zombies and wolves, and 6 weapons to unlock as you play. I created a
+  > particle system for visual effects like blood and muzzle flashes,
+  > and implemented physical projectiles with collision detection. The
+  > game uses Three.js to geometrically build the enemy models, rather
+  > than using imported pre-existing 3d models, although the weapons do
+  > use GLTF external models. The environments use a mix of procedural
+  > generation for the cave and hospital mazes, random object placement
+  > for the city and forest and a CSV-based layout for the mall.
+  > Everything is built with Vite and three.js, aswell as using
+  > Firestore and Firebase for storage and deployment."
+- "and others if you can include it" — Claude should search for further
+  code-built-enemy three.js shooters worth mining.
+Method: clone the public repos in the sandbox and read code directly;
+web-search for the lost project (the description's specifics — 5 named
+environments, 15 enemies, CSV mall — are searchable); extract TECHNIQUES
+(enemy construction, environment generation, particles, weapons, nav),
+not code, and map each finding to a roadmap item. Deliverable: a research
+report → options round on what to adopt. **The queued build pass (4.3
+navigation) remains scheduled — Daniel said the research is "aside from
+the pending passes"; confirm ordering with him at session open.**
 
 ## 1. What this project is
 
-A browser first-person shooter in **three.js r185**, built pass-by-pass.
-Two playable modes from the START screen:
-- **Range** — 60 s score attack (targets, streak multipliers ×2@10/×3@20,
-  accuracy, localStorage personal best). Reload applies here too — any PB
-  set before pass 9 was earned under infinite-ammo rules.
-- **Waves** — untimed last-stand: cleared-based escalating zombie waves,
-  5-hit arcade player health, WASD kiting, dense fog (Daniel-tuned
-  NEAR 3 / FAR 13), game over with wave/kills/time.
+A browser FPS in **three.js r185**, code-built everything (no downloaded
+models/assets), built pass-by-pass. Two modes from START:
+- **Range** — 60 s score attack (targets, streaks ×2@10/×3@20, accuracy,
+  localStorage PB). Reload applies (pre-pass-9 PBs = infinite-ammo era).
+- **Waves** — untimed last-stand in **the village** (Stage 4): four
+  roomed buildings around a fountain plaza, fog + low fence at the map
+  edge, escalating zombie waves, 5-hit arcade health, GAMEOVER.
 
-Everything is code-built — no downloaded models, no image assets anywhere.
-`DESIGN.md` (v2.9) is the living spec but is now MEANINGFULLY BEHIND
-(ammo resolved, creature complete, atmosphere shipped) — a dedicated docs
-pass is queued (§8). **No DevLog** (Daniel's call).
+`DESIGN.md` v3.0 (updated this session through pass 9 + creature) — but
+Stage 4's progress happened AFTER v3.0, so its §2 row says "unscheduled":
+one small changelog entry (v3.1) is queued docs debt. **No DevLog.**
 
-**Map direction (Daniel, 2026-07-12): long-term goal is a maze-like arena
-(CoD-Zombies style).** Future dedicated stage; scope includes movement
-clamp rework, walls as raycast occluders, spawn windows, and zombie
-navigation (beeline breaks on corners — the documented pathfinding
-trigger). Fog systems were built data-driven for the re-placement.
+## 2. Method & session rules (the short list)
 
-## 2. Stack, method & session rules
-
-- three.js **r185** vendored (`lib/three.module.js` + `three.core.js`),
-  RELATIVE imports everywhere, no import map (the Node suite imports every
-  module). Plain ES modules, VS Code Live Server, Windows + Node.
-- Daniel's dev-method governs: options round → he picks → one tested pass
-  per commit; full files as downloads with exact paths; **config.js is
-  paste-in ONLY**; `enemyTypes.js`/`waveTable.js` full-replace with a
-  "tuned anything?" caveat; balance/feel reports get mechanism → single
-  lever → surgical value; bugs get the debugging protocol. Daniel commits
-  his tunes separately (did so repeatedly: fog NEAR 3, SWAY_AMP 0.04,
-  SQUASH_KICK 2).
-- **Claude-side sync rule (fired twice):** after any delivery, sync by
-  `git fetch origin && git reset --hard origin/main` — NEVER pull; verify
-  tip + grep one changed value + key docs exist.
-- **Checkpoint blocks are copy-complete** (LESSONS 2026-07-12): Daniel
-  copies them verbatim — every block ends `git push`. If his "pushed"
-  and the remote disagree, STOP and reconcile (it happened; the stale
-  base would have erased a fix under playtest).
-- **Feel work is a loop:** the gait took 8 rounds (7a.1–7a.8), one
-  mechanism + one lever each — that's the normal shape of animation
-  work, not churn (LESSONS 2026-07-12).
+- Options round → Daniel picks → one tested pass per commit; full files
+  as downloads + exact paths; **config.js paste-in ONLY**; enemyTypes.js
+  / waveTable.js / maps.js full-replace with a "tuned anything?" caveat.
+  Daniel commits his tunes separately.
+- Feel reports: mechanism → single lever → surgical value. Bugs: the
+  debugging protocol (evidence before hypothesis — the black-screen fix
+  came from reading the shipped code, not guessing).
+- **Claude sync: `git fetch origin && git reset --hard origin/main`,
+  never pull; verify tip + one changed value + key docs.** Checkpoint
+  blocks are COPY-COMPLETE (end with `git push`) — an omitted push
+  desynced the remote once; if Daniel's "pushed" and the remote
+  disagree, STOP and reconcile.
+- Run `node test_suite.mjs` before every delivery. Render-path changes
+  are SUITE-INVISIBLE (no WebGL in the sandbox) — name them as
+  browser-first in testing steps (LESSONS, black-screen incident).
 
 ## 3. Current state (all tested & pushed)
 
-**The creature (pass 7 — COMPLETE).** The Shambler: registry-driven
-13-part hunched body (`render/enemyBody.js`, all dimensions in the
-enemy registry's BODY block — a future enemy type is pure data).
-- **Look:** oversized forward-jutting head (cocked, up-tilted), hanging
-  jaw, hunched chest over belly, two-segment arms (elbow droop) and legs
-  (knee at 55%), dark ground-anchor feet, **unlit fog-free amber eyes**
-  (`fog:false` MeshBasic — pinpricks appear in the murk before the body
-  resolves; excluded from the emissive hit-flash by a guard).
-- **Gait (7a.1–7a.8, browser-converged):** stride phase `p = walked ×
-  BOB_FREQ (2.6)` drives everything. Good LEFT leg steps (hip swing +
-  quarter-stride-lagged knee pulse); bad RIGHT leg is PINNED — no swing,
-  backward trail (LIMP×0.4), shin locked in a deep toe-scrape cock
-  (LIMP×0.8); body rolls onto the good side (LIMP×0.16) and SINKS once
-  per stride as weight lands on the bad leg (BOB_AMP is a DIP now, not a
-  bob — the old |sin| vault read as skipping). Sway is stride-locked
-  (SWAY_FREQ **must stay BOB_FREQ/2**), idle breathing is an INTEGRATED
-  per-enemy phase (`idlePhase` — scaling accumulated phase by the blend
-  caused the shot/strike whole-body shake; LESSONS). Legs plant via
-  `legBlend` when rooted. LIMP (0.5) is the one limp knob.
-- **Attack:** overhead raise-and-slam (windup REST − REAR raises, strike
-  REST + THRUST slams down), elbows cock on the raise and EXTEND through
-  the strike (a reaching lunge). Arm rest = BODY.ARM.REST_RAD (1.85 —
-  a dangle; the Section 11 probe caught 1.25 pointing UP on first run).
-- **Hitboxes (7b):** every mesh tagged `userData.part`; damage table
-  `HITBOX: HEAD 3 / TORSO 1 / LIMB 0.5` (registry — armored heads later
-  are three numbers). HP is fractional internally. Headshot = one-shot +
-  double blood burst. `partDamage()` is a pure export, fallback-guarded
-  (untagged → torso; missing table → 1). `damageEnemy` returns
-  `{part, killed}` (truthy — old callers fine).
-- **Flinch (7c):** per-enemy second-order squash spring
-  (`game/secondOrder.js`, PORTED from the halted research repo with a
-  provenance header; trusted only via suite Section 12). Hits kick it;
-  body compresses toward the feet and rebounds. Params in COMBAT
-  (SQUASH_F 5, ZETA 0.4, KICK **2** — Daniel's tune; kick→peak is linear
-  ≈ ×0.022 at these params, so 2 ≈ 4–5% squash). Corpses fall
-  un-squashed (scale reset in startDeath).
+**Stage 4 — the village (passes 4.1–4.2b DONE, 4.3 NEXT):**
+- **Maps are data** (`data/maps.js`): ASCII tile layouts — `#` wall,
+  `.` ground, `D` doorway, `W` window, `F` fountain, `P` start — plus
+  CELL 1.6 / FLOOR_H 3.2 / sill 1.0 / header 0.8 / ANCHOR / COLORS.
+  Geometry, colliders, occluders, and the future nav grid ALL derive
+  from the one layout. Registry holds **village01 (ACTIVE)** — Daniel's
+  sketch: 4 buildings with interior rooms + jambed doorways, 6 windows,
+  3×3 fountain plaza, 21×23 cells (33.6×36.8 m) — and house01 as the
+  second valid map. `ACTIVE_MAP_ID` picks.
+- **`game/mapGrid.js`** (pure): parseLayout (throws on ragged/dup-P),
+  floodReachable (sealed-room proof; the seed of 4.3's flow field),
+  countWalkable, cellToWorld (ANCHOR-centred), playerWorldStart (the
+  map owns the start — Waves spawns at P: village (−11.2, −2.2)),
+  buildColliders (blocked cells → run-merged 2D AABBs + the fence as
+  THICK OUTWARD BANDS — thin boxes eject wrong-side, probe-caught,
+  LESSONS).
+- **`render/mapGen.js`**: run-merged wall boxes, window sill+header,
+  door jambs+lintels, fountain (basin/column/water), fence ring. Every
+  mesh `kind:'wall'` = raycast occluder.
+- **Collision (4.2)**: `movement.js resolveCircleAABBs` (2 sweeps,
+  normal-only pushout = wall sliding; 6 probes). Player chain:
+  clamp → zombie pushout → walls LAST. Zombies collide too
+  (`enemies.js setMapColliders`, resolve after separation) — they PILE
+  at walls/doorways until 4.3; Daniel likes the pressure read.
+  Wall hits eat the bullet (explicit branch in main onHit).
+- **Gun on render layer 1 (4.2b)**: world pass → clearDepth → gun pass
+  **with scene.background NULLED** (the un-nulled version repainted sky
+  over the world — black-screen incident, LESSONS). Muzzle light on
+  both layers; scene lights enabled on layer 1.
+- **Arena grown (4.1c)**: RANGE WIDTH 36 / BACK_Z −36 / FRONT_Z 6;
+  spawns moved to the new perimeter (0,−30)(±13,−30)(±15.5,−14).
+  Everything derived (walls, floor, fog bank, clamp) recomputed with
+  ZERO suite edits — the relative-invariant payoff, ~measured.
 
-**Ammo/reload (pass 9):** mag 12, unlimited reserve, R + auto-on-empty,
-1200 ms (= attack cooldown, on purpose), gun-dip telegraph, bottom-right
-counter red at ≤3. Reload ticks only in PLAYING. Both modes —
-**provisional** (Daniel never explicitly ruled both-vs-Waves-only).
+**Pass 7 creature (COMPLETE, earlier wraps):** the Shambler — registry
+body, drag-limp gait (8 rounds), overhead slam, per-part hitboxes
+(HEAD 3 / TORSO 1 / LIMB 0.5, headshot one-shot + double burst), squash
+flinch spring (ported secondOrder + Section 12; KICK 2 Daniel-tuned).
+**Pass 9 reload** (mag 12, R + auto-empty, 1200 ms, both modes —
+provisional). **Pass 8 atmosphere** (fog bank + murk NEAR 3/FAR 13,
+blood, casings; audio deferred). World sim freezes outside PLAYING.
 
-**Atmosphere (pass 8):** perimeter fog bank + spawn fade-in (600 ms);
-Waves whole-arena murk (**NEAR 3 / FAR 13**, Daniel-tuned twice); blood
-(hit bursts at the raycast point, kill eruption + 8 s floor pools, CSS
-screen splatter on player damage); brass casings (muzzle-anchored —
-PORT_FWD −0.45, the sign lesson — tumble + one bounce, 3 s linger).
+## 4. NEXT BUILD PASS: 4.3 — navigation (scoped)
 
-**World-freeze rule (bug fix, 7a.5):** enemies/blood/casings simulate
-ONLY in PLAYING — during a resume countdown everything freezes with the
-player (zombies used to advance through the 3-2-1).
+Flow field on the map grid: BFS from the player's cell (recompute when
+the player changes cells), zombies descend the field — fixes the
+fountain-stuck beeline Daniel reported (deferred to here by design).
+Doorway routing falls out free; **windows become zombie entries** (climb
+over sills — the spawn system likely reworks to window-based entries).
+floodReachable is the designed seed. Daniel's read of zombies pressing
+at walls ("like it") should inform how aggressive window-entry is.
 
-**Combat pipeline:** unified raycast; `onHit(mesh, point, rayDir)`;
-`onEnemyKilled(typeId, {x,z})`; ammo consumed on hit AND miss; zombie
-kills still score nothing (§7).
+## 5. The suite — 27 modules, 231 asserts, run before EVERYTHING
 
-## 4. File map (24 suite-visible modules + root)
+Sections: 0 module health (MIN 27); 1 target spawns; 2 scoring; 3 round;
+4 best; 5 config (87 keys, 116 registry leaves, enemy schema 83 fields,
+SHIP gate); 6 timelines; 7 player health/attack pacing; 8 waves + fog
+coverage; 9 movement math + **AABB resolver (incl. sliding + corner)**;
+10 ammo; 11 body geometry + hitbox tags; 12 springs; **13 map integrity**
+(constants, parse, one P, windows embedded in wall runs, fountains
+blocked, flood covers all walkable — village 387/387, extent fits clamp,
+start inside, blocked-cells-solid + walkable-centres-free agreement,
+fence-line ejects INWARD).
 
-Root: index.html, style.css, test_suite.mjs, DESIGN.md, LESSONS.md
-(**8 entries**, 5 unharvested from 2026-07-12), README.md, this file.
-src/: main.js (suite-excluded), config.js, state.js, input.js (look +
-WASD + fire + R-reload), data/targetTypes.js, data/enemyTypes.js,
-data/waveTable.js, render/scene.js, render/gun.js, render/fogBank.js,
-render/bloodFX.js, render/casings.js, **render/enemyBody.js**,
-render/targets.js, render/enemies.js, game/shooting.js, game/scoring.js,
-game/round.js, game/best.js, game/player.js, game/movement.js,
-game/waves.js, game/ammo.js, **game/secondOrder.js**, ui/hud.js.
+## 6. Open / outstanding / banked
 
-## 5. The suite (run `node test_suite.mjs` before EVERY delivery and
-after every paste-in)
+- **4.3 navigation** — next build pass (§4).
+- **Research kickoff** — §0, Daniel's request, next session opener.
+- DESIGN.md v3.1 — one changelog entry for Stage 4 progress (small).
+- Wave kill scoring (headshot bonus hook) — still undecided.
+- Reload scope (both modes) — provisional.
+- **Banked:** dismemberment (7b tags + limb meshes are the substrate);
+  basement/stairs = Stage 4b (layouts-per-floor extension); pass 8
+  audio (needs generated assets); itch.io deploy (SHIP gate ready).
+- Stale hand-file comments flagged not overwritten: enemyTypes
+  SQUASH_KICK "~9%" (kick 2 ≈ 4–5%), LIMP comment describes old
+  knee-only behaviour. config.js duplicate RECOIL pair (harmless).
+- LESSONS.md: **10 entries, 7 unharvested (2026-07-12)** — port-sign
+  anchors; fetch+reset; copy-complete checkpoints; integrate-don't-
+  scale phases; animation feel-loop; background-repaint/render-path-
+  browser-first; thick-band barriers + eject-direction probes.
 
-**190 assertions.** Sections: 0 module health (MIN_EXPECTED_MODULES =
-**24**); 1 spawn placement; 2 scoring; 3 round clock; 4 personal best;
-5 config contract — **87-key schema** + usage scan + registry leaf sweep
-(**116 leaves**) + **enemy schema 83 numeric fields** + SHIP gate;
-6 enemy/blood/casing timelines; 7 player health + attack pacing; 8 wave
-composition + fog-bank spawn coverage; 9 player movement math; 10 ammo +
-reload; **11 enemy body geometry** (built headless and MEASURED: ground
-contact, forward signs, chain parenting thigh→shin→foot and
-upper→forearm→hand measured at the true chain end, hitbox tag coverage
-with zero untagged meshes, partDamage tiers + both fallbacks); **12
-spring behaviors** (our probes of the ported secondOrder: no-overshoot
-critical, overshoot underdamped, kick-and-settle, dt=0 hold,
-undersampling clamp).
+## 7. MEASURED facts (do not re-derive)
 
-SHIP gate unchanged: `set SHIP=1&& node test_suite.mjs` (cmd) /
-`$env:SHIP=1; node test_suite.mjs` (PowerShell). DEBUG is `{}`.
+- Facing: `rotation.y = atan2(dx,dz)` on +Z-built bodies; player fwd
+  = (−sinY,−cosY); camera/gun −Z-forward, BODY-local +Z; muzzle
+  gun-local (0, 0.03, −0.45).
+- Spring f5 ζ0.4: kick→peak ≈ ×0.022, settle ~350 ms (Section 12).
+- Two-pass render: null scene.background on every pass after the first.
+- One-sided barriers: thick outward bands; probe the eject DIRECTION.
+- Village: 21×23 @ CELL 1.6, ANCHOR (0,−15), extent x ±16.8 /
+  z −33.4..3.4 inside clamp (±17.4 / −35.4..5.4); P → (−11.2, −2.2).
+- Diagnostic: black scene + live HUD + no console errors = NaN transform
+  OR a render-path paint-over — if the GUN is visible, it's the latter.
 
-## 6. ExperimentProject — DEMOTED to reference (Daniel, 2026-07-12)
+## 8. Session hygiene for next session
 
-**The research was HALTED at roadblocks and is not bug-free — grain of
-salt; never build solely on it. Daniel prefers the current zombies' look
-over its SDF creatures**, so the shell/SN render pipeline is OFF the
-table. What we adopted (and re-verified with OUR probes): the anatomy
-rules (RESEARCH_TECHNIQUE §5 — spine + limb chains, joint placement,
-silhouette test, "motion sells anatomy"), the per-part-hitbox idea, and
-`secondOrder.js` (ported with provenance header + suite Section 12).
-Their docs remain worth consulting; their code does not get pulled
-without a probe section proving it here.
-
-## 7. Open questions (DESIGN §12)
-
-- Game title (`zombie_shooter` is the working name).
-- **Wave-mode kill scoring** — still nothing awarded; headshots (7b) now
-  give it a natural identity (headshot bonus) when Daniel decides.
-- Reload mode scope — both-modes live but provisional.
-- ~~Ammo/reload~~ resolved (pass 9). ~~Creature design~~ resolved
-  (pass 7, Direction A "the Shambler" + glowing eyes).
-
-## 8. Outstanding / pending / banked
-
-1. **DESIGN.md docs pass (growing debt):** §12 resolve notes (ammo,
-   creature), atmosphere + reload + creature sections. One dedicated
-   docs touch.
-2. **BANKED — DISMEMBERMENT (Daniel, 2026-07-12, explicitly saved):**
-   blow parts off. The 7b tags + per-mesh limbs are the exact substrate:
-   detach a tagged mesh, give it casing-style tumble physics, cap the
-   debris pool. Opens with an options round when Daniel calls it.
-3. **Maze-like map** — future dedicated stage (§1); pathfinding trigger
-   lives here.
-4. Two stale hand-file comments flagged, NOT overwritten (Daniel's
-   territory): enemyTypes.js SQUASH_KICK comment still says "~9% peak"
-   (kick 2 ≈ 4–5%), and the LIMP comment describes the old knee-only
-   behavior (it's now the full drag scaler). Cosmetic.
-5. Optional cleanup: config.js duplicate `RECOIL_MS`/`RECOIL_KICK_DEG`
-   pair (harmless; flagged 2026-07-12).
-6. Pass 8 audio — deferred; needs generated assets.
-7. Eventually: itch.io deploy (SHIP-gate pre-flight + release gate;
-   mobile check n/a for a pointer-lock FPS).
-
-## 9. MEASURED facts (do not re-derive; probes exist)
-
-- Zombie facing: `rotation.y = atan2(dx, dz)` on a +Z-built body.
-- Player movement: forward = (−sinY, −cosY), right = (cosY, −sinY).
-- **Frames: camera/gun space is −Z-forward; BODY-LOCAL forward is +Z.**
-  FX anchors read from the geometry's source (gun muzzle = gun-local
-  (0, 0.03, −0.45)); Section 11 asserts the body's forward signs.
-- Spring (f 5, ζ 0.4, 60 fps): kick→peak squash is linear ≈ ×0.022;
-  rebound stretch ≈ peak/5; settle ~350 ms. Section 12 pins behaviors.
-- Arm rest: rotation.x < π/2 points arms UP, > π/2 dangles them —
-  1.85 rad is the shambler's dangle (the 1.25 slip is probe-guarded).
-- Diagnostic signature: scene black + HUD alive + zero console errors =
-  NaN in a transform or light uniform; the suite names missing config
-  keys AND missing enemy-registry fields by name.
-
-## 10. Session hygiene for the next session
-
-Attach this file. Clone; sync by **fetch + reset --hard**; confirm the
-remote is current with Daniel. Run `node test_suite.mjs` — expect SUITE
-PASS, **24 modules, 190 asserts**. Every checkpoint block ends with
-`git push`. Update this handoff at session end; sweep LESSONS.md
-(**5 unharvested 2026-07-12 entries** are dev-method/GI routing
-candidates: port-sign anchors, clone fetch+reset, copy-complete
-checkpoints, integrate-don't-scale phases, the animation feel-loop
-expectation).
+Attach this file. Open with the §0 research question (confirm ordering
+vs 4.3). Clone, fetch+reset, confirm tip with Daniel, run the suite —
+expect **SUITE PASS, 27 modules, 231 asserts**. Every checkpoint block
+ends with `git push`. Rewrite this handoff at session end; sweep
+LESSONS.md (7 unharvested entries await a dev-method harvest).

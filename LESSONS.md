@@ -188,3 +188,47 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   round), ship geometry probes with the first round, and after ~5 rounds
   without convergence consider an approach rethink — this one converged,
   so the single-lever discipline held.*
+
+## 2026-07-12 — every renderer.render() repaints scene.background: the gun's overlay pass wiped the world (black screen)
+
+- What broke / what happened: pass 4.2b moved the gun viewmodel to a
+  second render pass (world → clearDepth → gun on layer 1) to stop it
+  clipping through walls. In three.js, EVERY render() call draws
+  scene.background first — so the gun pass repainted the whole frame with
+  sky colour and drew only the gun on top. Symptom: world pitch dark, HUD
+  (DOM) alive, gun visible and lit. Daniel hit it in the browser
+  immediately after an all-green suite run.
+- Root cause: the overlay pass inherited the scene's background paint.
+  Canonical two-pass viewmodel pattern, canonical gotcha — the overlay
+  pass must render with scene.background nulled and restored.
+- Verification gap it exposed: render-path changes are INVISIBLE to the
+  Node suite — no WebGL in the sandbox, so the browser is the first
+  renderer to ever execute them. The suite stayed green through the
+  entire defect.
+- Plug shipped: background null/restore around the gun pass. Process
+  plug: any render-path delivery names itself as suite-invisible in its
+  testing steps and puts the visual check FIRST — the browser test is
+  not a formality there; it is the only test.
+- Route: dev-method / html-game.md candidate — *multi-pass rendering:
+  null scene.background on every pass after the first; treat render-path
+  changes as browser-first deliveries.*
+
+## 2026-07-12 — thin boundary colliders eject bodies to the WRONG side (probe caught it pre-ship)
+
+- What happened (a probe win, not a shipped defect): making the map fence
+  solid, the first implementation used thin boxes on the boundary line.
+  The suite probe written alongside it ("a body ON the line resolves
+  INWARD") failed on its first run: min-penetration resolution against a
+  thin box exits through the shallowest face — for a body centred on a
+  0.15 m box that's out the FAR side half the time, ejecting the player
+  off the map (and thin geometry is tunnel-able at speed besides).
+- Fix shipped: boundary colliders are THICK one-sided bands — inner face
+  exactly at the visible line, a metre of invisible solid extending
+  outward — so the shallowest exit is always inward and there is nothing
+  to tunnel through.
+- The general shape: any one-sided barrier (fences, map edges, kill
+  walls) collides as a thick band on its far side, never as thin
+  geometry; and the probe to ship WITH it asserts the eject DIRECTION,
+  not just non-overlap.
+- Route: dev-method / html-game.md candidate — *one-sided barriers =
+  thick outward bands + an eject-direction probe.*
