@@ -456,11 +456,17 @@ renderer.setAnimationLoop(() => {
   }
 
   // Two-pass render (4.2b): world (layer 0), clear depth, gun (layer 1).
+  // The gun pass renders with the background NULLED — every render() call
+  // repaints scene.background first, so leaving it on wiped the entire
+  // world pass with sky colour (the 4.2b black-screen bug).
   renderer.clear();
   camera.layers.set(0);
   renderer.render(scene, camera);
   renderer.clearDepth();
   camera.layers.set(1);
+  const worldBackground = scene.background;
+  scene.background = null;
   renderer.render(scene, camera);
+  scene.background = worldBackground;
   camera.layers.set(0);
 });
