@@ -118,8 +118,8 @@ FOG: {
   CASINGS: {
     SIZE: 0.035,          // metres — shell length (cross-section is half)
     COLOR: 0xb08d2f,      // brass
-    PORT_UP: 0.06,        // ejection port offset from the gun, camera-space
-    PORT_FWD: 0.2,        //   (up and toward the muzzle)
+    PORT_UP:  0.03,        // ejection port offset from the gun, camera-space
+    PORT_FWD: -0.45,        //   (up and toward the muzzle)
     EJECT_SPEED: 1.6,     // m/s to the player's right
     EJECT_UP: 2.2,        // m/s upward arc
     JITTER: 0.5,          // random velocity spread per axis
