@@ -207,12 +207,19 @@ onEnter(States.COUNTDOWN, (prev) => {
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
       fogBank.visible = false; // Range stays a crisp, clean shooting range
+      scene.fog.near = CONFIG.FOG.NEAR;
+      scene.fog.far = CONFIG.FOG.FAR;
       resetTargets();
       refreshHud();
       setTimer(CONFIG.ROUND_LENGTH_S);
       beginCountdown({ fresh: true, timed: true });
     } else {
       fogBank.visible = true; // Waves: the murk the zombies walk out of
+      // Whole-arena murk (pass 8.2): distance fog pulled in for Waves only.
+      // Camera-relative is RIGHT here — "everything past ~26 m is haze"
+      // should follow the player; the perimeter banks stay the thickest part.
+      scene.fog.near = CONFIG.FOG.WAVES.NEAR;
+      scene.fog.far = CONFIG.FOG.WAVES.FAR;
       clearTargets(); // Waves: no practice targets in the arena
       resetPlayer();
       setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);

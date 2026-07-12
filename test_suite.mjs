@@ -361,6 +361,7 @@ try {
     'GUN.OFFSET_X': 'number', 'GUN.OFFSET_Y': 'number', 'GUN.OFFSET_Z': 'number',
     'RANGE.WIDTH': 'number', 'RANGE.BACK_Z': 'number', 'RANGE.FRONT_Z': 'number',
     'RANGE.WALL_HEIGHT': 'number', 'FOG.NEAR': 'number', 'FOG.FAR': 'number',
+    'FOG.WAVES.NEAR': 'number', 'FOG.WAVES.FAR': 'number',
     'FOG.BANK.HEIGHT': 'number', 'FOG.BANK.LAYERS': 'number',
     'FOG.BANK.OPACITY_MAX': 'number', 'FOG.BANK.OPACITY_MIN': 'number',
     'FOG.BANK.DEPTH.BACK': 'number', 'FOG.BANK.DEPTH.SIDE': 'number',
