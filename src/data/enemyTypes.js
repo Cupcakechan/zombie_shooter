@@ -37,7 +37,7 @@ export const ENEMY_TYPES = {
       BOB_AMP: 0.06,      // metres of vertical bob
       BOB_FREQ: 4.0,      // radians per metre WALKED — stride-locked, not time-locked
       SWAY_AMP: 0.10,     // radians of side-to-side roll
-      SWAY_FREQ: 2.2,     // radians per metre walked
+      SWAY_FREQ: 2.0,     // radians per metre walked — HALF of BOB_FREQ: one roll per step, phase-locked to the stride
       IDLE_SWAY_FREQ: 0.0018, // radians per ms — keeps a STOPPED zombie subtly alive
       LEAN: 0.12,         // constant forward lean, radians
       ARM_WOBBLE: 0.08,   // radians of raised-arm bounce

@@ -263,7 +263,7 @@ export function updateEnemies(dtMs, playerPos) {
       rec.attackT += dtMs;
       if (rec.attackPhase === 'windup') {
         const k = Math.min(1, rec.attackT / AT.WINDUP_MS);
-        setArms(rec, REST + AT.REAR_RAD * k); // the tell: arms rear back
+        setArms(rec, REST - AT.REAR_RAD * k); // the tell: arms RAISE overhead (7a.3)
         rec.elbowFactor = 1 + 0.4 * k; // elbows cock deeper with the rear-back
         if (k >= 1) {
           rec.attackPhase = 'strike';
@@ -276,7 +276,7 @@ export function updateEnemies(dtMs, playerPos) {
         }
       } else if (rec.attackPhase === 'strike') {
         const k = Math.min(1, rec.attackT / AT.STRIKE_MS);
-        setArms(rec, REST - AT.THRUST_RAD * (1 - k)); // thrust, then ease back
+        setArms(rec, REST + AT.THRUST_RAD * (1 - k)); // slam DOWN, then ease back up
         rec.elbowFactor = 1 - k; // elbows EXTEND — the swipe becomes a lunge
         if (k >= 1) {
           rec.attackPhase = 'recover';
@@ -323,8 +323,13 @@ export function updateEnemies(dtMs, playerPos) {
     // time term so a stopped zombie still breathes instead of freezing.
     const A = type.ANIM;
     group.position.y = Math.abs(Math.sin(rec.walked * A.BOB_FREQ)) * A.BOB_AMP;
+    // Sway is stride-locked while walking (SWAY_FREQ = half the step
+    // frequency rolls the body onto each planted foot, in phase forever);
+    // the IDLE time term breathes ONLY when stopped — while walking it used
+    // to beat against the stride and read as an irregular waddle (7a.3).
     group.rotation.z =
-      Math.sin(rec.walked * A.SWAY_FREQ + rec.t * A.IDLE_SWAY_FREQ) * A.SWAY_AMP;
+      Math.sin(rec.walked * A.SWAY_FREQ
+        + rec.t * A.IDLE_SWAY_FREQ * (1 - rec.legBlend)) * A.SWAY_AMP;
     group.rotation.x = A.LEAN;
 
     // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
