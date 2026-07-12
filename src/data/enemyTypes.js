@@ -24,13 +24,13 @@ export const ENEMY_TYPES = {
     // retuning one part's size keeps everything attached.
     BODY: {
       FOOT:  { W: 0.20, H: 0.10, D: 0.28, FWD: 0.05 },
-      LEG:   { W: 0.17, LEN: 0.68, D: 0.17, X: 0.13 },
+      LEG:   { W: 0.17, LEN: 0.68, D: 0.17, X: 0.13, KNEE_AT: 0.55 },
       BELLY: { W: 0.42, H: 0.34, D: 0.26 },
       CHEST: { W: 0.54, H: 0.44, D: 0.32, FWD: 0.10, HUNCH: 0.30 },
       HEAD:  { W: 0.40, H: 0.36, D: 0.34, FWD: 0.30, COCK: 0.12, TILT: -0.15 },
       JAW:   { W: 0.24, H: 0.10, D: 0.20, DROP: 0.06, FWD: 0.08 },
       EYE:   { SIZE: 0.06, X: 0.09, Y: 0.02, FWD: 0.02 },
-      ARM:   { W: 0.13, LEN: 0.75, D: 0.13, X: 0.23, Y: 1.30, FWD: 0.14, REST_RAD: 1.85 },
+      ARM:   { W: 0.13, LEN: 0.75, D: 0.13, X: 0.23, Y: 1.30, FWD: 0.14, REST_RAD: 1.85, ELBOW_AT: 0.55 },
       HAND:  { SIZE: 0.16 },
     },
     ANIM: {
@@ -42,6 +42,9 @@ export const ENEMY_TYPES = {
       LEAN: 0.12,         // constant forward lean, radians
       ARM_WOBBLE: 0.08,   // radians of raised-arm bounce
       LEG_SWING: 0.5,     // radians of alternating hip swing while walking
+      KNEE_REST: 0.15,    // permanent knee bend — the shuffle-crouch stance
+      KNEE_BEND: 0.55,    // extra knee bend at mid-swing (quarter-stride lag)
+      ELBOW_BEND: 0.45,   // rest elbow droop; the strike extends it to 0
     },
     COMBAT: {
       FLINCH_MS: 100,     // red flash on taking a hit

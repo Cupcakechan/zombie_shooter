@@ -79,6 +79,7 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // rooted (attack/stagger/arrived) so legs PLANT instead of freezing
     // mid-stride during the attack telegraph.
     legBlend: 0,
+    elbowFactor: 1, // scales the elbow droop; attack phases drive it (7a.2)
   };
   // Emerging from the fog bank: start invisible; the update loop fades in.
   if (rec.spawnFadeT > 0) {
@@ -263,6 +264,7 @@ export function updateEnemies(dtMs, playerPos) {
       if (rec.attackPhase === 'windup') {
         const k = Math.min(1, rec.attackT / AT.WINDUP_MS);
         setArms(rec, REST + AT.REAR_RAD * k); // the tell: arms rear back
+        rec.elbowFactor = 1 + 0.4 * k; // elbows cock deeper with the rear-back
         if (k >= 1) {
           rec.attackPhase = 'strike';
           rec.attackT = 0;
@@ -275,12 +277,14 @@ export function updateEnemies(dtMs, playerPos) {
       } else if (rec.attackPhase === 'strike') {
         const k = Math.min(1, rec.attackT / AT.STRIKE_MS);
         setArms(rec, REST - AT.THRUST_RAD * (1 - k)); // thrust, then ease back
+        rec.elbowFactor = 1 - k; // elbows EXTEND — the swipe becomes a lunge
         if (k >= 1) {
           rec.attackPhase = 'recover';
           rec.attackT = 0;
         }
       } else { // recover
         setArms(rec, REST);
+        rec.elbowFactor = Math.min(1, rec.attackT / AT.RECOVER_MS); // droop returns
         if (rec.attackT >= AT.RECOVER_MS) rec.attackPhase = null;
       }
     } else {
@@ -325,12 +329,24 @@ export function updateEnemies(dtMs, playerPos) {
 
     // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
     // each step lands on a bob peak — stride-locked like everything else.
-    // Guarded: an old parts map without legs simply keeps them still.
+    // Knees (7a.2): a bend pulse lagged a QUARTER STRIDE behind the thigh
+    // (structural constant, like the YXZ order — the knee bends mid-swing
+    // and straightens at the plant), riding on the permanent KNEE_REST
+    // shuffle-crouch. max(0,·) keeps knees from ever bending forward.
+    // Guarded: an old parts map without legs/shins simply keeps them still.
     if (rec.parts.legL && rec.parts.legR) {
-      const swing =
-        Math.sin(rec.walked * A.BOB_FREQ) * (A.LEG_SWING ?? 0) * rec.legBlend;
+      const p = rec.walked * A.BOB_FREQ;
+      const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
       rec.parts.legL.rotation.x = swing;
       rec.parts.legR.rotation.x = -swing;
+      if (rec.parts.shinL && rec.parts.shinR) {
+        const KNEE_LAG = Math.PI / 2;
+        const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
+        rec.parts.shinL.rotation.x =
+          (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
+        rec.parts.shinR.rotation.x =
+          (A.KNEE_REST ?? 0) + pulse * Math.max(0, -Math.sin(p - KNEE_LAG));
+      }
     }
 
     // The idle arm wobble only runs when the attack doesn't own the arms.
@@ -339,6 +355,15 @@ export function updateEnemies(dtMs, playerPos) {
         Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
       rec.parts.armL.rotation.x = REST + wob;
       rec.parts.armR.rotation.x = REST - wob;
+      rec.elbowFactor = 1;
+    }
+    // Elbow droop rides whatever the arms are doing (attack phases scale the
+    // factor: cock on windup, straighten through the strike). Guarded for an
+    // old parts map without forearms.
+    if (rec.parts.foreL && rec.parts.foreR) {
+      const elbow = (A.ELBOW_BEND ?? 0) * rec.elbowFactor;
+      rec.parts.foreL.rotation.x = elbow;
+      rec.parts.foreR.rotation.x = elbow;
     }
   }
 

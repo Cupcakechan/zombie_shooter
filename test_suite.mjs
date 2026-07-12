@@ -490,7 +490,7 @@ try {
     'HP', 'BODY_RADIUS', 'WALK_SPEED', 'STOP_DISTANCE',
     'COLORS.SKIN', 'COLORS.CLOTH', 'COLORS.FEET', 'COLORS.EYES',
     'BODY.FOOT.W', 'BODY.FOOT.H', 'BODY.FOOT.D', 'BODY.FOOT.FWD',
-    'BODY.LEG.W', 'BODY.LEG.LEN', 'BODY.LEG.D', 'BODY.LEG.X',
+    'BODY.LEG.W', 'BODY.LEG.LEN', 'BODY.LEG.D', 'BODY.LEG.X', 'BODY.LEG.KNEE_AT',
     'BODY.BELLY.W', 'BODY.BELLY.H', 'BODY.BELLY.D',
     'BODY.CHEST.W', 'BODY.CHEST.H', 'BODY.CHEST.D', 'BODY.CHEST.FWD',
     'BODY.CHEST.HUNCH',
@@ -499,10 +499,11 @@ try {
     'BODY.JAW.W', 'BODY.JAW.H', 'BODY.JAW.D', 'BODY.JAW.DROP', 'BODY.JAW.FWD',
     'BODY.EYE.SIZE', 'BODY.EYE.X', 'BODY.EYE.Y', 'BODY.EYE.FWD',
     'BODY.ARM.W', 'BODY.ARM.LEN', 'BODY.ARM.D', 'BODY.ARM.X',
-    'BODY.ARM.Y', 'BODY.ARM.FWD', 'BODY.ARM.REST_RAD',
+    'BODY.ARM.Y', 'BODY.ARM.FWD', 'BODY.ARM.REST_RAD', 'BODY.ARM.ELBOW_AT',
     'BODY.HAND.SIZE',
     'ANIM.BOB_AMP', 'ANIM.BOB_FREQ', 'ANIM.SWAY_AMP', 'ANIM.SWAY_FREQ',
     'ANIM.IDLE_SWAY_FREQ', 'ANIM.LEAN', 'ANIM.ARM_WOBBLE', 'ANIM.LEG_SWING',
+    'ANIM.KNEE_REST', 'ANIM.KNEE_BEND', 'ANIM.ELBOW_BEND',
     'COMBAT.FLINCH_MS', 'COMBAT.STAGGER_MS', 'COMBAT.KNOCKBACK',
     'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
     'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
@@ -824,25 +825,34 @@ try {
   // Jaw hangs BELOW the head centre.
   assertTrue('section11', 'jaw hangs below the head centre', worldOf(parts.jaw).y < headW.y);
 
-  // Legs pivot at the hip and carry their feet — a foot left parented to
-  // the group would stay planted while the leg swings through it.
-  for (const side of ['legL', 'legR']) {
-    const leg = parts[side];
-    assertTrue('section11', `${side} exists in the parts map`, !!leg);
-    const foot = leg && leg.children.find((c) => c.isMesh);
-    assertTrue('section11', `${side} carries a foot child`, !!foot);
+  // Legs are two-segment chains: thigh → shin → foot. A foot left parented
+  // higher up would stay planted while the shin swings through it.
+  for (const side of ['L', 'R']) {
+    const thigh = parts[`leg${side}`];
+    const shin = parts[`shin${side}`];
+    assertTrue('section11', `leg${side} exists in the parts map`, !!thigh);
+    assertTrue('section11', `shin${side} is a child of leg${side}`,
+      !!shin && shin.parent === thigh);
+    const foot = shin && shin.children.find((c) => c.isMesh);
+    assertTrue('section11', `shin${side} carries the foot`, !!foot);
   }
 
-  // Arms: rest pose points the hands forward of the shoulders (dangling
-  // reach), and both arms carry a hand child riding the swing pivot.
-  for (const side of ['armL', 'armR']) {
-    const arm = parts[side];
-    const hand = arm.children.find((c) => c.isMesh);
-    assertTrue('section11', `${side} carries a hand child`, !!hand);
-    assertTrue('section11', `${side} hand reaches forward of the shoulder`,
-      worldOf(hand).z > worldOf(arm).z);
-    assertTrue('section11', `${side} hand hangs at/below the shoulder (dangle)`,
-      worldOf(hand).y <= worldOf(arm).y + 0.01);
+  // Arms are two-segment chains: upper → forearm → hand. Rest pose points
+  // the HAND (chain end) forward of the shoulder and at/below it (dangling
+  // reach) — measured on the true chain end, not a proxy segment.
+  for (const side of ['L', 'R']) {
+    const arm = parts[`arm${side}`];
+    const fore = parts[`fore${side}`];
+    assertTrue('section11', `fore${side} is a child of arm${side}`,
+      !!fore && fore.parent === arm);
+    const hand = fore && fore.children.find((c) => c.isMesh);
+    assertTrue('section11', `fore${side} carries the hand`, !!hand);
+    if (hand) {
+      assertTrue('section11', `arm${side} hand reaches forward of the shoulder`,
+        worldOf(hand).z > worldOf(arm).z);
+      assertTrue('section11', `arm${side} hand hangs at/below the shoulder (dangle)`,
+        worldOf(hand).y <= worldOf(arm).y + 0.01);
+    }
   }
 } catch (err) {
   failures.push({ file: 'section11', err });

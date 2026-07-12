@@ -37,26 +37,42 @@ export function buildBody(type) {
   const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
   const headY = chestY + B.CHEST.H / 2 * Math.cos(B.CHEST.HUNCH) + B.HEAD.H / 2 - 0.06;
 
-  // Legs: origin at the HIP (geometry translated downward) so rotation.x
-  // swings the whole leg there — same pivot trick as the arms at the
-  // shoulder. Feet are CHILDREN, riding the swing; at rest (rotation 0)
-  // they sit exactly on the ground.
-  const legGeo = new THREE.BoxGeometry(B.LEG.W, B.LEG.LEN, B.LEG.D);
-  legGeo.translate(0, -B.LEG.LEN / 2, 0); // leg extends DOWN from the hip
-  const legL = new THREE.Mesh(legGeo, cloth);
+  // Legs (two segments): THIGH pivots at the hip, SHIN pivots at the knee
+  // (a child, origin at the joint), the foot rides the shin. Joint sits
+  // KNEE_AT down the limb (research rule: ~55%). Rest pose bakes the slight
+  // permanent knee bend — the shuffle-crouch stance.
+  const thighLen = B.LEG.LEN * B.LEG.KNEE_AT;
+  const shinLen = B.LEG.LEN - thighLen;
+  const thighGeo = new THREE.BoxGeometry(B.LEG.W, thighLen, B.LEG.D);
+  thighGeo.translate(0, -thighLen / 2, 0); // extends DOWN from the hip
+  const shinGeo = new THREE.BoxGeometry(B.LEG.W * 0.92, shinLen + 0.04, B.LEG.D * 0.92);
+  shinGeo.translate(0, -(shinLen + 0.04) / 2 + 0.02, 0); // slight overlap hides the knee join
+
+  const legL = new THREE.Mesh(thighGeo, cloth);
   legL.position.set(-B.LEG.X, hipTop, 0);
-  const legR = new THREE.Mesh(legGeo.clone(), cloth);
+  const shinL = new THREE.Mesh(shinGeo, cloth);
+  shinL.position.set(0, -thighLen, 0); // the knee
+  shinL.rotation.x = type.ANIM.KNEE_REST;
+  legL.add(shinL);
+
+  const legR = new THREE.Mesh(thighGeo.clone(), cloth);
   legR.position.set(B.LEG.X, hipTop, 0);
+  const shinR = new THREE.Mesh(shinGeo.clone(), cloth);
+  shinR.position.set(0, -thighLen, 0);
+  shinR.rotation.x = type.ANIM.KNEE_REST;
+  legR.add(shinR);
   group.add(legL, legR);
 
-  // Feet: dark ground anchors, toes forward, children of their legs.
+  // Feet: dark ground anchors, toes forward, riding the shins.
   const footGeo = new THREE.BoxGeometry(B.FOOT.W, B.FOOT.H, B.FOOT.D);
   const footL = new THREE.Mesh(footGeo, feetMat);
-  footL.position.set(0, -(B.LEG.LEN + B.FOOT.H / 2), B.FOOT.FWD);
-  legL.add(footL);
+  footL.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
+  footL.rotation.x = -type.ANIM.KNEE_REST; // flat-footed under the shuffle bend
+  shinL.add(footL);
   const footR = new THREE.Mesh(footGeo.clone(), feetMat);
-  footR.position.set(0, -(B.LEG.LEN + B.FOOT.H / 2), B.FOOT.FWD);
-  legR.add(footR);
+  footR.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
+  footR.rotation.x = -type.ANIM.KNEE_REST;
+  shinR.add(footR);
 
   // Belly: the narrower lower torso the chest hunches over.
   const belly = new THREE.Mesh(
@@ -98,32 +114,46 @@ export function buildBody(type) {
   eyeR.position.set(B.EYE.X, B.EYE.Y, B.HEAD.D / 2 + B.EYE.FWD);
   head.add(eyeL, eyeR);
 
-  // Arms: origin at the SHOULDER (geometry translated +Y) so rotation.x
-  // pivots there — the contract every arm animation relies on. Rest pose is
-  // BODY.ARM.REST_RAD (slightly below horizontal: dangling-reaching), and
-  // the attack/wobble code anchors on the same value. Hands are children,
-  // riding every swing as reaching claws.
-  const armGeo = new THREE.BoxGeometry(B.ARM.W, B.ARM.LEN, B.ARM.D);
-  armGeo.translate(0, B.ARM.LEN / 2, 0);
-  const armL = new THREE.Mesh(armGeo, skin);
+  // Arms (two segments): UPPER pivots at the shoulder — the contract every
+  // arm animation relies on (rotating armL/armR carries the whole chain).
+  // FOREARM pivots at the elbow (ELBOW_AT down the limb), rest pose bakes
+  // the elbow droop; the hand rides the forearm. The strike animation
+  // extends the elbow — the swipe becomes a reaching lunge (enemies.js).
+  const upperLen = B.ARM.LEN * B.ARM.ELBOW_AT;
+  const foreLen = B.ARM.LEN - upperLen;
+  const upperGeo = new THREE.BoxGeometry(B.ARM.W, upperLen, B.ARM.D);
+  upperGeo.translate(0, upperLen / 2, 0); // extends +Y from the shoulder
+  const foreGeo = new THREE.BoxGeometry(B.ARM.W * 0.92, foreLen + 0.04, B.ARM.D * 0.92);
+  foreGeo.translate(0, (foreLen + 0.04) / 2 - 0.02, 0); // overlap hides the elbow join
+
+  const armL = new THREE.Mesh(upperGeo, skin);
   armL.position.set(-B.ARM.X, B.ARM.Y, B.ARM.FWD);
   armL.rotation.x = B.ARM.REST_RAD;
-  const armR = new THREE.Mesh(armGeo.clone(), skin);
+  const foreL = new THREE.Mesh(foreGeo, skin);
+  foreL.position.set(0, upperLen, 0); // the elbow
+  foreL.rotation.x = type.ANIM.ELBOW_BEND;
+  armL.add(foreL);
+
+  const armR = new THREE.Mesh(upperGeo.clone(), skin);
   armR.position.set(B.ARM.X, B.ARM.Y, B.ARM.FWD);
   armR.rotation.x = B.ARM.REST_RAD;
+  const foreR = new THREE.Mesh(foreGeo.clone(), skin);
+  foreR.position.set(0, upperLen, 0);
+  foreR.rotation.x = type.ANIM.ELBOW_BEND;
+  armR.add(foreR);
   group.add(armL, armR);
 
   const handGeo = new THREE.BoxGeometry(B.HAND.SIZE, B.HAND.SIZE, B.HAND.SIZE);
   const handL = new THREE.Mesh(handGeo, skin);
-  handL.position.set(0, B.ARM.LEN + B.HAND.SIZE / 2 - 0.06, 0);
-  armL.add(handL);
+  handL.position.set(0, foreLen + B.HAND.SIZE / 2 - 0.06, 0);
+  foreL.add(handL);
   const handR = new THREE.Mesh(handGeo.clone(), skin);
-  handR.position.set(0, B.ARM.LEN + B.HAND.SIZE / 2 - 0.06, 0);
-  armR.add(handR);
+  handR.position.set(0, foreLen + B.HAND.SIZE / 2 - 0.06, 0);
+  foreR.add(handR);
 
   return {
     group,
-    parts: { armL, armR, legL, legR, head, jaw },
+    parts: { armL, armR, foreL, foreR, legL, legR, shinL, shinR, head, jaw },
     materials: [skin, cloth, feetMat, eyeMat],
   };
 }
