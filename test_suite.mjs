@@ -966,30 +966,27 @@ try {
       assertTrue('section13', `${id}.${k} is a positive finite number`,
         Number.isFinite(map[k]) && map[k] > 0);
     }
+    assertTrue('section13', `${id}.ANCHOR is finite`,
+      Number.isFinite(map.ANCHOR.x) && Number.isFinite(map.ANCHOR.z));
 
     const grid = parseLayout(map); // throws on ragged rows / duplicate P
     assertTrue('section13', `${id}: layout parsed (${grid.cols}×${grid.rows})`, true);
     assertTrue('section13', `${id}: exactly one player start`, !!grid.playerStart);
 
-    // Perimeter fully enclosed by walls or windows.
-    let leaks = 0;
-    for (let c = 0; c < grid.cols; c++) {
-      if (!'#W'.includes(grid.at(c, 0))) leaks += 1;
-      if (!'#W'.includes(grid.at(c, grid.rows - 1))) leaks += 1;
-    }
-    for (let r = 0; r < grid.rows; r++) {
-      if (!'#W'.includes(grid.at(0, r))) leaks += 1;
-      if (!'#W'.includes(grid.at(grid.cols - 1, r))) leaks += 1;
-    }
-    assertNear('section13', `${id}: perimeter fully enclosed (leaks)`, leaks, 0);
-
-    // Windows sit on the perimeter only (v1 rule).
-    const interiorWindows = grid.windows.filter(({ c, r }) =>
-      c !== 0 && r !== 0 && c !== grid.cols - 1 && r !== grid.rows - 1);
-    assertNear('section13', `${id}: windows on the perimeter only`,
-      interiorWindows.length, 0);
+    // Every window is embedded in a straight wall run — a free-floating W
+    // renders as furniture, not a window.
+    const looseWindows = grid.windows.filter(({ c, r }) =>
+      !((grid.at(c - 1, r) === '#' && grid.at(c + 1, r) === '#')
+        || (grid.at(c, r - 1) === '#' && grid.at(c, r + 1) === '#')));
+    assertNear('section13', `${id}: every window embedded in a wall run`,
+      looseWindows.length, 0);
     assertTrue('section13', `${id}: has spawn windows (${grid.windows.length})`,
       grid.windows.length >= 1);
+
+    // Fountain cells (if any) are blocked ground.
+    const walkableFountains = grid.fountains.filter(({ c, r }) => grid.walkable(c, r));
+    assertNear('section13', `${id}: fountain cells are blocked`,
+      walkableFountains.length, 0);
 
     // Every walkable cell reachable from P — sealed rooms cannot ship.
     const reached = floodReachable(grid).size;
@@ -997,10 +994,25 @@ try {
     assertNear('section13', `${id}: flood from P covers every walkable cell`,
       reached, total);
 
-    // World mapping: the player start lands exactly at the origin.
+    // The whole map (cell edges, not centres) fits inside the arena's
+    // walkable clamp — retuning ANCHOR, CELL, or RANGE inconsistently
+    // fails HERE, not as an unreachable map edge in play.
+    const { CONFIG: MCFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+    const boundX = MCFG.RANGE.WIDTH / 2 - MCFG.PLAYER.WALL_MARGIN;
+    const minZb = MCFG.RANGE.BACK_Z + MCFG.PLAYER.WALL_MARGIN;
+    const maxZb = MCFG.RANGE.FRONT_Z - MCFG.PLAYER.WALL_MARGIN;
+    const tl = cellToWorld(map, grid, 0, 0);
+    const br = cellToWorld(map, grid, grid.cols - 1, grid.rows - 1);
+    const inClamp =
+      tl.x - map.CELL / 2 >= -boundX && br.x + map.CELL / 2 <= boundX
+      && tl.z - map.CELL / 2 >= minZb && br.z + map.CELL / 2 <= maxZb;
+    assertTrue('section13', `${id}: map extent fits the arena clamp`, inClamp);
+
+    // The start lands inside the map (and therefore inside the clamp).
     const start = cellToWorld(map, grid, grid.playerStart.c, grid.playerStart.r);
-    assertNear('section13', `${id}: player start maps to world x 0`, start.x, 0);
-    assertNear('section13', `${id}: player start maps to world z 0`, start.z, 0);
+    assertTrue('section13', `${id}: player start inside the map extent`,
+      start.x > tl.x - map.CELL && start.x < br.x + map.CELL
+      && start.z > tl.z - map.CELL && start.z < br.z + map.CELL);
   }
 } catch (err) {
   failures.push({ file: 'section13', err });

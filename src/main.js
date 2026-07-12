@@ -15,7 +15,8 @@ import {
 import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
 import { buildMap } from './render/mapGen.js';
-import { MAPS } from './data/maps.js';
+import { MAPS, ACTIVE_MAP_ID } from './data/maps.js';
+import { parseLayout, playerWorldStart } from './game/mapGrid.js';
 import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -100,7 +101,10 @@ camera.add(createGun());
 // — The house (Stage 4, pass 4.1): generated from the map registry, shown
 // in Waves. VISUAL ONLY this pass — walls don't collide (4.2) and zombies
 // beeline through them (4.3); both are the named next passes.
-const houseMap = buildMap(MAPS.house01);
+const activeMap = MAPS[ACTIVE_MAP_ID];
+const houseMap = buildMap(activeMap);
+// Where this map says the player starts (4.1b: the map owns the start).
+const mapStart = playerWorldStart(activeMap, parseLayout(activeMap));
 houseMap.visible = false;
 scene.add(houseMap);
 
@@ -302,6 +306,8 @@ onEnter(States.COUNTDOWN, (prev) => {
       scene.fog.far = CONFIG.FOG.WAVES.FAR;
       clearTargets(); // Waves: no practice targets in the arena
       resetPlayer();
+      // The map owns the start position (Range keeps the origin).
+      camera.position.set(mapStart.x, CONFIG.EYE_HEIGHT, mapStart.z);
       setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
       setKills(0);
       startWaves(); // wave 1 announces on the first PLAYING frame

@@ -12,6 +12,7 @@ export function parseLayout(map) {
   const cols = map.layout[0].length;
   const windows = [];
   const doorways = [];
+  const fountains = [];
   let playerStart = null;
   for (let r = 0; r < rows; r++) {
     if (map.layout[r].length !== cols) {
@@ -21,6 +22,7 @@ export function parseLayout(map) {
       const ch = map.layout[r][c];
       if (ch === 'W') windows.push({ c, r });
       if (ch === 'D') doorways.push({ c, r });
+      if (ch === 'F') fountains.push({ c, r });
       if (ch === 'P') {
         if (playerStart) throw new Error('mapGrid: more than one P');
         playerStart = { c, r };
@@ -34,7 +36,7 @@ export function parseLayout(map) {
     const ch = at(c, r);
     return ch === '.' || ch === 'D' || ch === 'P';
   };
-  return { cols, rows, at, walkable, playerStart, windows, doorways };
+  return { cols, rows, at, walkable, playerStart, windows, doorways, fountains };
 }
 
 // Flood fill from the start over walkable cells (4-connected). Returns the
@@ -71,13 +73,17 @@ export function countWalkable(grid) {
   return n;
 }
 
-// World mapping: the map is placed so the PLAYER START cell lands exactly
-// at world (0, 0) — where a fresh Waves round puts the player. Cell (c, r)
-// centre in world space; +c goes +x, +r goes +z (deeper rows are FURTHER
-// from the default camera, i.e. the layout reads top = far).
+// World mapping (4.1b): the map is CENTRED on its ANCHOR (a world point in
+// the map registry) and the player spawns wherever P is — the map owns the
+// start. +c goes +x, +r goes +z (layout top = far from the default camera).
 export function cellToWorld(map, grid, c, r) {
   return {
-    x: (c - grid.playerStart.c) * map.CELL,
-    z: (r - grid.playerStart.r) * map.CELL,
+    x: map.ANCHOR.x + (c - (grid.cols - 1) / 2) * map.CELL,
+    z: map.ANCHOR.z + (r - (grid.rows - 1) / 2) * map.CELL,
   };
+}
+
+// Where a fresh round puts the player for this map.
+export function playerWorldStart(map, grid) {
+  return cellToWorld(map, grid, grid.playerStart.c, grid.playerStart.r);
 }
