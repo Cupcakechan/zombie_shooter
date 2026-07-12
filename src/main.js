@@ -14,6 +14,8 @@ import {
 } from './game/ammo.js';
 import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
+import { buildMap } from './render/mapGen.js';
+import { MAPS } from './data/maps.js';
 import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -95,6 +97,13 @@ camera.add(createGun());
 // — Fog bank: Waves-only atmosphere, built once and toggled per round (see
 // the COUNTDOWN handler). Zombies spawn inside it and fade in as they
 // emerge — the fade itself lives in enemies.js.
+// — The house (Stage 4, pass 4.1): generated from the map registry, shown
+// in Waves. VISUAL ONLY this pass — walls don't collide (4.2) and zombies
+// beeline through them (4.3); both are the named next passes.
+const houseMap = buildMap(MAPS.house01);
+houseMap.visible = false;
+scene.add(houseMap);
+
 const fogBank = createFogBank();
 fogBank.visible = false;
 scene.add(fogBank);
@@ -276,6 +285,7 @@ onEnter(States.COUNTDOWN, (prev) => {
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
       fogBank.visible = false; // Range stays a crisp, clean shooting range
+      houseMap.visible = false;
       scene.fog.near = CONFIG.FOG.NEAR;
       scene.fog.far = CONFIG.FOG.FAR;
       resetTargets();
@@ -284,6 +294,7 @@ onEnter(States.COUNTDOWN, (prev) => {
       beginCountdown({ fresh: true, timed: true });
     } else {
       fogBank.visible = true; // Waves: the murk the zombies walk out of
+      houseMap.visible = true;
       // Whole-arena murk (pass 8.2): distance fog pulled in for Waves only.
       // Camera-relative is RIGHT here — "everything past ~26 m is haze"
       // should follow the player; the perimeter banks stay the thickest part.

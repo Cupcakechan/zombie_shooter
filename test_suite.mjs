@@ -79,7 +79,7 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 24;
+const MIN_EXPECTED_MODULES = 27;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -947,6 +947,64 @@ try {
 } catch (err) {
   failures.push({ file: 'section12', err });
   console.log(`  FAIL   section 12 threw: ${err.message}`);
+}
+
+// ————— Section 13: map integrity (Stage 4) —————
+// The map is the single source the house derives from — a malformed layout
+// must fail HERE by name, never as geometry soup or a sealed room in play.
+
+console.log('');
+console.log('— Section 13: map integrity —');
+try {
+  const { MAPS } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  const { parseLayout, floodReachable, countWalkable, cellToWorld } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+
+  for (const [id, map] of Object.entries(MAPS)) {
+    // Constants sane.
+    for (const k of ['CELL', 'FLOOR_H', 'WINDOW_SILL_H', 'HEADER_H']) {
+      assertTrue('section13', `${id}.${k} is a positive finite number`,
+        Number.isFinite(map[k]) && map[k] > 0);
+    }
+
+    const grid = parseLayout(map); // throws on ragged rows / duplicate P
+    assertTrue('section13', `${id}: layout parsed (${grid.cols}×${grid.rows})`, true);
+    assertTrue('section13', `${id}: exactly one player start`, !!grid.playerStart);
+
+    // Perimeter fully enclosed by walls or windows.
+    let leaks = 0;
+    for (let c = 0; c < grid.cols; c++) {
+      if (!'#W'.includes(grid.at(c, 0))) leaks += 1;
+      if (!'#W'.includes(grid.at(c, grid.rows - 1))) leaks += 1;
+    }
+    for (let r = 0; r < grid.rows; r++) {
+      if (!'#W'.includes(grid.at(0, r))) leaks += 1;
+      if (!'#W'.includes(grid.at(grid.cols - 1, r))) leaks += 1;
+    }
+    assertNear('section13', `${id}: perimeter fully enclosed (leaks)`, leaks, 0);
+
+    // Windows sit on the perimeter only (v1 rule).
+    const interiorWindows = grid.windows.filter(({ c, r }) =>
+      c !== 0 && r !== 0 && c !== grid.cols - 1 && r !== grid.rows - 1);
+    assertNear('section13', `${id}: windows on the perimeter only`,
+      interiorWindows.length, 0);
+    assertTrue('section13', `${id}: has spawn windows (${grid.windows.length})`,
+      grid.windows.length >= 1);
+
+    // Every walkable cell reachable from P — sealed rooms cannot ship.
+    const reached = floodReachable(grid).size;
+    const total = countWalkable(grid);
+    assertNear('section13', `${id}: flood from P covers every walkable cell`,
+      reached, total);
+
+    // World mapping: the player start lands exactly at the origin.
+    const start = cellToWorld(map, grid, grid.playerStart.c, grid.playerStart.r);
+    assertNear('section13', `${id}: player start maps to world x 0`, start.x, 0);
+    assertNear('section13', `${id}: player start maps to world z 0`, start.z, 0);
+  }
+} catch (err) {
+  failures.push({ file: 'section13', err });
+  console.log(`  FAIL   section 13 threw: ${err.message}`);
 }
 
 // ————— Report —————

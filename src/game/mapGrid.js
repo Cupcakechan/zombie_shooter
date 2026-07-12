@@ -1,0 +1,83 @@
+// game/mapGrid.js — pure map logic (pass 4.1): parse the ASCII layout,
+// prove reachability, and map cells to world space. No THREE, no DOM —
+// everything here is suite-provable in Node, and the flood fill is the
+// seed of pass 4.3's flow-field navigation.
+
+// Parse a map's layout into a queryable grid.
+// Returns { cols, rows, walkable(c,r), at(c,r), playerStart:{c,r},
+//           windows:[{c,r}], doorways:[{c,r}] } — or throws on a malformed
+// layout (the suite asserts the good path AND the invariants).
+export function parseLayout(map) {
+  const rows = map.layout.length;
+  const cols = map.layout[0].length;
+  const windows = [];
+  const doorways = [];
+  let playerStart = null;
+  for (let r = 0; r < rows; r++) {
+    if (map.layout[r].length !== cols) {
+      throw new Error(`mapGrid: row ${r} length ${map.layout[r].length} !== ${cols}`);
+    }
+    for (let c = 0; c < cols; c++) {
+      const ch = map.layout[r][c];
+      if (ch === 'W') windows.push({ c, r });
+      if (ch === 'D') doorways.push({ c, r });
+      if (ch === 'P') {
+        if (playerStart) throw new Error('mapGrid: more than one P');
+        playerStart = { c, r };
+      }
+    }
+  }
+  const at = (c, r) =>
+    (c >= 0 && c < cols && r >= 0 && r < rows) ? map.layout[r][c] : '#';
+  // Walls and windows block; floor, doorways, and the start are walkable.
+  const walkable = (c, r) => {
+    const ch = at(c, r);
+    return ch === '.' || ch === 'D' || ch === 'P';
+  };
+  return { cols, rows, at, walkable, playerStart, windows, doorways };
+}
+
+// Flood fill from the start over walkable cells (4-connected). Returns the
+// set of reached cells as 'c,r' keys. The suite asserts it covers EVERY
+// walkable cell — a sealed room cannot ship. Pass 4.3 grows this same
+// traversal into the flow field.
+export function floodReachable(grid) {
+  const seen = new Set();
+  if (!grid.playerStart) return seen;
+  const queue = [grid.playerStart];
+  seen.add(`${grid.playerStart.c},${grid.playerStart.r}`);
+  while (queue.length) {
+    const { c, r } = queue.pop();
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc;
+      const nr = r + dr;
+      const key = `${nc},${nr}`;
+      if (seen.has(key) || !grid.walkable(nc, nr)) continue;
+      seen.add(key);
+      queue.push({ c: nc, r: nr });
+    }
+  }
+  return seen;
+}
+
+// Count every walkable cell (the flood's coverage target).
+export function countWalkable(grid) {
+  let n = 0;
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (grid.walkable(c, r)) n += 1;
+    }
+  }
+  return n;
+}
+
+// World mapping: the map is placed so the PLAYER START cell lands exactly
+// at world (0, 0) — where a fresh Waves round puts the player. Cell (c, r)
+// centre in world space; +c goes +x, +r goes +z (deeper rows are FURTHER
+// from the default camera, i.e. the layout reads top = far).
+export function cellToWorld(map, grid, c, r) {
+  return {
+    x: (c - grid.playerStart.c) * map.CELL,
+    z: (r - grid.playerStart.r) * map.CELL,
+  };
+}
