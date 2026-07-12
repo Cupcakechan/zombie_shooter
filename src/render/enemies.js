@@ -10,7 +10,7 @@ import { WAVES } from '../data/waveTable.js';
 import { buildBody } from './enemyBody.js';
 import { resolveBodyWithReach, segmentClearOfAABBs } from '../game/movement.js';
 import { createSecondOrder } from '../game/secondOrder.js';
-import { worldToCell } from '../game/mapGrid.js';
+import { worldToCell, cellToWorld } from '../game/mapGrid.js';
 import { CONFIG } from '../config.js';
 
 // ————— Pure math (suite-tested) —————
@@ -105,6 +105,9 @@ export function spawnEnemy(typeId, pos, { speedMult = 1 } = {}) {
     // once navigation faces a zombie along its PATH. Zero until the first
     // update — a hit landing that same frame simply skips the knockback.
     towardPlayer: { x: 0, z: 0 },
+    // The in-flight window climb (4.3b): null, or the committed script
+    // { t, ms, fromX, fromZ, toX, toZ, peakY, yaw }.
+    vault: null,
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
@@ -157,11 +160,12 @@ export function getEnemyHittables() {
 }
 
 // Living zombies as solid circles for the player's movement resolve —
-// corpses are walkable (stepping over the fallen is part of the fantasy).
+// corpses are walkable (stepping over the fallen is part of the fantasy),
+// and a vaulting body is inside the wall plane, not on the floor (4.3b).
 export function getLivingPositions() {
   const out = [];
   for (const rec of records) {
-    if (rec.dying) continue;
+    if (rec.dying || rec.vault) continue;
     out.push({
       x: rec.group.position.x,
       z: rec.group.position.z,
@@ -176,6 +180,14 @@ function startDeath(rec) {
   rec.dieT = 0;
   rec.flashT = 0;
   rec.attackPhase = null;
+  // Shot off the sill (4.3b): a climber falls back OUTSIDE — its vault
+  // start point — so the corpse never lies inside the wall plane. The
+  // counterplay payoff for shooting the free-hit window.
+  if (rec.vault) {
+    rec.group.position.x = rec.vault.fromX;
+    rec.group.position.z = rec.vault.fromZ;
+    rec.vault = null;
+  }
   setFlash(rec, 0);
   // A zombie killed mid-emergence snaps to full opacity: the death fade
   // assumes it starts from opaque, and a half-ghost corpse reads as a bug.
@@ -311,6 +323,39 @@ export function updateEnemies(dtMs, playerPos) {
       rec.towardPlayer.z = dz / dist;
     }
 
+    // — Vaulting (4.3b): a COMMITTED scripted climb through a window. The
+    // vault owns the frame: no attacks, no steering, no separation, no
+    // wall resolve (the body is legitimately inside the wall plane) — but
+    // it stays HITTABLE, and hits kick the squash spring as usual; that
+    // free-hit window is the price of window entry. Hits do not interrupt
+    // the climb. Killed mid-vault → startDeath drops it back OUTSIDE.
+    if (rec.vault) {
+      const v = rec.vault;
+      v.t += dtMs;
+      const k = Math.min(1, v.t / v.ms);
+      group.position.x = v.fromX + (v.toX - v.fromX) * k;
+      group.position.z = v.fromZ + (v.toZ - v.fromZ) * k;
+      // Feet arc over the sill; pitch forward at the top of the haul.
+      group.position.y = Math.sin(Math.PI * k) * v.peakY;
+      group.rotation.x = type.ANIM.LEAN + 0.35 * Math.sin(Math.PI * k);
+      group.rotation.y = turnToward(
+        group.rotation.y, v.yaw, (CONFIG.NAV.TURN_RATE * dtMs) / 1000,
+      );
+      // Flash decay and the squash spring keep running so a shot climber
+      // still flinches (frozen springs pop on landing otherwise).
+      if (rec.flashT > 0) {
+        rec.flashT = Math.max(0, rec.flashT - dtMs);
+        setFlash(rec, (rec.flashT / type.COMBAT.FLINCH_MS) * 0.9);
+      }
+      const vsq = Math.max(-0.2, Math.min(0.5, rec.squash.update(0, dtMs / 1000)));
+      group.scale.set(1 + vsq * 0.5, 1 - vsq, 1 + vsq * 0.5);
+      if (k >= 1) {
+        group.position.y = 0;
+        rec.vault = null; // landed inside; normal logic resumes next frame
+      }
+      continue;
+    }
+
     // Line of sight (4.3 LOS fix): every proximity decision below — the
     // beeline switch, the stop ring, attack start, damage landing — gates
     // on actually SEEING the player. Straight-line distance through a wall
@@ -405,7 +450,37 @@ export function updateEnemies(dtMs, playerPos) {
           const cell = worldToCell(
             nav.map, nav.grid, group.position.x, group.position.z,
           );
+          const s = nav.field.stepAt(cell.c, cell.r);
           const dir = nav.field.dirAt(cell.c, cell.r);
+          // Vault trigger (4.3b): the path's next cell is a WINDOW, the
+          // cell beyond it is open, this type can climb, and we've pressed
+          // to the sill (VAULT_TRIGGER sits just past the reach-probe
+          // standoff — the suite asserts that ordering, because a trigger
+          // INSIDE the standoff would freeze zombies at every window, the
+          // 4.3a corner-freeze class all over again).
+          if (s && (type.VAULT?.MS ?? 0) > 0
+            && nav.grid.at(cell.c + s.dc, cell.r + s.dr) === 'W'
+            && nav.grid.walkable(cell.c + 2 * s.dc, cell.r + 2 * s.dr)) {
+            const wC = cellToWorld(nav.map, nav.grid, cell.c + s.dc, cell.r + s.dr);
+            const wDist = Math.hypot(wC.x - group.position.x, wC.z - group.position.z);
+            if (wDist <= CONFIG.NAV.VAULT_TRIGGER) {
+              const far = cellToWorld(
+                nav.map, nav.grid, cell.c + 2 * s.dc, cell.r + 2 * s.dr,
+              );
+              rec.vault = {
+                t: 0,
+                ms: type.VAULT.MS,
+                fromX: group.position.x,
+                fromZ: group.position.z,
+                toX: far.x,
+                toZ: far.z,
+                // Feet clear the sill by a boot's height (structural).
+                peakY: (nav.map.WINDOW_SILL_H ?? 1.0) + 0.25,
+                yaw: Math.atan2(s.dc, s.dr),
+              };
+              continue; // the vault owns the body from the next frame
+            }
+          }
           if (dir) {
             mx = dir.x;
             mz = dir.z;
@@ -518,10 +593,10 @@ export function updateEnemies(dtMs, playerPos) {
   const sep = WAVES.CROWD.SEPARATION_RADIUS;
   for (let a = 0; a < records.length; a++) {
     const ra = records[a];
-    if (ra.dying) continue;
+    if (ra.dying || ra.vault) continue; // a climber is scripted — no shoves
     for (let b = a + 1; b < records.length; b++) {
       const rb = records[b];
-      if (rb.dying) continue;
+      if (rb.dying || rb.vault) continue;
       let dx = rb.group.position.x - ra.group.position.x;
       let dz = rb.group.position.z - ra.group.position.z;
       let d = Math.hypot(dx, dz);
@@ -544,7 +619,7 @@ export function updateEnemies(dtMs, playerPos) {
   // Guarded: a type without a WALL block resolves exactly as before.
   if (mapColliders.length > 0) {
     for (const rec of records) {
-      if (rec.dying) continue;
+      if (rec.dying || rec.vault) continue; // the vault script owns the body
       const solved = resolveBodyWithReach(
         rec.group.position.x, rec.group.position.z,
         rec.group.rotation.y, mapColliders, rec.type.BODY_RADIUS,

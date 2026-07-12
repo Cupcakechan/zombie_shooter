@@ -390,6 +390,7 @@ try {
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
     'PLAYER.WALL_MARGIN': 'number', 'PLAYER.BODY_RADIUS': 'number',
     'NAV.BEELINE_DIST': 'number', 'NAV.TURN_RATE': 'number',
+    'NAV.WINDOW_COST': 'number', 'NAV.VAULT_TRIGGER': 'number',
   };
 
   const resolvePath = (obj, path) =>
@@ -1310,6 +1311,115 @@ try {
   const doorOut = navC2W(losMap, losGrid, 4, 8);    // outside, same column
   assertTrue('section14', 'village: LOS straight through a doorway is clear',
     segmentClearOfAABBs(doorIn.x, doorIn.z, doorOut.x, doorOut.z, losBoxes) === true);
+
+  // — 4.3b: window edges + the vault —
+  const { CONFIG: NAVCFG } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const wField = buildFlowField(losGrid, losGrid.playerStart,
+    { windowCost: NAVCFG.NAV.WINDOW_COST });
+
+  // Every village window is CONNECTED (both perpendicular neighbors
+  // walkable) and on the priced field.
+  let badWindows = 0;
+  let unpricedWindows = 0;
+  for (const { c, r } of losGrid.windows) {
+    const vertical = losGrid.walkable(c, r - 1) && losGrid.walkable(c, r + 1);
+    const horizontal = losGrid.walkable(c - 1, r) && losGrid.walkable(c + 1, r);
+    if (!vertical && !horizontal) badWindows += 1;
+    if (!Number.isFinite(wField.distAt(c, r))) unpricedWindows += 1;
+  }
+  assertTrue('section14', `village: every window connects two walkable cells: ${badWindows} orphans (expected 0)`,
+    badWindows === 0);
+  assertTrue('section14', `village: every window is on the priced field: ${unpricedWindows} missing (expected 0)`,
+    unpricedWindows === 0);
+
+  // Descent stays strict over the priced field, steps land only on
+  // traversable cells, and every step touching a window is ORTHOGONAL
+  // (a diagonal through a sill would grind the corner guard's geometry).
+  let wDescentFails = 0;
+  let wLandFails = 0;
+  let wDiagFails = 0;
+  for (let r = 0; r < losGrid.rows; r++) {
+    for (let c = 0; c < losGrid.cols; c++) {
+      const traversable = losGrid.walkable(c, r) || losGrid.at(c, r) === 'W';
+      if (!traversable || !Number.isFinite(wField.distAt(c, r))) continue;
+      if (c === losGrid.playerStart.c && r === losGrid.playerStart.r) continue;
+      const s = wField.stepAt(c, r);
+      if (!s) { wDescentFails += 1; continue; }
+      const nc = c + s.dc;
+      const nr = r + s.dr;
+      const landTrav = losGrid.walkable(nc, nr) || losGrid.at(nc, nr) === 'W';
+      if (!landTrav) wLandFails += 1;
+      if (!(wField.distAt(nc, nr) < wField.distAt(c, r))) wDescentFails += 1;
+      const touchesWindow = losGrid.at(c, r) === 'W' || losGrid.at(nc, nr) === 'W';
+      if (touchesWindow && s.dc !== 0 && s.dr !== 0) wDiagFails += 1;
+    }
+  }
+  assertTrue('section14', `village priced field: strict descent holds: ${wDescentFails} violations (expected 0)`,
+    wDescentFails === 0);
+  assertTrue('section14', `village priced field: steps land traversable: ${wLandFails} violations (expected 0)`,
+    wLandFails === 0);
+  assertTrue('section14', `village priced field: window steps are orthogonal: ${wDiagFails} diagonals (expected 0)`,
+    wDiagFails === 0);
+
+  // The exact price of a crossing, on a room reachable ONLY by window:
+  // P above the sill, the room below it. dist(W) = cost, dist(inside) =
+  // cost + 1; and with windows unpriced the room is UNREACHED.
+  const winFixture = {
+    ANCHOR: { x: 0, z: 0 },
+    CELL: 1,
+    layout: [
+      '.P.',
+      '#W#',
+      '...',
+    ],
+  };
+  const wfGrid = navParse(winFixture);
+  const priced = buildFlowField(wfGrid, wfGrid.playerStart, { windowCost: 6 });
+  assertTrue('section14', 'fixture: window cell costs exactly WINDOW_COST (6)',
+    priced.distAt(1, 1) === 6);
+  assertTrue('section14', 'fixture: the room beyond costs WINDOW_COST + 1 (7)',
+    priced.distAt(1, 2) === 7);
+  assertTrue('section14', 'fixture: the room routes UP through the window',
+    (() => { const s = priced.stepAt(1, 2); return !!s && s.dc === 0 && s.dr === -1; })());
+  const unpriced = buildFlowField(wfGrid, wfGrid.playerStart);
+  assertTrue('section14', 'fixture: with windows unpriced the room is unreached',
+    unpriced.distAt(1, 2) === Infinity && unpriced.stepAt(1, 2) === null);
+
+  // Route preference flips with the price: window vs door, same map.
+  // Door route from (1,3) is 6 steps; the window crossing is cost+1.
+  const routeFixture = {
+    ANCHOR: { x: 0, z: 0 },
+    CELL: 1,
+    layout: [
+      '.....',
+      '.P...',
+      '#W#D#',
+      '.....',
+    ],
+  };
+  const rGrid = navParse(routeFixture);
+  const cheapWin = buildFlowField(rGrid, rGrid.playerStart, { windowCost: 2 });
+  const dearWin = buildFlowField(rGrid, rGrid.playerStart, { windowCost: 6 });
+  assertTrue('section14', 'fixture: a cheap window (2) pulls the route through it',
+    (() => { const s = cheapWin.stepAt(1, 3); return !!s && s.dc === 0 && s.dr === -1; })());
+  assertTrue('section14', 'fixture: a dear window (6) sends the route to the door',
+    (() => { const s = dearWin.stepAt(1, 3); return !!s && s.dc === 1; })());
+
+  // The trigger must sit PAST the reach-probe standoff for every type that
+  // both climbs and reaches — a trigger inside the standoff freezes
+  // zombies at every sill (the 4.3a freeze class, negative-tested by name).
+  const { MAPS: VMAPS } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  for (const [tid, t] of Object.entries(WALL_ET)) {
+    if (!t.VAULT) continue;
+    assertTrue('section14', `${tid}: VAULT.MS finite and positive`,
+      Number.isFinite(t.VAULT.MS) && t.VAULT.MS > 0);
+    if (t.WALL) {
+      const standoff = VMAPS.village01.CELL / 2 + t.WALL.REACH + t.WALL.RADIUS;
+      assertTrue('section14',
+        `${tid}: VAULT_TRIGGER (${NAVCFG.NAV.VAULT_TRIGGER}) clears the reach standoff (${standoff.toFixed(2)})`,
+        NAVCFG.NAV.VAULT_TRIGGER > standoff);
+    }
+  }
 } catch (err) {
   failures.push({ file: 'section14', err });
   console.log(`  FAIL   section 14 threw: ${err.message}`);

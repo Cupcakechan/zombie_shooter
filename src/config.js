@@ -162,6 +162,14 @@ FOG: {
     TURN_RATE: 5.0,         // rad/s — max body turn speed; a 45° field
                             //   step eases in ~0.16 s, a full about-face
                             //   in ~0.63 s (shamblers don't pivot)
+                            WINDOW_COST: 6,         // field cost of stepping INTO a window (4.3b):
+                            //   a crossing totals this + 1 vs 2 for open
+                            //   ground — windows are shortcuts only when
+                            //   meaningfully shorter than the door route
+    VAULT_TRIGGER: 2.0,     // m from the window cell CENTRE that starts
+                            //   the climb — must sit past the reach-probe
+                            //   standoff (1.8) or zombies freeze at sills
+                            //   (suite-asserted, the 4.3a freeze class)
   },
   DEBUG: {},
 };

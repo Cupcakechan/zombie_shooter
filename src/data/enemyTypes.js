@@ -21,6 +21,9 @@ export const ENEMY_TYPES = {
       REACH: 0.75,        //   raised arms/head (MEASURED ~1.0 m past the feet)
       RADIUS: 0.25,       //   out of walls the body FACES; feet circle unchanged
     },
+    VAULT: {              // window climb (4.3b)
+      MS: 1100,           //   the whole haul-over — a fat free-hit telegraph
+    },
     WALK_SPEED: 1.2,      // m/s base — waves multiply this per waveTable.js
     STOP_DISTANCE: 2,     // m — where it halts and starts attacking
     COLORS: {

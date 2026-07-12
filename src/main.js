@@ -467,7 +467,9 @@ renderer.setAnimationLoop(() => {
       if (!navLastCell || cell.c !== navLastCell.c || cell.r !== navLastCell.r) {
         if (activeGrid.walkable(cell.c, cell.r)) {
           setFlowField({
-            field: buildFlowField(activeGrid, cell),
+            field: buildFlowField(activeGrid, cell, {
+              windowCost: CONFIG.NAV.WINDOW_COST, // 4.3b: windows priced in
+            }),
             map: activeMap,
             grid: activeGrid,
           });
