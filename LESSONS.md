@@ -120,3 +120,71 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   and confirms the key docs still exist.
 - Route: dev-method candidate (session-hygiene / git section) — *a clone that
   applies deliveries locally must sync by fetch+reset, never pull.*
+
+## 2026-07-12 — a checkpoint block without `git push` desynced the remote (Daniel copies blocks verbatim)
+
+- What broke / what happened: a delivered git-checkpoint block ended at
+  `git commit` — no `git push` line. Daniel copies checkpoint blocks
+  verbatim (by design; that's what they're for), so the commit landed
+  locally and the remote stayed one behind. Caught one round later by the
+  standing provenance check: the fetch showed HEAD still at the previous
+  pass while Daniel reported "pushed" — a stop signal, and building on the
+  stale base would have delivered a file that silently ERASED the very fix
+  he was playtesting.
+- Root cause: the checkpoint ritual is a COPY-PASTE INTERFACE, not prose —
+  an omitted line is an omitted action, every time.
+- Verification gap it exposed: none new — the "verify tip + one changed
+  value" rule caught it before any work built on the stale tree; but the
+  omission itself had no guard.
+- Plug shipped: every checkpoint block is copy-complete — `git status`,
+  add, commit, `git push`, nothing implied. When a report ("pushed") and
+  the remote disagree, STOP and reconcile before building; never assume
+  which side is right.
+- Route: GI candidate (git workflow — checkpoint blocks are interfaces;
+  ship them complete) + the stop-signal rule already in place, reaffirmed.
+
+## 2026-07-12 — scaling an ACCUMULATED phase by a changing blend = whole-body shake (integrate rates, never scale phases)
+
+- What broke / what happened: gating the idle-sway term as
+  `t · IDLE_FREQ · (1 − legBlend)` made every zombie SHAKE violently the
+  moment it was shot or began an attack. `t` is total elapsed time — a
+  minute in, that term is ~108 radians — and `legBlend` moves 0↔1 over
+  ~150 ms on stagger/attack, so the sway PHASE swept dozens of radians in
+  a few frames: rotation.z oscillated wildly exactly on the two triggers
+  Daniel reported.
+- Root cause: a phase is an integral. Multiplying an accumulated phase by
+  a time-varying factor rewrites history; the correct gate scales the
+  RATE: `idlePhase += dt · IDLE_FREQ · (1 − legBlend)` — continuous by
+  construction, blends can only slow or speed the advance, never jump it.
+- Verification gap it exposed: none automatable pre-browser — the defect
+  lives in visual dynamics; the suite cannot see "shakes". The plug is a
+  coding rule, not a probe.
+- Plug shipped: per-enemy `idlePhase` accumulator (7a.7); the sway reads
+  `sin(walked·F + idlePhase)`.
+- Route: dev-method / html-game.md candidate — *any blended periodic
+  signal gates its RATE, never its accumulated phase; if a formula
+  multiplies elapsed-total-time by anything that changes per frame, it's
+  wrong.*
+
+## 2026-07-12 — animation feel is a multi-round loop by nature; probes catch slips, only eyes catch reads
+
+- What happened (not a defect — a calibrated expectation): the shambler
+  gait took EIGHT feel rounds (7a.1–7a.8 + two tunes) to land: leg swing →
+  joints → sway lock → cadence → limp → dip → shin drag → literal pinned
+  drag + weight shift. Every round was one named mechanism and one lever,
+  and every round moved it closer; none of that iteration was rework.
+- What the instruments DID catch, immediately and cheaply: the Section 11
+  geometry probes flagged the arm rest-pose authoring slip (REST_RAD 1.25
+  pointed the "dangle" upward) on their very first run, and hand-checking
+  a stack expression caught a foot floating a foot-height high before any
+  run. The sign/parenting/ground-contact class is fully probeable.
+- What they can never catch: "reads as skipping", "sways like gliding",
+  "should drag like a real injured leg" — display-read judgments. The
+  browser is the only instrument, and Daniel's specific naming of what he
+  saw ("skip", "glide", "the part below the knee") was the diagnostic
+  input every round.
+- Route: dev-method candidate (feel protocol corollary) — *budget
+  animation features as an iteration LOOP (mechanism + one lever per
+  round), ship geometry probes with the first round, and after ~5 rounds
+  without convergence consider an approach rethink — this one converged,
+  so the single-lever discipline held.*
