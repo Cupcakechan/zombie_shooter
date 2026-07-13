@@ -5,6 +5,7 @@
 // suite can import it safely.
 
 import { WAVES } from '../data/waveTable.js';
+import { CONFIG } from '../config.js';
 
 // ————— Pure composition math (suite-tested) —————
 
@@ -62,6 +63,7 @@ let pickEntryFn = null;  // (kind: 'perimeter'|'window') => { pos, opts } — in
 let phase = 'idle'; // 'idle' | 'intermission' | 'active'
 let waveNumber = 0;
 let kills = 0;
+let score = 0;
 let elapsedMs = 0;
 let aliveCount = 0;
 let pendingSpawns = [];
@@ -78,6 +80,7 @@ export function startWaves() {
   phase = 'idle';
   waveNumber = 0;
   kills = 0;
+  score = 0;
   elapsedMs = 0;
   aliveCount = 0;
   pendingSpawns = [];
@@ -153,6 +156,21 @@ export function getWave() {
 
 export function getKills() {
   return kills;
+}
+
+// Score a kill (pass 10): the registry bounty times the headshot
+// multiplier. Returns the points awarded so the caller can print them
+// (the praise popup). Pass 11 turns this accumulator into the spendable
+// currency — keep this the SINGLE write site.
+export function scoreKill({ value, part } = {}) {
+  const mult = part === 'head' ? CONFIG.WAVES_SCORE.HEADSHOT_MULT : 1;
+  const pts = Math.round((value ?? 0) * mult);
+  score += pts;
+  return pts;
+}
+
+export function getWavesScore() {
+  return score;
 }
 
 export function getElapsedMs() {

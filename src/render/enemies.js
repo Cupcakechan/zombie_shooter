@@ -478,8 +478,14 @@ export function damageEnemy(mesh) {
   if (killed) startDeath(rec); // an outright kill wins over the transition
   else if (legsOut) beginCrawl(rec);
   // legsOut rides the result so main can size the blood burst — the
-  // transform has to READ (the headshot double-spray rule).
-  return { part, killed, legsOut: legsOut && !killed };
+  // transform has to READ (the headshot double-spray rule). The bounty
+  // (pass 10) rides it too: main scores at the shot site, where the PART
+  // context lives. Guarded — a registry entry without a SCORE block is
+  // worth 0, never NaN.
+  return {
+    part, killed, legsOut: legsOut && !killed,
+    value: killed ? (rec.type.SCORE?.KILL ?? 0) : 0,
+  };
 }
 
 export function updateEnemies(dtMs, playerPos) {

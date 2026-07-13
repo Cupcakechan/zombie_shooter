@@ -191,6 +191,32 @@ body {
   user-select: none;
 }
 
+/* Praise popup (pass 10): below the crosshair, accent gold, rises and
+   fades. The .pop class restarts the animation per show (reflow trick in
+   hud.js showPraise). */
+#praise-popup {
+  position: fixed;
+  top: 58%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+}
+#praise-popup.pop {
+  animation: praise-pop 0.9s ease-out forwards;
+}
+@keyframes praise-pop {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.85); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  32% { transform: translate(-50%, -52%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -95%) scale(1); }
+}
+
 /* — Overlay screens — */
 .screen {
   position: fixed;

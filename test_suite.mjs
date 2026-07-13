@@ -491,6 +491,7 @@ try {
   const ENEMY_REQUIRED = [
     'HP', 'BODY_RADIUS', 'WALK_SPEED', 'STOP_DISTANCE',
     'HITBOX.HEAD', 'HITBOX.TORSO', 'HITBOX.LIMB',
+    'SCORE.KILL',
     'COLORS.SKIN', 'COLORS.CLOTH', 'COLORS.FEET', 'COLORS.EYES',
     'BODY.FOOT.W', 'BODY.FOOT.H', 'BODY.FOOT.D', 'BODY.FOOT.FWD',
     'BODY.LEG.W', 'BODY.LEG.LEN', 'BODY.LEG.D', 'BODY.LEG.X', 'BODY.LEG.KNEE_AT',
@@ -1769,6 +1770,49 @@ try {
 } catch (err) {
   failures.push({ file: 'section15', err });
   console.log(`  FAIL   section 15 threw: ${err.message}`);
+}
+
+// ————— Section 16: kill scoring (pass 10) —————
+// scoreKill is the SINGLE write site of the waves score (pass 11 makes it
+// spendable — these pins are the contract it will build on). Pins are
+// RELATIVE to the registry + config values, so retunes stay safe.
+console.log('');
+console.log('— Section 16: kill scoring (pass 10) —');
+try {
+  const { scoreKill, getWavesScore, startWaves } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { CONFIG: cfg16 } =
+    await import(pathToFileURL(join('src', 'config.js')).href);
+  const { ENEMY_TYPES: types16 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const bounty = types16.proto_zombie.SCORE.KILL;
+  const hsMult = cfg16.WAVES_SCORE.HEADSHOT_MULT;
+
+  startWaves(); // known-zero accumulator
+  assertTrue('section16', 'fresh waves session starts at score 0',
+    getWavesScore() === 0);
+  const body = scoreKill({ value: bounty, part: 'torso' });
+  assertTrue('section16',
+    `a body kill pays the registry bounty exactly (${body} = ${bounty})`,
+    body === bounty && getWavesScore() === bounty);
+  const head = scoreKill({ value: bounty, part: 'head' });
+  assertTrue('section16',
+    `a headshot kill pays bounty × HEADSHOT_MULT (${head} = ${bounty * hsMult})`,
+    head === bounty * hsMult);
+  const leg = scoreKill({ value: bounty, part: 'leg' });
+  assertTrue('section16', 'a leg-shot kill pays ×1 (only the HEAD multiplies)',
+    leg === bounty);
+  assertTrue('section16', 'the accumulator is the sum of awards',
+    getWavesScore() === bounty + bounty * hsMult + bounty);
+  assertTrue('section16', 'a value-less kill pays 0, never NaN (guarded)',
+    scoreKill({ part: 'head' }) === 0 && scoreKill() === 0
+    && Number.isFinite(getWavesScore()));
+  startWaves();
+  assertTrue('section16', 'startWaves resets the score with the session',
+    getWavesScore() === 0);
+} catch (err) {
+  failures.push({ file: 'section16', err });
+  console.log(`  FAIL   section 16 threw: ${err.message}`);
 }
 
 // ————— Report —————

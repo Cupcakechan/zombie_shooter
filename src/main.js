@@ -52,13 +52,14 @@ import { saveBestIfBeaten } from './game/best.js';
 import { resetPlayer, damagePlayer, getHits, isDead } from './game/player.js';
 import {
   initWaves, startWaves, updateWaves, notifyKill,
-  getWave, getKills, getElapsedMs,
+  getWave, getKills, getElapsedMs, scoreKill, getWavesScore,
 } from './game/waves.js';
 import {
   initHud, showForState, flashLockHint,
   setScore, setMultiplier, setCountdown, setTimer,
   setHearts, setWave, setKills, showWaveBanner,
   flashDamage, flashBloodSplatter, showGameOver, showResults, setAmmo,
+  setWavesScore, showPraise,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -311,6 +312,15 @@ initShooting({
           : CONFIG.BLOOD.HIT_PARTICLES;
         spawnBurst(point, rayDir, n);
       }
+      // Kill scoring (pass 10): enemies exist only in Waves, so no mode
+      // guard is needed here (mirrors the "Waves owns no range scoring"
+      // rule in onMiss). Headshot kills get the praise popup — the +pts
+      // it prints is the REAL awarded number from the single write site.
+      if (res && res.killed) {
+        const pts = scoreKill(res);
+        setWavesScore(getWavesScore());
+        if (res.part === 'head') showPraise(`HEADSHOT +${pts}`);
+      }
       return;
     }
     if (mesh.userData.kind === 'wall') {
@@ -424,6 +434,7 @@ onEnter(States.COUNTDOWN, (prev) => {
       camera.position.set(mapStart.x, CONFIG.EYE_HEIGHT, mapStart.z);
       setHearts(getHits(), CONFIG.PLAYER.MAX_HITS);
       setKills(0);
+      setWavesScore(0);
       startWaves(); // wave 1 announces on the first PLAYING frame
       beginCountdown({ fresh: true, timed: false });
     }
@@ -450,6 +461,7 @@ onEnter(States.RESULTS, () => {
 onEnter(States.GAMEOVER, () => {
   if (document.pointerLockElement) document.exitPointerLock();
   showGameOver({
+    score: getWavesScore(),
     kills: getKills(),
     wave: getWave(),
     seconds: Math.floor(getElapsedMs() / 1000),

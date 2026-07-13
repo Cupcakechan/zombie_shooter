@@ -45,6 +45,10 @@ export const CONFIG = {
     { streak: 20, mult: 3 },
     { streak: 10, mult: 2 },
   ],
+  // — Waves kill scoring (pass 10; becomes the spendable currency in pass 11) —
+WAVES_SCORE: {
+  HEADSHOT_MULT: 2,     // a headshot KILL pays double the registry bounty
+},
 
   // — Feel (consumed by the feel pass) —
   POP_MS: 120,                // target pop animation

@@ -19,6 +19,11 @@ export const ENEMY_TYPES = {
                           // ACCOUNTING (crawl threshold), never the damage
                           // math (suite-pinned equal)
     },
+SCORE: {              // the bounty (pass 10) — becomes spendable in pass 11.
+  KILL: 100,          // base points per kill; a headshot kill pays
+                      //   this times CONFIG.WAVES_SCORE.HEADSHOT_MULT
+},
+
     BODY_RADIUS: 0.45,    // solid circle for player collision (walk-through-proof)
     WALL: {               // forward reach vs walls (4.3 clip fix): keeps the
       REACH: 0.75,        //   raised arms/head (MEASURED ~1.0 m past the feet)

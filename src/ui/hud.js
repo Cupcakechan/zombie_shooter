@@ -9,6 +9,7 @@ import { CONFIG } from '../config.js';
 const els = {};
 let hintTimer = null;
 let bannerTimer = null;
+let praiseTimer = null;
 let lastTimerText = null;
 let lastHearts = -1;
 let heartsMax = 0;
@@ -31,6 +32,7 @@ export function initHud({
     crosshair: 'crosshair',
     countdown: 'countdown',
     waveBanner: 'wave-banner',
+    praise: 'praise-popup',
     vignette: 'damage-vignette',
     splatter: 'blood-splatter',
     btnRange: 'btn-range',
@@ -50,6 +52,8 @@ export function initHud({
     hudHearts: 'hud-hearts',
     hudWave: 'hud-wave',
     hudKills: 'hud-kills',
+    hudWavesScore: 'hud-waves-score',
+    goScore: 'go-score',
     goKills: 'go-kills',
     goWave: 'go-wave',
     goTime: 'go-time',
@@ -172,6 +176,23 @@ export function showWaveBanner(n) {
   bannerTimer = setTimeout(() => setVisible(els.waveBanner, false), 1500);
 }
 
+// Praise popup (pass 10): a generic one-liner on the HUD layer — the text
+// is caller-owned so later passes (the combo meter) reuse it as-is.
+// Restart-the-CSS-animation trick, same as the damage vignette.
+export function showPraise(text) {
+  els.praise.textContent = text;
+  setVisible(els.praise, true);
+  els.praise.classList.remove('pop');
+  void els.praise.offsetWidth;
+  els.praise.classList.add('pop');
+  if (praiseTimer) clearTimeout(praiseTimer);
+  praiseTimer = setTimeout(() => setVisible(els.praise, false), 900);
+}
+
+export function setWavesScore(score) {
+  els.hudWavesScore.textContent = `SCORE ${score}`;
+}
+
 // Bottom-right ammo counter (pass 9): count while idle, RELOADING while the
 // mag is out, red pill when running dry.
 export function setAmmo(mag, size, reloading) {
@@ -197,7 +218,8 @@ export function flashBloodSplatter() {
   els.splatter.classList.add('flash');
 }
 
-export function showGameOver({ kills, wave, seconds }) {
+export function showGameOver({ kills, wave, seconds, score }) {
+  els.goScore.textContent = String(score ?? 0);
   els.goKills.textContent = String(kills);
   els.goWave.textContent = String(wave);
   els.goTime.textContent = fmtTime(seconds);
