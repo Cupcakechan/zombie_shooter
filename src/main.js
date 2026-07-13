@@ -304,7 +304,9 @@ initShooting({
       // the onEnemyKilled callback, same frame.
       const res = damageEnemy(mesh);
       if (point) {
-        const n = res && res.part === 'head'
+        // Double spray on a headshot AND on the leg-destroying hit (7c) —
+        // the collapse is a payoff and the transform has to READ.
+        const n = res && (res.part === 'head' || res.legsOut)
           ? CONFIG.BLOOD.HIT_PARTICLES * 2
           : CONFIG.BLOOD.HIT_PARTICLES;
         spawnBurst(point, rayDir, n);
@@ -548,6 +550,13 @@ renderer.setAnimationLoop(() => {
               windowCost: CONFIG.NAV.WINDOW_COST, // 4.3b: windows priced in
               blockedWindows: new Set(congested),
             }),
+            // The ground field (7c): windowCost 0 = windows not traversable
+            // at all — byte-identical to the plain 4.3a field. Crawlers
+            // read THIS one, so a non-climber's route contains no windows
+            // BY CONSTRUCTION (it can never strand at glass it can't
+            // climb). Congestion doesn't touch it, but rebuilding both on
+            // the same trigger is one cheap extra BFS and zero extra state.
+            groundField: buildFlowField(activeGrid, cell, { windowCost: 0 }),
             map: activeMap,
             grid: activeGrid,
           });

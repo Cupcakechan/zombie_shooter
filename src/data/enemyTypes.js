@@ -15,6 +15,9 @@ export const ENEMY_TYPES = {
       HEAD: 3,
       TORSO: 1,
       LIMB: 0.5,
+      LEG: 0.5,           // same tier as LIMB — the leg tag changes the
+                          // ACCOUNTING (crawl threshold), never the damage
+                          // math (suite-pinned equal)
     },
     BODY_RADIUS: 0.45,    // solid circle for player collision (walk-through-proof)
     WALL: {               // forward reach vs walls (4.3 clip fix): keeps the
@@ -81,6 +84,40 @@ export const ENEMY_TYPES = {
       DAMAGE: 1,          // arcade hits removed per landed strike
       REAR_RAD: 0.6,      // how far the arms rear back in windup
       THRUST_RAD: 0.5,    // how far past the pose the strike thrusts
+    },
+    // The Crawler (pass 7c): enough LEG damage destroys the legs — the
+    // zombie collapses and keeps coming, prone, dragging itself on its
+    // arms. Behavioral dismemberment: the threat transforms instead of
+    // dying. Guarded everywhere — a type WITHOUT this block never crawls.
+    CRAWL: {
+      LEG_HP: 1.5,        // leg damage that destroys the legs: 3 leg hits
+                          //   at the 0.5 LEG tier (suite-pinned arithmetic)
+      FALL_MS: 550,       // the collapse — reads like the death fall, then
+                          //   the arms catch it
+      SPEED_MULT: 0.45,   // fraction of WALK_SPEED while prone
+      STOP_DISTANCE: 1.1, // closer than the standing 2 — it claws at
+                          //   ankles, not faces (suite asserts <= standing)
+      ATTACK: {           // the crawl claw: slower tell, longer recovery
+        RANGE_SLACK: 0.4,
+        WINDUP_MS: 400,
+        STRIKE_MS: 150,
+        RECOVER_MS: 400,
+        COOLDOWN_MS: 1500, // must cover the three phases (suite, relative)
+        DAMAGE: 1,
+        REAR_RAD: 1.05,   // rear-back from the PRONE arm rest — swings the
+                          //   upper arm up past vertical-ish for the coiled
+                          //   claw (probe-measured; feel report 2026-07-12)
+        THRUST_RAD: 0.45, // the ground slam past the plant — lands the
+                          //   hands ON the floor (−0.005 m, probe-measured),
+                          //   not half a metre through it
+      },
+      WALL: {             // prone reach probe: lying down, the body chain
+        REACH: 2.0,       //   extends up to ~2.2 m ahead of the feet origin
+        RADIUS: 0.25,     //   (arms can point straight forward mid-pull) —
+                          //   the standing 0.75 reach would bury the head
+                          //   in any faced wall (suite pins REACH+RADIUS
+                          //   against the registry-derived extent)
+      },
     },
     SPAWN: {              // emergence from the fog bank (pass 8.1)
       FADE_MS: 600,       // opacity 0 → 1 as the zombie walks out of the murk

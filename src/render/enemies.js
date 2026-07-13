@@ -2,7 +2,9 @@
 // it toward the player, drive the procedural shamble, take damage, die
 // (fall over), fight back with a telegraphed swipe — and, pass 6, coexist:
 // spawn positions come from the wave manager and living zombies push apart
-// so a wave arrives as a group, not a merged clump.
+// so a wave arrives as a group, not a merged clump. Pass 7c: enough LEG
+// damage destroys the legs — the zombie collapses (collapsePose) and keeps
+// coming prone on an arm-drag gait, with its own closer, slower claw.
 
 import * as THREE from '../../lib/three.module.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
@@ -89,6 +91,55 @@ export function climbPose(k, rest) {
     hipL: -1.3 * (1 - t), kneeL: KNEE + 1.2 * (1 - t),
     hipR: 0.3 - 1.1 * haul + 0.8 * settle, // over the sill late, then to rest (0.3−1.1+0.8 = 0)
     kneeR: KNEE + 0.95 * (1 - haul * 0.5) - 0.475 * settle, // releases as it clears
+  };
+}
+
+// The crawl stance (pass 7c) — structural pose constants, same policy as
+// CLIMB above: they live here until a feel report names one for the
+// registry. Exported so the suite pins collapsePose's landing against
+// them and derives the prone body extent for the wall-reach invariant.
+export const CRAWL_POSE = {
+  PITCH: 1.15,       // rad off vertical — propped on its arms, chest up;
+                     //   MEASURED (probe, 2026-07-12): head clears the
+                     //   floor by +0.008 in every stance at this pitch
+  Y: 0.09,           // feet-origin lift; trades head clearance against a
+                     //   ~0.10 hover at the trailing toes (the lesser evil)
+  ARM_REST: 0.5,     // prone shoulder angle: hands planted ahead on the ground
+  ELBOW: 0.5,        // prone elbow bend — propped, never locked straight
+  PULL_AMP: 0.2,     // rad of alternating reach/pull arm swing — deeper
+                     //   swings bury the pulling arm (probe-measured)
+  ROLL: 0.08,        // rad of shoulder roll, one per pull pair (SWAY_FREQ rule)
+  HIP_TRAIL: 0.15,   // dead legs trail nearly straight behind
+  KNEE_TRAIL: 0.25,  // slight knee cock — toes up, the drag read
+  DRAG_WIGGLE: 0.06, // rad of passive leg sway as the body hauls itself
+  HEAD_UP: -0.7,     // head pitch off the build TILT: the face lifts off the
+                     //   ground (negative X pitches the +Z face upward)
+  WINDUP_COCK: 2.2,  // extra elbowFactor gain in the PRONE windup: the arm
+                     //   rears up-back (REAR_RAD swings it past vertical-ish)
+                     //   while the elbow folds to ~1.6 rad — a coiled claw,
+                     //   not a straight stiff reach (feel report 2026-07-12)
+};
+
+// The collapse timeline (7c), pure in k ∈ [0,1]: the legs give out. Arms
+// shoot forward EARLY (bracing — the body falls onto them), the trunk
+// accelerates into the fall (k², the death fall's read), the legs give
+// way and trail out. k=0 is EXACTLY the walk rest and k=1 EXACTLY the
+// crawl rest — the suite pins both ends, because a pop at either reads
+// as a glitch, not a collapse (the climbPose rule).
+export function collapsePose(k, rest) {
+  const brace = smooth(Math.min(1, k * 1.8)); // arms lead the fall
+  const drop = k * k;                          // the trunk accelerates down
+  const settle = smooth(k);                    // legs slacken into the trail
+  return {
+    pitch: rest.LEAN + (CRAWL_POSE.PITCH - rest.LEAN) * drop,
+    lift: CRAWL_POSE.Y * drop,
+    shoulder: rest.REST + (CRAWL_POSE.ARM_REST - rest.REST) * brace,
+    elbow: rest.ELBOW + (CRAWL_POSE.ELBOW - rest.ELBOW) * brace,
+    hipL: CRAWL_POSE.HIP_TRAIL * settle,
+    hipR: CRAWL_POSE.HIP_TRAIL * settle,
+    kneeL: rest.KNEE + (CRAWL_POSE.KNEE_TRAIL - rest.KNEE) * settle,
+    kneeR: rest.KNEE + (CRAWL_POSE.KNEE_TRAIL - rest.KNEE) * settle,
+    headUp: CRAWL_POSE.HEAD_UP * settle,
   };
 }
 
@@ -192,6 +243,14 @@ export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null 
     // The dread beat (4.3c): ms left standing at the glass before moving.
     // Wakes early on pain (damageEnemy) or on seeing the player up close.
     holdT: holdMs,
+    // The Crawler (7c): accumulated LEG-tag damage; crossing CRAWL.LEG_HP
+    // collapses the zombie. crawlState: null | 'falling' | 'prone'.
+    // crawlPending defers a mid-vault collapse to the landing — falling
+    // inside the wall plane would strand the body.
+    legDmg: 0,
+    crawlState: null,
+    crawlT: 0,
+    crawlPending: false,
     flashT: 0, staggerT: 0,
     attackPhase: null, attackT: 0, cooldownT: 0,
     dying: false, dieT: 0,
@@ -273,8 +332,9 @@ function startDeath(rec) {
     releaseClimb(rec);
     rec.group.position.x = rec.vault.fromX;
     rec.group.position.z = rec.vault.fromZ;
-    rec.vault = null;
-  }
+    rec.group.position.y = 0; // back on the ground outside, as before (7c:
+    rec.vault = null;         //   the pose capture below must not keep the
+  }                           //   climb height on a teleported body)
   setFlash(rec, 0);
   // A zombie killed mid-emergence snaps to full opacity: the death fade
   // assumes it starts from opaque, and a half-ghost corpse reads as a bug.
@@ -285,9 +345,14 @@ function startDeath(rec) {
       m.opacity = 1;
     }
   }
-  // Zero the shamble pose so the fall pivots cleanly around the feet.
+  // Zero the roll so the fall pivots cleanly around the feet; pitch and
+  // height are CAPTURED instead of reset (7c) — a crawler dies from prone
+  // (~1.35 rad), and snapping it upright to fall over again read as a
+  // resurrection. A standing death captures LEAN and the bob dip, so the
+  // old numbers fall out of the same interpolation.
+  rec.dieFromPitch = rec.group.rotation.x;
+  rec.dieFromY = rec.group.position.y;
   rec.group.rotation.z = 0;
-  rec.group.position.y = 0;
   rec.group.scale.set(1, 1, 1); // the flinch dies with it — corpses fall un-squashed
   // Position rides along so FX can place a floor pool under the kill —
   // an extra arg, so existing id-only listeners are unaffected.
@@ -297,6 +362,22 @@ function startDeath(rec) {
       z: rec.group.position.z,
     });
   }
+}
+
+// The crawl transition (7c): the legs are destroyed. The `instant` flag
+// is the 7d hook — a future spawn-as-crawler starts prone, no fall.
+function beginCrawl(rec, instant = false) {
+  releaseWait(rec); // a crawler abandons any window queue — it can't climb
+  // A committed climber finishes the haul first: collapsing mid-vault
+  // would strand the body inside the wall plane. Land, THEN fall.
+  if (rec.vault) {
+    rec.crawlPending = true;
+    return;
+  }
+  rec.crawlPending = false;
+  rec.attackPhase = null; // the collapse cancels any swing in progress
+  rec.crawlState = instant ? 'prone' : 'falling';
+  rec.crawlT = 0;
 }
 
 function setFlash(rec, intensity) {
@@ -321,6 +402,10 @@ export function partDamage(type, part) {
   const HB = type.HITBOX;
   if (part === 'head') return HB?.HEAD ?? 1;
   if (part === 'limb') return HB?.LIMB ?? 1;
+  // Legs (7c): their own tag so the crawl threshold can count them, at
+  // the LIMB tier by default — a type without a LEG entry keeps exactly
+  // the old damage numbers.
+  if (part === 'leg') return HB?.LEG ?? HB?.LIMB ?? 1;
   return HB?.TORSO ?? 1;
 }
 
@@ -350,9 +435,22 @@ export function damageEnemy(mesh) {
   rec.group.position.x -= rec.towardPlayer.x * rec.type.COMBAT.KNOCKBACK;
   rec.group.position.z -= rec.towardPlayer.z * rec.type.COMBAT.KNOCKBACK;
 
+  // The Crawler (7c): LEG damage accumulates separately from HP; crossing
+  // CRAWL.LEG_HP destroys the legs and the zombie collapses into the
+  // crawl. Guarded — a type without a CRAWL block never crawls, and a
+  // zombie already down can't lose its legs twice.
+  let legsOut = false;
+  if (part === 'leg' && !rec.crawlState && rec.type.CRAWL) {
+    rec.legDmg += partDamage(rec.type, part);
+    if (rec.legDmg >= rec.type.CRAWL.LEG_HP) legsOut = true;
+  }
+
   const killed = rec.hp <= 0;
-  if (killed) startDeath(rec);
-  return { part, killed };
+  if (killed) startDeath(rec); // an outright kill wins over the transition
+  else if (legsOut) beginCrawl(rec);
+  // legsOut rides the result so main can size the blood burst — the
+  // transform has to READ (the headshot double-spray rule).
+  return { part, killed, legsOut: legsOut && !killed };
 }
 
 export function updateEnemies(dtMs, playerPos) {
@@ -365,9 +463,14 @@ export function updateEnemies(dtMs, playerPos) {
       rec.dieT += dtMs;
       const { phase, k } = deathPhase(rec.dieT, type.DEATH);
       if (phase === 'falling') {
-        // Accelerating fall (k²) from the walk lean to flat on the ground.
-        group.rotation.x = type.ANIM.LEAN + (Math.PI / 2 - type.ANIM.LEAN) * k * k;
-        group.position.y = type.DEATH.CORPSE_LIFT * k * k;
+        // Accelerating fall (k²) from the CAPTURED death pose to flat on
+        // the ground — LEAN and ~0 when standing (the old numbers fall
+        // out of the same formula), the prone pitch when a crawler dies
+        // (7c: it settles flat, never snaps upright to fall again).
+        const fp = rec.dieFromPitch ?? type.ANIM.LEAN;
+        const fy = rec.dieFromY ?? 0;
+        group.rotation.x = fp + (Math.PI / 2 - fp) * k * k;
+        group.position.y = fy + (type.DEATH.CORPSE_LIFT - fy) * k * k;
       } else if (phase === 'lying') {
         group.rotation.x = Math.PI / 2;
         group.position.y = type.DEATH.CORPSE_LIFT;
@@ -472,7 +575,55 @@ export function updateEnemies(dtMs, playerPos) {
         group.rotation.x = type.ANIM.LEAN;
         releaseClimb(rec); // the queue advances: the waiter promotes next frame
         rec.vault = null;  // landed inside; normal logic resumes next frame
+        // Legs shot out mid-climb (7c): the collapse was deferred to the
+        // landing — it fires now, just inside the window.
+        if (rec.crawlPending) beginCrawl(rec);
       }
+      continue;
+    }
+
+    // — Collapsing (7c): the legs just gave out. The fall owns the frame
+    // the way the vault does — rooted, no attacks, no steering — and the
+    // body stays HITTABLE; flash decay and the squash spring keep running
+    // so hits still read. collapsePose is pure and suite-pinned at both
+    // ends: it starts EXACTLY on the walk rest and lands EXACTLY on the
+    // crawl rest.
+    if (rec.crawlState === 'falling') {
+      rec.crawlT += dtMs;
+      const k = Math.min(1, rec.crawlT / type.CRAWL.FALL_MS);
+      const pose = collapsePose(k, {
+        REST: type.BODY?.ARM?.REST_RAD ?? Math.PI / 2,
+        ELBOW: type.ANIM.ELBOW_BEND ?? 0,
+        KNEE: type.ANIM.KNEE_REST ?? 0,
+        LEAN: type.ANIM.LEAN,
+      });
+      group.rotation.x = pose.pitch;
+      group.position.y = pose.lift;
+      group.rotation.z *= Math.max(0, 1 - dtMs / 150); // walk roll bleeds out
+      rec.parts.armL.rotation.x = pose.shoulder;
+      rec.parts.armR.rotation.x = pose.shoulder;
+      if (rec.parts.foreL && rec.parts.foreR) {
+        rec.parts.foreL.rotation.x = pose.elbow;
+        rec.parts.foreR.rotation.x = pose.elbow;
+      }
+      if (rec.parts.legL && rec.parts.legR) {
+        rec.parts.legL.rotation.x = pose.hipL;
+        rec.parts.legR.rotation.x = pose.hipR;
+        if (rec.parts.shinL && rec.parts.shinR) {
+          rec.parts.shinL.rotation.x = pose.kneeL;
+          rec.parts.shinR.rotation.x = pose.kneeR;
+        }
+      }
+      if (rec.parts.head) {
+        rec.parts.head.rotation.x = (type.BODY?.HEAD?.TILT ?? 0) + pose.headUp;
+      }
+      if (rec.flashT > 0) {
+        rec.flashT = Math.max(0, rec.flashT - dtMs);
+        setFlash(rec, (rec.flashT / type.COMBAT.FLINCH_MS) * 0.9);
+      }
+      const fsq = Math.max(-0.2, Math.min(0.5, rec.squash.update(0, dtMs / 1000)));
+      group.scale.set(1 + fsq * 0.5, 1 - fsq, 1 + fsq * 0.5);
+      if (k >= 1) rec.crawlState = 'prone'; // down — the drag begins next frame
       continue;
     }
 
@@ -509,11 +660,22 @@ export function updateEnemies(dtMs, playerPos) {
       setFlash(rec, (rec.flashT / type.COMBAT.FLINCH_MS) * 0.9);
     }
 
-    const AT = type.ATTACK;
+    // The Crawler (7c): a prone zombie runs the SAME attack and movement
+    // machinery with its CRAWL numbers — closer stop ring, slower claw,
+    // arms anchored on the prone rest. The rear-back/thrust formulas carry
+    // over unchanged: from the prone rest, REST − REAR_RAD lifts the arm
+    // up off the ground (the cocked claw) and REST + THRUST_RAD slams it
+    // down past the plant.
+    const crawling = rec.crawlState === 'prone';
+    const CR = type.CRAWL;
+    const AT = crawling ? CR.ATTACK : type.ATTACK;
+    const stopDist = crawling ? CR.STOP_DISTANCE : type.STOP_DISTANCE;
     // Arm rest pose comes from the body registry (guarded: a type without a
     // BODY block falls back to the old straight-forward π/2). Every arm
     // animation anchors HERE so the rest pose is one data value.
-    const REST = type.BODY?.ARM?.REST_RAD ?? Math.PI / 2;
+    const REST = crawling
+      ? CRAWL_POSE.ARM_REST
+      : (type.BODY?.ARM?.REST_RAD ?? Math.PI / 2);
 
     // — Attack cycle: the arms belong to the attack while a phase runs.
     if (rec.attackPhase) {
@@ -521,14 +683,17 @@ export function updateEnemies(dtMs, playerPos) {
       if (rec.attackPhase === 'windup') {
         const k = Math.min(1, rec.attackT / AT.WINDUP_MS);
         setArms(rec, REST - AT.REAR_RAD * k); // the tell: arms RAISE overhead (7a.3)
-        rec.elbowFactor = 1 + 0.4 * k; // elbows cock deeper with the rear-back
+        // Prone, the rear-back cocks a coiled claw (feel 2026-07-12): the
+        // upper arm swings up-back past the shoulder while the elbow folds
+        // deep — WINDUP_COCK drives the fold. Standing keeps the old 0.4.
+        rec.elbowFactor = 1 + (crawling ? CRAWL_POSE.WINDUP_COCK : 0.4) * k;
         if (k >= 1) {
           rec.attackPhase = 'strike';
           rec.attackT = 0;
           // Damage lands at the START of the strike — the windup was the
           // player's window to cancel it (shoot), DODGE out of reach, or
           // (4.3) break line of sight around a corner: no LOS = a whiff.
-          const inRange = los && dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+          const inRange = los && dist <= stopDist + AT.RANGE_SLACK;
           if (inRange && onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
         }
       } else if (rec.attackPhase === 'strike') {
@@ -547,7 +712,7 @@ export function updateEnemies(dtMs, playerPos) {
     } else {
       // Start an attack when close enough, VISIBLE (4.3 — no swipes
       // through wall corners), off cooldown, and not staggered.
-      const inReach = los && dist <= type.STOP_DISTANCE + AT.RANGE_SLACK;
+      const inReach = los && dist <= stopDist + AT.RANGE_SLACK;
       if (inReach && rec.cooldownT <= 0 && rec.staggerT <= 0) {
         releaseWait(rec); // a flanked waiter fights — the line moves on
         rec.attackPhase = 'windup';
@@ -565,8 +730,10 @@ export function updateEnemies(dtMs, playerPos) {
       // zombie must never "arrive" at a player it can't reach through a
       // wall — without LOS it keeps navigating.
       const step = advanceDistance(
-        dist, type.WALK_SPEED * rec.speedMult, dtMs,
-        los ? type.STOP_DISTANCE : 0,
+        dist,
+        type.WALK_SPEED * rec.speedMult * (crawling ? CR.SPEED_MULT : 1),
+        dtMs,
+        los ? stopDist : 0,
       );
       if (step > 0 && dist > 1e-6) {
         let hold = false;
@@ -604,18 +771,28 @@ export function updateEnemies(dtMs, playerPos) {
         let mx = dx / dist;
         let mz = dz / dist;
         if (!hold && nav && (!los || dist > CONFIG.NAV.BEELINE_DIST)) {
+          // Field per capability (7c): a crawler reads the GROUND field —
+          // windowCost 0, windows not traversable — so its route contains
+          // no windows BY CONSTRUCTION and it can never strand at glass it
+          // can't climb. Guarded: a nav without a groundField (an old
+          // caller) degrades to the shared field.
+          const fld = crawling ? (nav.groundField ?? nav.field) : nav.field;
           const cell = worldToCell(
             nav.map, nav.grid, group.position.x, group.position.z,
           );
-          const s = nav.field.stepAt(cell.c, cell.r);
-          const dir = nav.field.dirAt(cell.c, cell.r);
+          const s = fld.stepAt(cell.c, cell.r);
+          const dir = fld.dirAt(cell.c, cell.r);
           // Vault trigger (4.3b): the path's next cell is a WINDOW, the
           // cell beyond it is open, this type can climb, and we've pressed
           // to the sill (VAULT_TRIGGER sits just past the reach-probe
           // standoff — the suite asserts that ordering, because a trigger
           // INSIDE the standoff would freeze zombies at every window, the
           // 4.3a corner-freeze class all over again).
-          if (s && (type.VAULT?.MS ?? 0) > 0
+          // !crawling is a BELT here — the ground field never steps into a
+          // window, so a crawler can't reach this branch off its own field;
+          // the check documents the rule and survives a degraded-field
+          // fallback.
+          if (s && !crawling && (type.VAULT?.MS ?? 0) > 0
             && nav.grid.at(cell.c + s.dc, cell.r + s.dr) === 'W'
             && nav.grid.walkable(cell.c + 2 * s.dc, cell.r + 2 * s.dr)) {
             const wc = cell.c + s.dc;
@@ -705,82 +882,127 @@ export function updateEnemies(dtMs, playerPos) {
       group.rotation.y, targetYaw, (CONFIG.NAV.TURN_RATE * dtMs) / 1000,
     );
 
-    // — Procedural shamble. Bob and sway are locked to distance WALKED so
-    // stride stays consistent if WALK_SPEED is retuned; sway blends in a slow
-    // time term so a stopped zombie still breathes instead of freezing.
+    // — Procedural pose. The hit-flinch squash rides BOTH stances: the
+    // spring compresses the body toward the feet (group origin) and
+    // rebounds with a slight stretch. Clamped so a rapid mag-dump can
+    // never scale through zero; width compensates half the compression
+    // for a volume-ish read. Stride phase p is locked to distance WALKED
+    // in both gaits, so cadence tracks any speed retune for free.
     const A = type.ANIM;
-    const limp = A.LIMP ?? 0;
-    // Hit-flinch squash (7c): the spring compresses the body toward the
-    // feet (group origin) and rebounds with a slight stretch. Clamped so a
-    // rapid mag-dump can never scale through zero; width compensates half
-    // the compression for a volume-ish read.
     const sq = Math.max(-0.2, Math.min(0.5, rec.squash.update(0, dtMs / 1000)));
     group.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
-    // Stride phase drives everything below (legs, knees, the dip) so the
-    // gait stays coherent under any retune.
     const p = rec.walked * A.BOB_FREQ;
-    // The limp dip (7a.6): the old symmetric |sin| bob VAULTED the body over
-    // each step — at slow cadence that read as skipping. An injured walk
-    // does the opposite: the body stays level and DROPS once per stride as
-    // weight lands on the bad right leg (= while the good left leg swings).
-    // BOB_AMP is the dip depth; legBlend keeps a standing zombie at 0.
-    group.position.y =
-      -A.BOB_AMP * Math.max(0, Math.sin(p - Math.PI / 2)) * rec.legBlend;
-    // Sway is stride-locked while walking; the idle breathing advances as an
-    // INTEGRATED phase (rate scaled by stillness) — continuous by
-    // construction, so blend transitions can never kick the body (7a.7).
-    rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
-    // Weight lives on the GOOD left leg (7a.8): a constant roll bias on top
-    // of the sway — positive rotation.z tips the top toward −X, the good
-    // side. 0.16 rad at LIMP 1 is structural; LIMP scales it.
-    group.rotation.z =
-      Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * A.SWAY_AMP
-      + limp * 0.16 * rec.legBlend;
-    group.rotation.x = A.LEAN;
 
-    // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
-    // each step lands on a bob peak — stride-locked like everything else.
-    // Knees (7a.2): a bend pulse lagged a QUARTER STRIDE behind the thigh
-    // (structural constant, like the YXZ order — the knee bends mid-swing
-    // and straightens at the plant), riding on the permanent KNEE_REST
-    // shuffle-crouch. max(0,·) keeps knees from ever bending forward.
-    // Guarded: an old parts map without legs/shins simply keeps them still.
-    if (rec.parts.legL && rec.parts.legR) {
-      const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
-      rec.parts.legL.rotation.x = swing;
-      // LITERAL drag (7a.8): the bad leg never steps — no swing component at
-      // all. It PINS at a backward trail and gets pulled along by the body.
-      rec.parts.legR.rotation.x = limp > 0
-        ? limp * 0.4 * rec.legBlend
-        : -swing;
-      if (rec.parts.shinL && rec.parts.shinR) {
-        const KNEE_LAG = Math.PI / 2;
-        const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
-        rec.parts.shinL.rotation.x =
-          (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
-        // The dragging shin (7a.8): locked at a deep backward cock — with
-        // the pinned thigh above, the toe points down and scrapes the
-        // ground as the body pulls the whole leg. 0.8 rad at LIMP 1.
-        rec.parts.shinR.rotation.x =
-          (A.KNEE_REST ?? 0) + limp * 0.8 * rec.legBlend;
+    if (crawling) {
+      // — The drag gait (7c): prone at a fixed pitch, hauling itself on
+      // alternating arm pulls. The legs are dead weight — a static trail
+      // with a passive wiggle as the body drags them. The attack owns the
+      // arms while a phase runs, exactly like the shamble's rule.
+      group.position.y = CRAWL_POSE.Y;
+      group.rotation.x = CRAWL_POSE.PITCH;
+      // One shoulder roll per pull pair (the SWAY_FREQ = BOB_FREQ/2 rule),
+      // with the same integrated idle-breathing phase as the walk (7a.7).
+      rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
+      group.rotation.z =
+        Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * CRAWL_POSE.ROLL;
+      if (!rec.attackPhase) {
+        const pull = Math.sin(p) * CRAWL_POSE.PULL_AMP * rec.legBlend;
+        rec.parts.armL.rotation.x = CRAWL_POSE.ARM_REST - pull;
+        rec.parts.armR.rotation.x = CRAWL_POSE.ARM_REST + pull;
+        rec.elbowFactor = 1;
       }
-    }
+      if (rec.parts.legL && rec.parts.legR) {
+        const wiggle = Math.sin(p) * CRAWL_POSE.DRAG_WIGGLE * rec.legBlend;
+        rec.parts.legL.rotation.x = CRAWL_POSE.HIP_TRAIL + wiggle;
+        rec.parts.legR.rotation.x = CRAWL_POSE.HIP_TRAIL - wiggle;
+        if (rec.parts.shinL && rec.parts.shinR) {
+          rec.parts.shinL.rotation.x = CRAWL_POSE.KNEE_TRAIL;
+          rec.parts.shinR.rotation.x = CRAWL_POSE.KNEE_TRAIL;
+        }
+      }
+      if (rec.parts.head) {
+        // Face up off the ground toward the player (negative X pitches the
+        // +Z face upward — the build convention).
+        rec.parts.head.rotation.x = (type.BODY?.HEAD?.TILT ?? 0) + CRAWL_POSE.HEAD_UP;
+      }
+      // Prone elbow anchor — the attack's elbowFactor scales it exactly
+      // like the standing droop.
+      if (rec.parts.foreL && rec.parts.foreR) {
+        const elbow = CRAWL_POSE.ELBOW * rec.elbowFactor;
+        rec.parts.foreL.rotation.x = elbow;
+        rec.parts.foreR.rotation.x = elbow;
+      }
+    } else {
+      // — Procedural shamble. Bob and sway are locked to distance WALKED so
+      // stride stays consistent if WALK_SPEED is retuned; sway blends in a
+      // slow time term so a stopped zombie still breathes instead of
+      // freezing.
+      const limp = A.LIMP ?? 0;
+      // The limp dip (7a.6): the old symmetric |sin| bob VAULTED the body
+      // over each step — at slow cadence that read as skipping. An injured
+      // walk does the opposite: the body stays level and DROPS once per
+      // stride as weight lands on the bad right leg (= while the good left
+      // leg swings). BOB_AMP is the dip depth; legBlend keeps a standing
+      // zombie at 0.
+      group.position.y =
+        -A.BOB_AMP * Math.max(0, Math.sin(p - Math.PI / 2)) * rec.legBlend;
+      // Sway is stride-locked while walking; the idle breathing advances as
+      // an INTEGRATED phase (rate scaled by stillness) — continuous by
+      // construction, so blend transitions can never kick the body (7a.7).
+      rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
+      // Weight lives on the GOOD left leg (7a.8): a constant roll bias on
+      // top of the sway — positive rotation.z tips the top toward −X, the
+      // good side. 0.16 rad at LIMP 1 is structural; LIMP scales it.
+      group.rotation.z =
+        Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * A.SWAY_AMP
+        + limp * 0.16 * rec.legBlend;
+      group.rotation.x = A.LEAN;
 
-    // The idle arm wobble only runs when the attack doesn't own the arms.
-    if (!rec.attackPhase) {
-      const wob =
-        Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
-      rec.parts.armL.rotation.x = REST + wob;
-      rec.parts.armR.rotation.x = REST - wob;
-      rec.elbowFactor = 1;
-    }
-    // Elbow droop rides whatever the arms are doing (attack phases scale the
-    // factor: cock on windup, straighten through the strike). Guarded for an
-    // old parts map without forearms.
-    if (rec.parts.foreL && rec.parts.foreR) {
-      const elbow = (A.ELBOW_BEND ?? 0) * rec.elbowFactor;
-      rec.parts.foreL.rotation.x = elbow;
-      rec.parts.foreR.rotation.x = elbow;
+      // Leg swing (pass 7a follow-up): alternating hip swing at BOB_FREQ so
+      // each step lands on a bob peak — stride-locked like everything else.
+      // Knees (7a.2): a bend pulse lagged a QUARTER STRIDE behind the thigh
+      // (structural constant, like the YXZ order — the knee bends mid-swing
+      // and straightens at the plant), riding on the permanent KNEE_REST
+      // shuffle-crouch. max(0,·) keeps knees from ever bending forward.
+      // Guarded: an old parts map without legs/shins simply keeps them still.
+      if (rec.parts.legL && rec.parts.legR) {
+        const swing = Math.sin(p) * (A.LEG_SWING ?? 0) * rec.legBlend;
+        rec.parts.legL.rotation.x = swing;
+        // LITERAL drag (7a.8): the bad leg never steps — no swing component
+        // at all. It PINS at a backward trail and gets pulled along by the
+        // body.
+        rec.parts.legR.rotation.x = limp > 0
+          ? limp * 0.4 * rec.legBlend
+          : -swing;
+        if (rec.parts.shinL && rec.parts.shinR) {
+          const KNEE_LAG = Math.PI / 2;
+          const pulse = (A.KNEE_BEND ?? 0) * rec.legBlend;
+          rec.parts.shinL.rotation.x =
+            (A.KNEE_REST ?? 0) + pulse * Math.max(0, Math.sin(p - KNEE_LAG));
+          // The dragging shin (7a.8): locked at a deep backward cock — with
+          // the pinned thigh above, the toe points down and scrapes the
+          // ground as the body pulls the whole leg. 0.8 rad at LIMP 1.
+          rec.parts.shinR.rotation.x =
+            (A.KNEE_REST ?? 0) + limp * 0.8 * rec.legBlend;
+        }
+      }
+
+      // The idle arm wobble only runs when the attack doesn't own the arms.
+      if (!rec.attackPhase) {
+        const wob =
+          Math.sin(rec.walked * A.SWAY_FREQ * 1.7 + rec.t * A.IDLE_SWAY_FREQ) * A.ARM_WOBBLE;
+        rec.parts.armL.rotation.x = REST + wob;
+        rec.parts.armR.rotation.x = REST - wob;
+        rec.elbowFactor = 1;
+      }
+      // Elbow droop rides whatever the arms are doing (attack phases scale
+      // the factor: cock on windup, straighten through the strike). Guarded
+      // for an old parts map without forearms.
+      if (rec.parts.foreL && rec.parts.foreR) {
+        const elbow = (A.ELBOW_BEND ?? 0) * rec.elbowFactor;
+        rec.parts.foreL.rotation.x = elbow;
+        rec.parts.foreR.rotation.x = elbow;
+      }
     }
   }
 
@@ -817,10 +1039,19 @@ export function updateEnemies(dtMs, playerPos) {
   if (mapColliders.length > 0) {
     for (const rec of records) {
       if (rec.dying || rec.vault) continue; // the vault script owns the body
+      // Prone bodies reach much further forward than standing ones (7c):
+      // lying down, the head and the pulling arms extend up to ~2.2 m past
+      // the feet origin, so crawl states use CRAWL.WALL — the suite pins
+      // its reach against the registry-derived extent. 'falling' counts
+      // too: the collapse pitches through those extents. Guarded exactly
+      // like the standing block.
+      const W = rec.crawlState
+        ? (rec.type.CRAWL?.WALL ?? rec.type.WALL)
+        : rec.type.WALL;
       const solved = resolveBodyWithReach(
         rec.group.position.x, rec.group.position.z,
         rec.group.rotation.y, mapColliders, rec.type.BODY_RADIUS,
-        rec.type.WALL?.REACH ?? 0, rec.type.WALL?.RADIUS ?? 0,
+        W?.REACH ?? 0, W?.RADIUS ?? 0,
       );
       rec.group.position.x = solved.x;
       rec.group.position.z = solved.z;

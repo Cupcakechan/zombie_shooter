@@ -368,3 +368,49 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   in one message when sequencing matters.
 - Route: dev-method GI candidate — "scoped adds for docs commits; never
   two checkpoint blocks in one message."
+
+## 2026-07-12 — the capture shipped without its consumer: a planned edit list is not applied edits
+
+- What broke / what happened: pass 7c planned ~12 enemies.js edits; edit
+  5 CAPTURED the death-start pose (`dieFromPitch`/`dieFromY`) and a
+  planned sibling edit made the death fall CONSUME it. The consumer edit
+  was never applied. Every applied edit verified its landing; `node
+  --check` passed; the suite passed (nothing pins the interpolation's
+  start point). Daniel hit it in the browser: a killed crawler stood up
+  to fall over again.
+- Root cause: verification covered each APPLIED edit's end state, not
+  the PLAN's end state. A dropped step leaves no failing anchor, no
+  syntax error, and no orphaned identifier a grep would flag — the
+  captured fields simply sat unread. Half-shipped state machinery is
+  invisible to every per-edit check.
+- Plug shipped: fix was one edit (interpolate from the captured pose).
+  Rule going forward: after a multi-edit implementation, walk the PLAN
+  as a checklist against the final file — grep each planned change's
+  signature (for state fields: the WRITE and the READ both) before
+  delivery. New record fields with no consumer in the same delivery are
+  a stop signal.
+- Route: general instructions candidate (sibling of the scripted-edit
+  landing-report rule — this is its plan-level generalization).
+
+## 2026-07-12 — hand-trig on a rotated rig lied by 0.3 m: pose constants get a world-space probe
+
+- What broke / what happened: the prone crawl pose shipped with
+  PITCH 1.35 justified by chained hand-trigonometry. In the browser the
+  head/jaw sat 0.30 m UNDER the floor in every stance and the pulling
+  arm 0.48 m under. The hand math tracked part CENTRES along one axis
+  and missed rotated box extents, child meshes (jaw/eyes ride the
+  head), and compound joint angles.
+- Root cause: a rigged body under two-plus compounded rotations exceeds
+  reliable mental arithmetic; centre-point math systematically
+  under-reports penetration because the offending geometry is corners
+  and children, not centres.
+- Plug shipped: a throwaway Node probe — suite-style DOM stub +
+  `buildBody` + the EXACT pose transforms the branch applies +
+  `Box3.setFromObject` per part — reporting min world-y per stance
+  (gait extremes, windup peak, strike start, rest). Grid-searched the
+  constants against measured penetration; final pose verified at
+  +0.008 head clearance in all stances. The probe asserts the EFFECT
+  (world y), the same rule as behavioral probes.
+- Route: skill reference (html-game.md) — "pose/rig constants are
+  probe-measured world-space before shipping; grid-search, don't
+  hand-derive."

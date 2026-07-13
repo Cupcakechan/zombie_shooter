@@ -24,6 +24,10 @@ export function buildBody(type) {
   // Hitbox part tags (pass 7b): damageEnemy reads userData.part to pick the
   // damage tier from the type's HITBOX table. Tag at creation, per mesh —
   // an untagged mesh falls back to torso damage (guarded in enemies.js).
+  // Pass 7c splits 'limb': LEGS (thighs, shins, feet) tag 'leg' so leg
+  // damage is trackable for the crawl transition; arms keep 'limb'. Damage
+  // tiers are identical (LEG === LIMB, suite-pinned) — only the accounting
+  // differs.
   const tag = (mesh, part) => {
     mesh.userData.part = part;
     return mesh;
@@ -56,16 +60,16 @@ export function buildBody(type) {
   const shinGeo = new THREE.BoxGeometry(B.LEG.W * 0.92, shinLen + 0.04, B.LEG.D * 0.92);
   shinGeo.translate(0, -(shinLen + 0.04) / 2 + 0.02, 0); // slight overlap hides the knee join
 
-  const legL = tag(new THREE.Mesh(thighGeo, cloth), 'limb');
+  const legL = tag(new THREE.Mesh(thighGeo, cloth), 'leg');
   legL.position.set(-B.LEG.X, hipTop, 0);
-  const shinL = tag(new THREE.Mesh(shinGeo, cloth), 'limb');
+  const shinL = tag(new THREE.Mesh(shinGeo, cloth), 'leg');
   shinL.position.set(0, -thighLen, 0); // the knee
   shinL.rotation.x = type.ANIM.KNEE_REST;
   legL.add(shinL);
 
-  const legR = tag(new THREE.Mesh(thighGeo.clone(), cloth), 'limb');
+  const legR = tag(new THREE.Mesh(thighGeo.clone(), cloth), 'leg');
   legR.position.set(B.LEG.X, hipTop, 0);
-  const shinR = tag(new THREE.Mesh(shinGeo.clone(), cloth), 'limb');
+  const shinR = tag(new THREE.Mesh(shinGeo.clone(), cloth), 'leg');
   shinR.position.set(0, -thighLen, 0);
   shinR.rotation.x = type.ANIM.KNEE_REST;
   legR.add(shinR);
@@ -73,11 +77,11 @@ export function buildBody(type) {
 
   // Feet: dark ground anchors, toes forward, riding the shins.
   const footGeo = new THREE.BoxGeometry(B.FOOT.W, B.FOOT.H, B.FOOT.D);
-  const footL = tag(new THREE.Mesh(footGeo, feetMat), 'limb');
+  const footL = tag(new THREE.Mesh(footGeo, feetMat), 'leg');
   footL.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
   footL.rotation.x = -type.ANIM.KNEE_REST; // flat-footed under the shuffle bend
   shinL.add(footL);
-  const footR = tag(new THREE.Mesh(footGeo.clone(), feetMat), 'limb');
+  const footR = tag(new THREE.Mesh(footGeo.clone(), feetMat), 'leg');
   footR.position.set(0, -(shinLen + B.FOOT.H / 2), B.FOOT.FWD);
   footR.rotation.x = -type.ANIM.KNEE_REST;
   shinR.add(footR);

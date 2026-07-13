@@ -530,6 +530,40 @@ try {
     console.log(`  ok     enemy schema: ${Object.keys(ENEMY_TYPES).length} type(s) × ${ENEMY_REQUIRED.length} required numeric fields present`);
   }
 
+  // CRAWL block schema (7c): OPTIONAL per type — no block simply means the
+  // type never crawls (guarded at every read site). But when the block IS
+  // present, every field the crawl logic reads unguarded must be a finite
+  // number — the same silent-NaN class as the main schema. Negative-tested
+  // by name below, per the section-5 rule.
+  const CRAWL_REQUIRED = [
+    'LEG_HP', 'FALL_MS', 'SPEED_MULT', 'STOP_DISTANCE',
+    'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
+    'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
+    'ATTACK.REAR_RAD', 'ATTACK.THRUST_RAD',
+    'WALL.REACH', 'WALL.RADIUS',
+  ];
+  const missingCrawlKeys = (type) => (!type.CRAWL ? [] : CRAWL_REQUIRED
+    .filter((fp) => {
+      const v = resolvePath(type.CRAWL, fp);
+      return typeof v !== 'number' || !Number.isFinite(v);
+    })
+    .map((fp) => `CRAWL.${fp}`));
+  for (const [typeId, type] of Object.entries(ENEMY_TYPES)) {
+    const missing = missingCrawlKeys(type);
+    assertTrue('section5',
+      `${typeId}: CRAWL schema ${type.CRAWL ? `complete (${CRAWL_REQUIRED.length} keys)` : 'absent — allowed'}`,
+      missing.length === 0);
+    if (missing.length) console.log(`         missing: ${missing.join(', ')}`);
+  }
+  {
+    // Negative: the checker must NAME a deleted key, never pass silently.
+    const broken = structuredClone(ENEMY_TYPES.proto_zombie);
+    delete broken.CRAWL.FALL_MS;
+    const named = missingCrawlKeys(broken);
+    assertTrue('section5', 'CRAWL schema names a missing key (negative test)',
+      named.length === 1 && named[0] === 'CRAWL.FALL_MS');
+  }
+
   // SHIP gate: with the SHIP env var set, every DEBUG flag must be false.
   const truthyFlags = Object.entries(CONFIG.DEBUG || {})
     .filter(([, v]) => v)
@@ -869,8 +903,11 @@ try {
 
   // Hitbox coverage (7b): every mesh carries a VALID part tag — an untagged
   // mesh silently deals torso damage, exactly the class the schemas catch.
-  const VALID_PARTS = new Set(['head', 'torso', 'limb']);
-  const partCounts = { head: 0, torso: 0, limb: 0 };
+  // 7c split the old 'limb' population: the ARM chain keeps 'limb' (6
+  // meshes: uppers, forearms, hands), the LEG chain tags 'leg' (6 meshes:
+  // thighs, shins, feet) so leg damage is countable for the crawl.
+  const VALID_PARTS = new Set(['head', 'torso', 'limb', 'leg']);
+  const partCounts = { head: 0, torso: 0, limb: 0, leg: 0 };
   let untagged = 0;
   group.traverse((c) => {
     if (!c.isMesh) return;
@@ -879,8 +916,9 @@ try {
   });
   assertNear('section11', 'every mesh carries a valid part tag (untagged)', untagged, 0);
   assertTrue('section11',
-    `all three tiers present (head ${partCounts.head}, torso ${partCounts.torso}, limb ${partCounts.limb})`,
-    partCounts.head >= 2 && partCounts.torso >= 2 && partCounts.limb >= 8);
+    `all four tiers present (head ${partCounts.head}, torso ${partCounts.torso}, limb ${partCounts.limb}, leg ${partCounts.leg})`,
+    partCounts.head >= 2 && partCounts.torso >= 2
+    && partCounts.limb >= 6 && partCounts.leg >= 6);
 
   // Damage tiers are exactly the registry's (pure lookup, fallback-guarded).
   const { partDamage } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
@@ -1552,6 +1590,140 @@ try {
 } catch (err) {
   failures.push({ file: 'section14', err });
   console.log(`  FAIL   section 14 threw: ${err.message}`);
+}
+
+// ————— Section 15: the Crawler (pass 7c) —————
+// Leg destruction → prone crawl. The pure pieces are proven here: leg
+// damage routing and its fallbacks, the threshold arithmetic (a DESIGN
+// probe — three leg hits collapse the Shambler), the collapse timeline's
+// exact endpoints (the climbPose continuity rule), the prone wall reach
+// vs the REGISTRY-DERIVED body extent (the VAULT_TRIGGER ordering class),
+// and the ground field's by-construction window avoidance.
+
+console.log('');
+console.log('— Section 15: the Crawler (pass 7c) —');
+try {
+  const { partDamage: pd15, collapsePose, CRAWL_POSE } =
+    await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES: ET15 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const zt = ET15.proto_zombie;
+  const CR = zt.CRAWL;
+
+  // — Leg damage routing + fallbacks (the partDamage contract): the tag
+  // changes ACCOUNTING, never damage — and a registry without the new
+  // entries keeps the old numbers exactly.
+  assertNear('section15', 'leg hits deal the LEG tier', pd15(zt, 'leg'), zt.HITBOX.LEG);
+  assertNear('section15', 'LEG tier equals LIMB tier (accounting, not damage)',
+    zt.HITBOX.LEG, zt.HITBOX.LIMB);
+  assertNear('section15', 'leg falls back to the LIMB tier when LEG is absent',
+    pd15({ HITBOX: { LIMB: 0.5 } }, 'leg'), 0.5);
+  assertNear('section15', 'leg falls back to torso-tier 1 with no table',
+    pd15({}, 'leg'), 1);
+
+  // — Threshold arithmetic (hand-computed design probe): exactly THREE leg
+  // hits at the LEG tier cross LEG_HP — two must not, three must.
+  assertTrue('section15',
+    `3 leg hits collapse, 2 don't (LEG_HP ${CR.LEG_HP}, tier ${zt.HITBOX.LEG})`,
+    2 * zt.HITBOX.LEG < CR.LEG_HP && 3 * zt.HITBOX.LEG >= CR.LEG_HP);
+
+  // — The claw's pacing and ring, relative like the standing asserts so
+  // retuning stays safe.
+  assertTrue('section15', 'crawl cooldown covers windup+strike+recover',
+    CR.ATTACK.COOLDOWN_MS >= CR.ATTACK.WINDUP_MS + CR.ATTACK.STRIKE_MS + CR.ATTACK.RECOVER_MS);
+  assertTrue('section15',
+    `crawl stop ring (${CR.STOP_DISTANCE}) inside the standing one (${zt.STOP_DISTANCE})`,
+    CR.STOP_DISTANCE <= zt.STOP_DISTANCE);
+  assertTrue('section15', 'crawl is slower than the walk (0 < SPEED_MULT < 1)',
+    CR.SPEED_MULT > 0 && CR.SPEED_MULT < 1);
+
+  // — The collapse timeline: k=0 is EXACTLY the walk rest, k=1 EXACTLY the
+  // crawl rest (a pop at either end reads as a glitch), and the pitch
+  // never rocks back upright mid-fall.
+  const rest15 = {
+    REST: zt.BODY.ARM.REST_RAD, ELBOW: zt.ANIM.ELBOW_BEND,
+    KNEE: zt.ANIM.KNEE_REST, LEAN: zt.ANIM.LEAN,
+  };
+  const c0 = collapsePose(0, rest15);
+  assertTrue('section15', 'collapse k=0 is the walk rest pose',
+    c0.pitch === rest15.LEAN && c0.lift === 0 && c0.shoulder === rest15.REST
+    && c0.elbow === rest15.ELBOW && c0.hipL === 0 && c0.hipR === 0
+    && c0.kneeL === rest15.KNEE && c0.kneeR === rest15.KNEE && c0.headUp === 0);
+  const c1 = collapsePose(1, rest15);
+  assertTrue('section15', 'collapse k=1 is the crawl rest pose',
+    Math.abs(c1.pitch - CRAWL_POSE.PITCH) < 1e-9
+    && Math.abs(c1.lift - CRAWL_POSE.Y) < 1e-9
+    && Math.abs(c1.shoulder - CRAWL_POSE.ARM_REST) < 1e-9
+    && Math.abs(c1.elbow - CRAWL_POSE.ELBOW) < 1e-9
+    && Math.abs(c1.hipL - CRAWL_POSE.HIP_TRAIL) < 1e-9
+    && Math.abs(c1.hipR - CRAWL_POSE.HIP_TRAIL) < 1e-9
+    && Math.abs(c1.kneeL - CRAWL_POSE.KNEE_TRAIL) < 1e-9
+    && Math.abs(c1.kneeR - CRAWL_POSE.KNEE_TRAIL) < 1e-9
+    && Math.abs(c1.headUp - CRAWL_POSE.HEAD_UP) < 1e-9);
+  let pitchMono = true;
+  let prevPitch = -Infinity;
+  for (let k = 0; k <= 1.0001; k += 0.01) {
+    const c = collapsePose(Math.min(1, k), rest15);
+    if (c.pitch < prevPitch - 1e-9) pitchMono = false;
+    prevPitch = c.pitch;
+  }
+  assertTrue('section15', 'collapse pitch never rocks back upright', pitchMono);
+
+  // — Prone wall reach vs the registry-derived body extent (the ordering
+  // invariant class): lying down, the forward extent from the feet origin
+  // is the LONGER of the head chain and the arm chain. The arm bound is
+  // conservative and exact — sin(PITCH + φ) reaches 1 inside the pull
+  // swing, so at some gait angle the arm points straight world-forward
+  // and contributes its full length past the shoulder. A reach that
+  // undercovers this buries geometry in any faced wall.
+  const B15 = zt.BODY;
+  const sinP = Math.sin(CRAWL_POSE.PITCH);
+  const cosP = Math.cos(CRAWL_POSE.PITCH);
+  const hipTop15 = B15.FOOT.H + B15.LEG.LEN;
+  const bellyY15 = hipTop15 + B15.BELLY.H / 2 - 0.06;
+  const chestY15 = bellyY15 + B15.BELLY.H / 2 + B15.CHEST.H / 2 - 0.08;
+  const headY15 = chestY15 + (B15.CHEST.H / 2) * Math.cos(B15.CHEST.HUNCH)
+    + B15.HEAD.H / 2 - 0.06;
+  const headFwd = (headY15 + B15.HEAD.H / 2) * sinP
+    + (B15.CHEST.FWD + B15.HEAD.FWD + B15.HEAD.D / 2) * cosP;
+  const armFwd = (B15.ARM.Y * sinP + B15.ARM.FWD * cosP)
+    + (B15.ARM.LEN + B15.HAND.SIZE);
+  const extent = Math.max(headFwd, armFwd);
+  assertTrue('section15',
+    `prone reach covers the body extent (${(CR.WALL.REACH + CR.WALL.RADIUS).toFixed(2)} >= ${extent.toFixed(2)})`,
+    CR.WALL.REACH + CR.WALL.RADIUS >= extent);
+
+  // — Ground field (windowCost 0): NO cell's descent step lands on a
+  // window, and coverage still equals the flood minus the target cell —
+  // a crawler's route contains no windows BY CONSTRUCTION, with no cell
+  // stranded. This is the whole fix for "can't vault, mustn't stick at
+  // the glass".
+  const { MAPS: GM15 } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  const { parseLayout: gp15, countWalkable: gc15 } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+  const { buildFlowField: bff15 } =
+    await import(pathToFileURL(join('src', 'game', 'flowField.js')).href);
+  const gGrid = gp15(GM15.village01);
+  const gField = bff15(gGrid, gGrid.playerStart, { windowCost: 0 });
+  let windowSteps = 0;
+  let routed = 0;
+  for (let r = 0; r < gGrid.rows; r++) {
+    for (let c = 0; c < gGrid.cols; c++) {
+      const s = gField.stepAt(c, r);
+      if (!s) continue;
+      routed += 1;
+      if (gGrid.at(c + s.dc, r + s.dr) === 'W') windowSteps += 1;
+    }
+  }
+  assertTrue('section15',
+    `ground field: zero steps land on a window (got ${windowSteps})`,
+    windowSteps === 0);
+  assertTrue('section15',
+    `ground field: full coverage minus the target (${routed} = ${gc15(gGrid)} - 1)`,
+    routed === gc15(gGrid) - 1);
+} catch (err) {
+  failures.push({ file: 'section15', err });
+  console.log(`  FAIL   section 15 threw: ${err.message}`);
 }
 
 // ————— Report —————
