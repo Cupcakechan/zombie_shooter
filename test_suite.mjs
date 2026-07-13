@@ -1326,8 +1326,8 @@ try {
   assertTrue('section14', `village: N/E/W spawn ring has 65 cells, all walkable (got ${vRing.length})`,
     vRing.length === 65 && vRing.every(({ c, r }) => sgGrid.walkable(c, r)));
   const vSpots = windowEntrySpots(sgGrid);
-  assertTrue('section14', `village: every window is an entry spot (${vSpots.length}/6)`,
-    vSpots.length === 6);
+  assertTrue('section14', `village: every window is an entry spot (${vSpots.length}/11)`,
+    vSpots.length === 11);
   assertTrue('section14', 'village: every spot: outside on the street, inside in a room',
     vSpots.every((s) => vExt.has(`${s.outC},${s.outR}`) && !vExt.has(`${s.inC},${s.inR}`)
       && sgGrid.walkable(s.outC, s.outR) && sgGrid.walkable(s.inC, s.inR)));
