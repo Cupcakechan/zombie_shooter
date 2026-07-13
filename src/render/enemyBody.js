@@ -49,6 +49,19 @@ export function buildBody(type) {
   const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
   const headY = chestY + B.CHEST.H / 2 * Math.cos(B.CHEST.HUNCH) + B.HEAD.H / 2 - 0.06;
 
+  // Waist joint (7c.2): a group pivoted at the belly/chest seam — the
+  // centre of the 0.08 overlap band that hides the join. Chest, head
+  // (jaw/eyes ride as its children), and both arm chains re-parent into
+  // it with positions re-expressed relative to the pivot, so at
+  // rotation.x = 0 the body is WORLD-IDENTICAL to the pre-waist build
+  // (suite §11 pins the head and shoulders to the registry-derived stack
+  // exactly). Prone, a negative counter-bend raises chest/head/arms off
+  // the flattened pelvis — the sphinx silhouette (7c.2).
+  const waistY = bellyTop - 0.04;
+  const waist = new THREE.Group();
+  waist.position.set(0, waistY, 0);
+  group.add(waist);
+
   // Legs (two segments): THIGH pivots at the hip, SHIN pivots at the knee
   // (a child, origin at the joint), the foot rides the shin. Joint sits
   // KNEE_AT down the limb (research rule: ~55%). Rest pose bakes the slight
@@ -97,9 +110,9 @@ export function buildBody(type) {
   const chest = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.CHEST.W, B.CHEST.H, B.CHEST.D), cloth,
   ), 'torso');
-  chest.position.set(0, chestY, B.CHEST.FWD);
+  chest.position.set(0, chestY - waistY, B.CHEST.FWD);
   chest.rotation.x = B.CHEST.HUNCH; // positive = top toward +Z = forward
-  group.add(chest);
+  waist.add(chest);
 
   // Head: oversized, jutting FORWARD off the chest top; cocked sideways,
   // face tilted up (negative X pitches the +Z face upward) — the lolling
@@ -108,10 +121,10 @@ export function buildBody(type) {
   const head = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.HEAD.W, B.HEAD.H, B.HEAD.D), skin,
   ), 'head');
-  head.position.set(0, headY, B.CHEST.FWD + B.HEAD.FWD);
+  head.position.set(0, headY - waistY, B.CHEST.FWD + B.HEAD.FWD);
   head.rotation.z = B.HEAD.COCK;
   head.rotation.x = B.HEAD.TILT;
-  group.add(head);
+  waist.add(head);
 
   const jaw = tag(new THREE.Mesh(
     new THREE.BoxGeometry(B.JAW.W, B.JAW.H, B.JAW.D), skin,
@@ -139,7 +152,7 @@ export function buildBody(type) {
   foreGeo.translate(0, (foreLen + 0.04) / 2 - 0.02, 0); // overlap hides the elbow join
 
   const armL = tag(new THREE.Mesh(upperGeo, skin), 'limb');
-  armL.position.set(-B.ARM.X, B.ARM.Y, B.ARM.FWD);
+  armL.position.set(-B.ARM.X, B.ARM.Y - waistY, B.ARM.FWD);
   armL.rotation.x = B.ARM.REST_RAD;
   const foreL = tag(new THREE.Mesh(foreGeo, skin), 'limb');
   foreL.position.set(0, upperLen, 0); // the elbow
@@ -147,13 +160,13 @@ export function buildBody(type) {
   armL.add(foreL);
 
   const armR = tag(new THREE.Mesh(upperGeo.clone(), skin), 'limb');
-  armR.position.set(B.ARM.X, B.ARM.Y, B.ARM.FWD);
+  armR.position.set(B.ARM.X, B.ARM.Y - waistY, B.ARM.FWD);
   armR.rotation.x = B.ARM.REST_RAD;
   const foreR = tag(new THREE.Mesh(foreGeo.clone(), skin), 'limb');
   foreR.position.set(0, upperLen, 0);
   foreR.rotation.x = type.ANIM.ELBOW_BEND;
   armR.add(foreR);
-  group.add(armL, armR);
+  waist.add(armL, armR);
 
   const handGeo = new THREE.BoxGeometry(B.HAND.SIZE, B.HAND.SIZE, B.HAND.SIZE);
   const handL = tag(new THREE.Mesh(handGeo, skin), 'limb');
@@ -165,7 +178,7 @@ export function buildBody(type) {
 
   return {
     group,
-    parts: { armL, armR, foreL, foreR, legL, legR, shinL, shinR, head, jaw },
+    parts: { armL, armR, foreL, foreR, legL, legR, shinL, shinR, head, jaw, waist },
     materials: [skin, cloth, feetMat, eyeMat],
   };
 }

@@ -99,25 +99,38 @@ export function climbPose(k, rest) {
 // registry. Exported so the suite pins collapsePose's landing against
 // them and derives the prone body extent for the wall-reach invariant.
 export const CRAWL_POSE = {
-  PITCH: 1.15,       // rad off vertical — propped on its arms, chest up;
-                     //   MEASURED (probe, 2026-07-12): head clears the
-                     //   floor by +0.008 in every stance at this pitch
-  Y: 0.09,           // feet-origin lift; trades head clearance against a
-                     //   ~0.10 hover at the trailing toes (the lesser evil)
-  ARM_REST: 0.5,     // prone shoulder angle: hands planted ahead on the ground
+  // The sphinx rig (7c.2) — every spatial value below is MEASURED (probe,
+  // 2026-07-12, grid-searched world-space minima; LESSONS #19): pelvis flat
+  // on the ground (belly bottom +0.047, toes flat), chest and head raised
+  // off the waist counter-bend (head clearance +0.125 in every stance),
+  // hands planted (+0.045 at rest; the deepest gait pull kisses -0.008).
+  PITCH: 1.35,       // rad off vertical — the pelvis lies nearly flat
+  WAIST: -0.8,       // waist counter-bend: chest/head/arms rise off the
+                     //   flattened pelvis (negative X tips the top BACK
+                     //   up) — the sphinx silhouette. Upper trunk sits at
+                     //   PITCH + WAIST = 0.55 rad from vertical
+  Y: 0.02,           // feet-origin lift — barely off the floor now that
+                     //   the counter-bend carries the head clearance
+  ARM_REST: 1.125,   // prone shoulder angle: upper arm out level, forearm
+                     //   angled down — the propping foreleg plant
   ELBOW: 0.5,        // prone elbow bend — propped, never locked straight
-  PULL_AMP: 0.2,     // rad of alternating reach/pull arm swing — deeper
-                     //   swings bury the pulling arm (probe-measured)
+  PULL_AMP: 0.075,   // rad of alternating reach/pull arm swing — with the
+                     //   near-vertical arm, deeper swings bury the pulling
+                     //   hand (probe: -0.008 at this amplitude)
   ROLL: 0.08,        // rad of shoulder roll, one per pull pair (SWAY_FREQ rule)
   HIP_TRAIL: 0.15,   // dead legs trail nearly straight behind
   KNEE_TRAIL: 0.25,  // slight knee cock — toes up, the drag read
   DRAG_WIGGLE: 0.06, // rad of passive leg sway as the body hauls itself
-  HEAD_UP: -0.7,     // head pitch off the build TILT: the face lifts off the
-                     //   ground (negative X pitches the +Z face upward)
+  HEAD_UP: -0.1,     // head pitch off the build TILT; with the raised trunk
+                     //   the face angle lands at the browser-approved 0.30
+                     //   rad from vertical (PITCH + WAIST + TILT + HEAD_UP)
   WINDUP_COCK: 2.2,  // extra elbowFactor gain in the PRONE windup: the arm
                      //   rears up-back (REAR_RAD swings it past vertical-ish)
                      //   while the elbow folds to ~1.6 rad — a coiled claw,
                      //   not a straight stiff reach (feel report 2026-07-12)
+  TURN_MULT: 0.4,    // fraction of NAV.TURN_RATE while prone (7c.2): a body
+                     //   dragging itself by its arms pivots with WEIGHT —
+                     //   full-rate spins read as a swivel on a pin
 };
 
 // The collapse timeline (7c), pure in k ∈ [0,1]: the legs give out. Arms
@@ -132,6 +145,9 @@ export function collapsePose(k, rest) {
   const settle = smooth(k);                    // legs slacken into the trail
   return {
     pitch: rest.LEAN + (CRAWL_POSE.PITCH - rest.LEAN) * drop,
+    // The waist counter-bend rides the SAME k² as the pitch, so the chest
+    // rises exactly as the trunk falls — the sphinx arrives in one motion.
+    waist: CRAWL_POSE.WAIST * drop,
     lift: CRAWL_POSE.Y * drop,
     shoulder: rest.REST + (CRAWL_POSE.ARM_REST - rest.REST) * brace,
     elbow: rest.ELBOW + (CRAWL_POSE.ELBOW - rest.ELBOW) * brace,
@@ -352,6 +368,10 @@ function startDeath(rec) {
   // old numbers fall out of the same interpolation.
   rec.dieFromPitch = rec.group.rotation.x;
   rec.dieFromY = rec.group.position.y;
+  // The waist is captured too (7c.2): a sphinx dying from prone relaxes
+  // its counter-bend to 0 through the fall, settling FLAT — a standing
+  // death captures 0, so the old behavior falls out of the same formula.
+  rec.dieFromWaist = rec.parts.waist ? rec.parts.waist.rotation.x : 0;
   rec.group.rotation.z = 0;
   rec.group.scale.set(1, 1, 1); // the flinch dies with it — corpses fall un-squashed
   // Position rides along so FX can place a floor pool under the kill —
@@ -471,9 +491,13 @@ export function updateEnemies(dtMs, playerPos) {
         const fy = rec.dieFromY ?? 0;
         group.rotation.x = fp + (Math.PI / 2 - fp) * k * k;
         group.position.y = fy + (type.DEATH.CORPSE_LIFT - fy) * k * k;
+        if (rec.parts.waist) {
+          rec.parts.waist.rotation.x = (rec.dieFromWaist ?? 0) * (1 - k * k);
+        }
       } else if (phase === 'lying') {
         group.rotation.x = Math.PI / 2;
         group.position.y = type.DEATH.CORPSE_LIFT;
+        if (rec.parts.waist) rec.parts.waist.rotation.x = 0; // corpses lie FLAT
       } else if (phase === 'fading') {
         for (const m of rec.materials) {
           m.transparent = true;
@@ -600,6 +624,7 @@ export function updateEnemies(dtMs, playerPos) {
       group.rotation.x = pose.pitch;
       group.position.y = pose.lift;
       group.rotation.z *= Math.max(0, 1 - dtMs / 150); // walk roll bleeds out
+      if (rec.parts.waist) rec.parts.waist.rotation.x = pose.waist;
       rec.parts.armL.rotation.x = pose.shoulder;
       rec.parts.armR.rotation.x = pose.shoulder;
       if (rec.parts.foreL && rec.parts.foreR) {
@@ -877,9 +902,13 @@ export function updateEnemies(dtMs, playerPos) {
     // movement direction is already correct this frame; only the FACING
     // eases, so path-following never lags the field. A 45° field step
     // resolves in ~0.15 s at the default rate; the brief lean reads as
-    // the body carrying its weight through the turn.
+    // the body carrying its weight through the turn. Prone (7c.2), the
+    // rate scales by TURN_MULT: a body hauling itself on its arms pivots
+    // like dead weight, never a swivel — and the slower turn is readable
+    // counterplay (circling a downed crawler outpaces its facing).
     group.rotation.y = turnToward(
-      group.rotation.y, targetYaw, (CONFIG.NAV.TURN_RATE * dtMs) / 1000,
+      group.rotation.y, targetYaw,
+      (CONFIG.NAV.TURN_RATE * (crawling ? CRAWL_POSE.TURN_MULT : 1) * dtMs) / 1000,
     );
 
     // — Procedural pose. The hit-flinch squash rides BOTH stances: the
@@ -900,6 +929,9 @@ export function updateEnemies(dtMs, playerPos) {
       // arms while a phase runs, exactly like the shamble's rule.
       group.position.y = CRAWL_POSE.Y;
       group.rotation.x = CRAWL_POSE.PITCH;
+      // The counter-bend that makes the sphinx (7c.2) — guarded like every
+      // part write, so an old parts map without a waist simply lies flat.
+      if (rec.parts.waist) rec.parts.waist.rotation.x = CRAWL_POSE.WAIST;
       // One shoulder roll per pull pair (the SWAY_FREQ = BOB_FREQ/2 rule),
       // with the same integrated idle-breathing phase as the walk (7a.7).
       rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);

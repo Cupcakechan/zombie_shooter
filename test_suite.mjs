@@ -929,6 +929,39 @@ try {
     partDamage(zb, undefined), zb.HITBOX.TORSO);
   assertNear('section11', 'missing HITBOX table falls back to 1', partDamage({}, 'head'), 1);
 
+  // The waist joint (7c.2): chest, head, and both arm chains hang off a
+  // waist group pivoted at the belly/chest seam — and at rotation 0 the
+  // re-parent must have moved NOTHING. Exact pins: head and shoulder
+  // world positions equal the registry-derived height stack to 1e-9.
+  // These are the proof that the sphinx rig is standing-neutral; a slip
+  // in the pivot re-expression fails HERE, not as a shifted silhouette.
+  assertTrue('section11', 'waist exists in the parts map', !!parts.waist);
+  assertTrue('section11', 'head hangs off the waist', parts.head.parent === parts.waist);
+  assertTrue('section11', 'both arms hang off the waist',
+    parts.armL.parent === parts.waist && parts.armR.parent === parts.waist);
+  assertNear('section11', 'standing waist rotation is 0 (world-identical build)',
+    parts.waist.rotation.x, 0);
+  const Bx = zb.BODY;
+  const hipTopX = Bx.FOOT.H + Bx.LEG.LEN;
+  const bellyYX = hipTopX + Bx.BELLY.H / 2 - 0.06;
+  const chestYX = bellyYX + Bx.BELLY.H / 2 + Bx.CHEST.H / 2 - 0.08;
+  const headYX = chestYX + (Bx.CHEST.H / 2) * Math.cos(Bx.CHEST.HUNCH)
+    + Bx.HEAD.H / 2 - 0.06;
+  const headWX = worldOf(parts.head);
+  assertTrue('section11',
+    `head world position matches the registry stack exactly (y ${headWX.y.toFixed(4)} = ${headYX.toFixed(4)}, z ${headWX.z.toFixed(4)})`,
+    Math.abs(headWX.y - headYX) < 1e-9
+    && Math.abs(headWX.z - (Bx.CHEST.FWD + Bx.HEAD.FWD)) < 1e-9
+    && Math.abs(headWX.x) < 1e-9);
+  const shL = worldOf(parts.armL);
+  const shR = worldOf(parts.armR);
+  assertTrue('section11',
+    `shoulders sit exactly at the registry anchor (±${Bx.ARM.X}, ${Bx.ARM.Y}, ${Bx.ARM.FWD})`,
+    Math.abs(shL.x + Bx.ARM.X) < 1e-9 && Math.abs(shL.y - Bx.ARM.Y) < 1e-9
+    && Math.abs(shL.z - Bx.ARM.FWD) < 1e-9
+    && Math.abs(shR.x - Bx.ARM.X) < 1e-9 && Math.abs(shR.y - Bx.ARM.Y) < 1e-9
+    && Math.abs(shR.z - Bx.ARM.FWD) < 1e-9);
+
   // The head LEADS: its world position is forward (+Z) of the group origin
   // and above the chest stack's midpoint.
   const headW = worldOf(parts.head);
@@ -1648,7 +1681,8 @@ try {
   assertTrue('section15', 'collapse k=0 is the walk rest pose',
     c0.pitch === rest15.LEAN && c0.lift === 0 && c0.shoulder === rest15.REST
     && c0.elbow === rest15.ELBOW && c0.hipL === 0 && c0.hipR === 0
-    && c0.kneeL === rest15.KNEE && c0.kneeR === rest15.KNEE && c0.headUp === 0);
+    && c0.kneeL === rest15.KNEE && c0.kneeR === rest15.KNEE && c0.headUp === 0
+    && c0.waist === 0);
   const c1 = collapsePose(1, rest15);
   assertTrue('section15', 'collapse k=1 is the crawl rest pose',
     Math.abs(c1.pitch - CRAWL_POSE.PITCH) < 1e-9
@@ -1659,7 +1693,8 @@ try {
     && Math.abs(c1.hipR - CRAWL_POSE.HIP_TRAIL) < 1e-9
     && Math.abs(c1.kneeL - CRAWL_POSE.KNEE_TRAIL) < 1e-9
     && Math.abs(c1.kneeR - CRAWL_POSE.KNEE_TRAIL) < 1e-9
-    && Math.abs(c1.headUp - CRAWL_POSE.HEAD_UP) < 1e-9);
+    && Math.abs(c1.headUp - CRAWL_POSE.HEAD_UP) < 1e-9
+    && Math.abs(c1.waist - CRAWL_POSE.WAIST) < 1e-9);
   let pitchMono = true;
   let prevPitch = -Infinity;
   for (let k = 0; k <= 1.0001; k += 0.01) {
@@ -1676,17 +1711,27 @@ try {
   // swing, so at some gait angle the arm points straight world-forward
   // and contributes its full length past the shoulder. A reach that
   // undercovers this buries geometry in any faced wall.
+  // 7c.2: the waist splits the chain. Parts BELOW the pivot rotate by
+  // PITCH about the feet origin; parts ABOVE it ride the pivot and rotate
+  // by PITCH + WAIST — the same transform the build applies, mirrored
+  // here so a retune of either constant re-derives the bound. waistY
+  // mirrors enemyBody.js's pivot (bellyTop - 0.04).
   const B15 = zt.BODY;
   const sinP = Math.sin(CRAWL_POSE.PITCH);
-  const cosP = Math.cos(CRAWL_POSE.PITCH);
+  const sinU = Math.sin(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
+  const cosU = Math.cos(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
   const hipTop15 = B15.FOOT.H + B15.LEG.LEN;
   const bellyY15 = hipTop15 + B15.BELLY.H / 2 - 0.06;
-  const chestY15 = bellyY15 + B15.BELLY.H / 2 + B15.CHEST.H / 2 - 0.08;
+  const bellyTop15 = bellyY15 + B15.BELLY.H / 2;
+  const waistY15 = bellyTop15 - 0.04;
+  const chestY15 = bellyTop15 + B15.CHEST.H / 2 - 0.08;
   const headY15 = chestY15 + (B15.CHEST.H / 2) * Math.cos(B15.CHEST.HUNCH)
     + B15.HEAD.H / 2 - 0.06;
-  const headFwd = (headY15 + B15.HEAD.H / 2) * sinP
-    + (B15.CHEST.FWD + B15.HEAD.FWD + B15.HEAD.D / 2) * cosP;
-  const armFwd = (B15.ARM.Y * sinP + B15.ARM.FWD * cosP)
+  const headFwd = waistY15 * sinP
+    + (headY15 + B15.HEAD.H / 2 - waistY15) * sinU
+    + (B15.CHEST.FWD + B15.HEAD.FWD + B15.HEAD.D / 2) * cosU;
+  const armFwd = waistY15 * sinP
+    + (B15.ARM.Y - waistY15) * sinU + B15.ARM.FWD * cosU
     + (B15.ARM.LEN + B15.HAND.SIZE);
   const extent = Math.max(headFwd, armFwd);
   assertTrue('section15',
