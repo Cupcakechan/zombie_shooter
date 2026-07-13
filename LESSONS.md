@@ -4,7 +4,7 @@ A queue, not an archive: when something breaks or surprises us, it gets a short
 entry here. Dev-method skill sessions harvest routed entries into skill/GI
 updates and mark them `HARVESTED — <date>` (or delete them).
 
-## 2026-07-11 — Browser import maps are invisible to the Node test suite
+## 2026-07-11 — Browser import maps are invisible to the Node test suite [HARVESTED — 2026-07-12]
 
 - What broke / what happened: the planned import map (`"three"` →
   `./lib/three.module.js`) would have left every `src` module unimportable by
@@ -21,7 +21,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   prefer relative imports over import maps when a committed Node import suite
   exists."
 
-## 2026-07-11 — NaN light intensity blacks out every lit material (unlit survives)
+## 2026-07-11 — NaN light intensity blacks out every lit material (unlit survives) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: the first shot set `flashLight.intensity` from a
   CONFIG constant that wasn't in the running file (the paste-in hadn't landed
@@ -48,7 +48,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   light uniform; check the last-touched light value first.* Corollary:
   paste-in config edits need an existence probe, not just a parse.
 
-## 2026-07-11 — the missing-key class struck twice: config (again) and its registry twin was still open
+## 2026-07-11 — the missing-key class struck twice: config (again) and its registry twin was still open [HARVESTED — 2026-07-12]
 - What broke / what happened: first W press → black screen, HUD/reticle
   alive, zero console errors. The movement config paste
   (PLAYER.MOVE_SPEED / WALL_MARGIN / BODY_RADIUS) hadn't landed →
@@ -75,7 +75,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   BEFORE playing (testing step 1 exists precisely for this class); a
   diagnostic signature earns its keep the second time it fires.
 
-## 2026-07-12 — camera-space sign flip put the ejection port behind the gun
+## 2026-07-12 — camera-space sign flip put the ejection port behind the gun [HARVESTED — 2026-07-12]
 
 - What broke / what happened: brass casings visibly popped out of the gun's
   REAR. The port was computed as `OFFSET_Z + PORT_FWD` with `PORT_FWD: 0.2` —
@@ -99,7 +99,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   re-derive by feel. The sign convention of the frame goes in the comment
   beside the value.*
 
-## 2026-07-12 — Claude-side: `git pull` aborts on sandbox scratch copies but prints `Updating x..y`
+## 2026-07-12 — Claude-side: `git pull` aborts on sandbox scratch copies but prints `Updating x..y` [HARVESTED — 2026-07-12]
 
 - What broke / what happened: twice in one session, `git pull` in Claude's
   working clone ABORTED on untracked-file collisions — the delivery files
@@ -121,7 +121,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: dev-method candidate (session-hygiene / git section) — *a clone that
   applies deliveries locally must sync by fetch+reset, never pull.*
 
-## 2026-07-12 — a checkpoint block without `git push` desynced the remote (Daniel copies blocks verbatim)
+## 2026-07-12 — a checkpoint block without `git push` desynced the remote (Daniel copies blocks verbatim) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: a delivered git-checkpoint block ended at
   `git commit` — no `git push` line. Daniel copies checkpoint blocks
@@ -143,7 +143,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: GI candidate (git workflow — checkpoint blocks are interfaces;
   ship them complete) + the stop-signal rule already in place, reaffirmed.
 
-## 2026-07-12 — scaling an ACCUMULATED phase by a changing blend = whole-body shake (integrate rates, never scale phases)
+## 2026-07-12 — scaling an ACCUMULATED phase by a changing blend = whole-body shake (integrate rates, never scale phases) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: gating the idle-sway term as
   `t · IDLE_FREQ · (1 − legBlend)` made every zombie SHAKE violently the
@@ -166,7 +166,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   multiplies elapsed-total-time by anything that changes per frame, it's
   wrong.*
 
-## 2026-07-12 — animation feel is a multi-round loop by nature; probes catch slips, only eyes catch reads
+## 2026-07-12 — animation feel is a multi-round loop by nature; probes catch slips, only eyes catch reads [HARVESTED — 2026-07-12]
 
 - What happened (not a defect — a calibrated expectation): the shambler
   gait took EIGHT feel rounds (7a.1–7a.8 + two tunes) to land: leg swing →
@@ -189,7 +189,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   without convergence consider an approach rethink — this one converged,
   so the single-lever discipline held.*
 
-## 2026-07-12 — every renderer.render() repaints scene.background: the gun's overlay pass wiped the world (black screen)
+## 2026-07-12 — every renderer.render() repaints scene.background: the gun's overlay pass wiped the world (black screen) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: pass 4.2b moved the gun viewmodel to a
   second render pass (world → clearDepth → gun on layer 1) to stop it
@@ -213,7 +213,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   null scene.background on every pass after the first; treat render-path
   changes as browser-first deliveries.*
 
-## 2026-07-12 — thin boundary colliders eject bodies to the WRONG side (probe caught it pre-ship)
+## 2026-07-12 — thin boundary colliders eject bodies to the WRONG side (probe caught it pre-ship) [HARVESTED — 2026-07-12]
 
 - What happened (a probe win, not a shipped defect): making the map fence
   solid, the first implementation used thin boxes on the boundary line.
@@ -233,7 +233,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: dev-method / html-game.md candidate — *one-sided barriers =
   thick outward bands + an eject-direction probe.*
 
-## 2026-07-12 — a body's collision proxy must be MEASURED against the built body (anisotropic clip)
+## 2026-07-12 — a body's collision proxy must be MEASURED against the built body (anisotropic clip) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: zombies' front halves (raised arms + hunched
   head) clipped through walls they faced once 4.3 sent them inside rooms.
@@ -255,7 +255,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   extents against its collision proxy; anisotropic bodies need more than a
   radius, and the fix must keep doorways passable."
 
-## 2026-07-12 — assigning orientation to a QUANTIZED target teleports it (rate-limit through the angle)
+## 2026-07-12 — assigning orientation to a QUANTIZED target teleports it (rate-limit through the angle) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: flow-field directions are 8-way quantized;
   `rotation.y = atan2(...)` (fine when tracking the continuously-moving
@@ -270,7 +270,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: skill reference (html-game.md) — "any orientation driven by a
   quantized source gets a rate-limited turn, wrap via atan2(sin,cos)."
 
-## 2026-07-12 — proximity measured THROUGH walls: one root, two faces (frozen beeline, corner swipes)
+## 2026-07-12 — proximity measured THROUGH walls: one root, two faces (frozen beeline, corner swipes) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: (1) zombies froze when the player tucked in a
   corner; (2) swipes landed across wall corners. Node repro falsified the
@@ -293,7 +293,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   runtime you can instrument BEFORE naming the mechanism — the first
   hypothesis here was wrong."
 
-## 2026-07-12 — the probe mimicked the defect: an unpinned probe input "killed" nothing
+## 2026-07-12 — the probe mimicked the defect: an unpinned probe input "killed" nothing [HARVESTED — 2026-07-12]
 
 - What broke / what happened: the mid-vault-kill probe FAILED with the
   corpse 1.44 m from the expected snap point. The code was right — the
@@ -314,7 +314,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   and review formulas/assertions for dead terms — an exact-value probe
   catches what a threshold probe forgives.
 
-## 2026-07-12 — a proximity trigger INSIDE a collision standoff can never fire (ordering as a named invariant)
+## 2026-07-12 — a proximity trigger INSIDE a collision standoff can never fire (ordering as a named invariant) [HARVESTED — 2026-07-12]
 
 - What broke / what happened: nothing shipped — designed around during
   4.3b. The vault trigger fires at a distance from the window; the reach
@@ -330,7 +330,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   collision standoff coexist, encode their ordering as a named suite
   invariant; a silent violation is a freeze, not an error."
 
-## 2026-07-12 — `node --check` passes a MISSING import; the un-importable entry file is where it hides
+## 2026-07-12 — `node --check` passes a MISSING import; the un-importable entry file is where it hides [HARVESTED — 2026-07-12]
 
 - What broke / what happened: 4.3c's `pickEntry` in main.js referenced
   `WAVES` with no import. `node --check` passed (parse only, no binding
@@ -350,7 +350,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: dev-method / html-game.md — "for files the import-run can't
   reach, grep every new identifier's import before delivery."
 
-## 2026-07-12 — two checkpoint blocks in one message: only the second ran, and `git add .` swallowed the first pass
+## 2026-07-12 — two checkpoint blocks in one message: only the second ran, and `git add .` swallowed the first pass [HARVESTED — 2026-07-12]
 
 - What broke / what happened: the 4.3b.2 pass checkpoint and the docs
   checkpoint were delivered in the same message, sequenced by prose.
@@ -369,7 +369,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: dev-method GI candidate — "scoped adds for docs commits; never
   two checkpoint blocks in one message."
 
-## 2026-07-12 — the capture shipped without its consumer: a planned edit list is not applied edits
+## 2026-07-12 — the capture shipped without its consumer: a planned edit list is not applied edits [HARVESTED — 2026-07-12]
 
 - What broke / what happened: pass 7c planned ~12 enemies.js edits; edit
   5 CAPTURED the death-start pose (`dieFromPitch`/`dieFromY`) and a
@@ -392,7 +392,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: general instructions candidate (sibling of the scripted-edit
   landing-report rule — this is its plan-level generalization).
 
-## 2026-07-12 — hand-trig on a rotated rig lied by 0.3 m: pose constants get a world-space probe
+## 2026-07-12 — hand-trig on a rotated rig lied by 0.3 m: pose constants get a world-space probe [HARVESTED — 2026-07-12]
 
 - What broke / what happened: the prone crawl pose shipped with
   PITCH 1.35 justified by chained hand-trigonometry. In the browser the
