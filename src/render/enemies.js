@@ -114,9 +114,15 @@ export const CRAWL_POSE = {
   ARM_REST: 1.125,   // prone shoulder angle: upper arm out level, forearm
                      //   angled down — the propping foreleg plant
   ELBOW: 0.5,        // prone elbow bend — propped, never locked straight
-  PULL_AMP: 0.075,   // rad of alternating reach/pull arm swing — with the
-                     //   near-vertical arm, deeper swings bury the pulling
-                     //   hand (probe: -0.008 at this amplitude)
+  REACH_AMP: 0.5,    // rad of ONE-SIDED forward arm reach (7c.3): each arm
+                     //   alternately lifts up-forward and re-plants; the
+                     //   swing is lift-only (max(0, sin)), so the planted
+                     //   arm never digs — which is what capped the old
+                     //   symmetric PULL_AMP at 0.075 and read as a slither
+  STRIDE_FREQ: 5.2,  // rad per metre CRAWLED — the crawl's own stride
+                     //   phase (the standing BOB_FREQ 2.6 gave one arm
+                     //   cycle per 2.4 m: arms near-frozen at 0.54 m/s).
+                     //   5.2 plants a hand every ~0.6 m, ~1.1 s apart
   ROLL: 0.08,        // rad of shoulder roll, one per pull pair (SWAY_FREQ rule)
   HIP_TRAIL: 0.15,   // dead legs trail nearly straight behind
   KNEE_TRAIL: 0.25,  // slight knee cock — toes up, the drag read
@@ -128,9 +134,12 @@ export const CRAWL_POSE = {
                      //   rears up-back (REAR_RAD swings it past vertical-ish)
                      //   while the elbow folds to ~1.6 rad — a coiled claw,
                      //   not a straight stiff reach (feel report 2026-07-12)
-  TURN_MULT: 0.4,    // fraction of NAV.TURN_RATE while prone (7c.2): a body
-                     //   dragging itself by its arms pivots with WEIGHT —
-                     //   full-rate spins read as a swivel on a pin
+  TURN_MULT: 0.125,  // fraction of NAV.TURN_RATE while prone. The read is
+                     //   the lever ARM, not the angular rate (7c.3): prone,
+                     //   the head end rides ~2 m from the feet pivot, vs
+                     //   ~0.25 m for standing shoulders — 0.125 matches the
+                     //   head-end sweep speed (~1.25 m/s) to the standing
+                     //   read that already feels right at full rate
 };
 
 // The collapse timeline (7c), pure in k ∈ [0,1]: the legs give out. Arms
@@ -932,19 +941,28 @@ export function updateEnemies(dtMs, playerPos) {
       // The counter-bend that makes the sphinx (7c.2) — guarded like every
       // part write, so an old parts map without a waist simply lies flat.
       if (rec.parts.waist) rec.parts.waist.rotation.x = CRAWL_POSE.WAIST;
-      // One shoulder roll per pull pair (the SWAY_FREQ = BOB_FREQ/2 rule),
-      // with the same integrated idle-breathing phase as the walk (7a.7).
+      // One shoulder roll per pull pair — the SWAY = stride/2 rule, on the
+      // crawl's OWN stride phase (7c.3) — with the same integrated
+      // idle-breathing phase as the walk (7a.7).
       rec.idlePhase += dtMs * A.IDLE_SWAY_FREQ * (1 - rec.legBlend);
+      const p2 = rec.walked * CRAWL_POSE.STRIDE_FREQ;
       group.rotation.z =
-        Math.sin(rec.walked * A.SWAY_FREQ + rec.idlePhase) * CRAWL_POSE.ROLL;
+        Math.sin(p2 / 2 + rec.idlePhase) * CRAWL_POSE.ROLL;
       if (!rec.attackPhase) {
-        const pull = Math.sin(p) * CRAWL_POSE.PULL_AMP * rec.legBlend;
-        rec.parts.armL.rotation.x = CRAWL_POSE.ARM_REST - pull;
-        rec.parts.armR.rotation.x = CRAWL_POSE.ARM_REST + pull;
+        // The reach-and-pull cycle (7c.3): each arm's swing is ONE-SIDED —
+        // it lifts up-forward (the reach), re-plants, then HOLDS the plant
+        // for its half-stride while the body hauls past it (the pull; a
+        // stationary planted hand under a moving body IS the pulling
+        // read). Opposite phases: exactly one arm reaches at a time, so
+        // the gait's floor minimum equals the rest plant by construction.
+        const liftL = Math.max(0, Math.sin(p2)) * CRAWL_POSE.REACH_AMP * rec.legBlend;
+        const liftR = Math.max(0, -Math.sin(p2)) * CRAWL_POSE.REACH_AMP * rec.legBlend;
+        rec.parts.armL.rotation.x = CRAWL_POSE.ARM_REST - liftL;
+        rec.parts.armR.rotation.x = CRAWL_POSE.ARM_REST - liftR;
         rec.elbowFactor = 1;
       }
       if (rec.parts.legL && rec.parts.legR) {
-        const wiggle = Math.sin(p) * CRAWL_POSE.DRAG_WIGGLE * rec.legBlend;
+        const wiggle = Math.sin(p2) * CRAWL_POSE.DRAG_WIGGLE * rec.legBlend;
         rec.parts.legL.rotation.x = CRAWL_POSE.HIP_TRAIL + wiggle;
         rec.parts.legR.rotation.x = CRAWL_POSE.HIP_TRAIL - wiggle;
         if (rec.parts.shinL && rec.parts.shinR) {
