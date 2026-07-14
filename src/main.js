@@ -217,7 +217,7 @@ initEnemies(scene, {
     // (no ray direction on purpose — a fountain reads as the finisher).
     if (pos) {
       spawnPool(pos.x, pos.z);
-      spawnBurst({ x: pos.x, y: 1.1, z: pos.z }, null, CONFIG.BLOOD.KILL_PARTICLES);
+      spawnBurst({ x: pos.x, y: pos.y ?? 1.1, z: pos.z }, null, CONFIG.BLOOD.KILL_PARTICLES);
     }
   },
 });

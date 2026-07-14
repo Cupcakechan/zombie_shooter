@@ -227,7 +227,7 @@ export function getCongestedWindows() {
   return out;
 }
 
-export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null } = {}) {
+export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null, hpMult = 1 } = {}) {
   const type = ENEMY_TYPES[typeId];
   // Graceful: an unknown id logs and skips — a registry typo must never crash.
   if (!type) {
@@ -252,7 +252,10 @@ export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null 
     type, group, parts, materials,
     speedMult,
     meshes: [],
-    hp: type.HP,
+    // Wave HP scaling (pass 12): the multiplier arrives with the spawn and
+    // is remembered for the bounty — tougher zombies pay proportionally.
+    hp: type.HP * hpMult,
+    hpMult,
     walked: 0, t: 0,
     // Unit vector toward the player, cached each update (4.3): knockback
     // needs "away from the player" and can no longer derive it from yaw
@@ -397,8 +400,21 @@ function startDeath(rec) {
   // Position rides along so FX can place a floor pool under the kill —
   // an extra arg, so existing id-only listeners are unaffected.
   if (onEnemyKilledCb) {
+    // The eruption anchor (pass 12 rider): pass the ACTUAL chest height at
+    // death, so a prone crawler erupts at its corpse instead of at
+    // standing chest height — the floating-spatter report (2026-07-13).
+    // Last frame's matrixWorld is fine for a blood anchor; the guarded
+    // fallback (main: pos.y ?? 1.1) keeps waist-less bodies on the old
+    // behavior.
+    let eruptY = null;
+    if (rec.parts.waist) {
+      const v = new THREE.Vector3();
+      rec.parts.waist.getWorldPosition(v);
+      eruptY = v.y + 0.15; // the chest sits just above the waist pivot
+    }
     onEnemyKilledCb(rec.type.id, {
       x: rec.group.position.x,
+      y: eruptY,
       z: rec.group.position.z,
     });
   }
@@ -495,7 +511,9 @@ export function damageEnemy(mesh) {
   // worth 0, never NaN.
   return {
     part, killed, legsOut: legsOut && !killed,
-    value: killed ? (rec.type.SCORE?.KILL ?? 0) : 0,
+    // The bounty scales with the wave's HP multiplier (pass 12) so the
+    // economy tracks difficulty — rounded to keep points integral.
+    value: killed ? Math.round((rec.type.SCORE?.KILL ?? 0) * (rec.hpMult ?? 1)) : 0,
   };
 }
 

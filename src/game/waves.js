@@ -10,6 +10,19 @@ import { ENEMY_TYPES } from '../data/enemyTypes.js';
 
 // ————— Pure composition math (suite-tested) —————
 
+// Wave HP multiplier (pass 12), pure with an injectable config so the
+// suite can pin the guard: flat 1.0 through RAMP_START (the one-shot
+// era is a CHOSEN number, not an accident), then STEP per wave to CAP.
+// A table without an HP block scales nothing — old saves of the file
+// keep today's behavior.
+export function hpMultAt(n, hpCfg = WAVES.HP) {
+  if (!hpCfg) return 1;
+  return Math.min(
+    hpCfg.CAP ?? 1,
+    1 + (hpCfg.STEP ?? 0) * Math.max(0, n - (hpCfg.RAMP_START ?? Infinity)),
+  );
+}
+
 // What wave n consists of. Table waves verbatim; beyond the table, the
 // EXTEND formula continues forever — speed capped, and the window-entry
 // share creeping up by WINDOW_STEP per wave to its own cap (4.3c).
@@ -21,6 +34,7 @@ export function waveSpec(n) {
       count: row.count, speedMult: row.speedMult, entry: row.entry,
       // Guarded: a hand-edited row without types stays all-Shambler.
       types: row.types ?? { proto_zombie: 1 },
+      hpMult: hpMultAt(n),
     };
   }
   const last = TABLE[TABLE.length - 1];
@@ -34,6 +48,7 @@ export function waveSpec(n) {
     speedMult: Math.min(EXTEND.SPEED_CAP, last.speedMult + EXTEND.SPEED_STEP * extra),
     entry: { perimeter: 1 - windowShare, window: windowShare },
     types: last.types ?? { proto_zombie: 1 }, // the last mix carries forever
+    hpMult: hpMultAt(n),
   };
 }
 
@@ -171,7 +186,7 @@ function beginSpawning() {
   const canWindow = (id) => !(ENEMY_TYPES[id]?.SPAWN?.PRONE);
   const { kinds, typeIds } = pairSpawns(rawKinds, rawTypes, canWindow);
   pendingSpawns = kinds.map((kind, i) => ({
-    typeId: typeIds[i], kind, speedMult: spec.speedMult,
+    typeId: typeIds[i], kind, speedMult: spec.speedMult, hpMult: spec.hpMult,
   }));
   spawnGapT = 0; // first spawn is immediate
 }
@@ -200,7 +215,7 @@ export function updateWaves(dtMs) {
           // facing). Absent picker (suite, legacy callers) degrades to the
           // arena origin — never a throw in the wave loop.
           const e = (pickEntryFn && pickEntryFn(s.kind, s.typeId)) || { pos: { x: 0, z: 0 }, opts: {} };
-          spawnFn(s.typeId, e.pos, { speedMult: s.speedMult, ...e.opts });
+          spawnFn(s.typeId, e.pos, { speedMult: s.speedMult, hpMult: s.hpMult, ...e.opts });
         }
         aliveCount += 1;
         spawnGapT = WAVES.SPAWN_GAP_MS;

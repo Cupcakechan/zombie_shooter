@@ -1888,6 +1888,53 @@ try {
   console.log(`  FAIL   section 17 threw: ${err.message}`);
 }
 
+// ————— Section 18: wave HP scaling (pass 12) —————
+// hpMultAt is pure with injectable config; the pins are RELATIVE to the
+// WAVES.HP block so retunes stay safe — except the one-shot-era pin,
+// which deliberately TIES three tunables together: if RAMP_START, HP, or
+// HITBOX.HEAD moves such that heads stop one-shotting inside the
+// pre-ramp era, the suite flags it so the change is conscious.
+console.log('');
+console.log('— Section 18: wave HP scaling (pass 12) —');
+try {
+  const { hpMultAt, waveSpec: spec18 } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { WAVES: waves18 } =
+    await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { ENEMY_TYPES: types18 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const HPC = waves18.HP;
+
+  assertTrue('section18', 'wave 1 is unscaled (hpMult 1)', hpMultAt(1) === 1);
+  assertTrue('section18',
+    `the ramp starts AFTER RAMP_START (wave ${HPC.RAMP_START} still 1.0)`,
+    hpMultAt(HPC.RAMP_START) === 1);
+  assertNear('section18',
+    `one wave past the ramp adds exactly STEP (${1 + HPC.STEP})`,
+    hpMultAt(HPC.RAMP_START + 1), 1 + HPC.STEP);
+  assertNear('section18', 'the cap engages by wave 99', hpMultAt(99), HPC.CAP);
+  // null, not undefined: a default parameter substitutes on undefined,
+  // which would silently re-inject the real WAVES.HP instead of testing
+  // the guard branch. null passes through and hits `if (!hpCfg)`.
+  assertTrue('section18', 'a table without an HP block scales nothing (guard)',
+    hpMultAt(50, null) === 1);
+  assertTrue('section18', 'waveSpec carries hpMult in both branches',
+    spec18(1).hpMult === 1 && Math.abs(spec18(99).hpMult - HPC.CAP) < 1e-9);
+
+  let oneShotEra = true;
+  for (const [, t] of Object.entries(types18)) {
+    for (let n = 1; n <= HPC.RAMP_START; n += 1) {
+      if (t.HITBOX.HEAD < t.HP * hpMultAt(n)) oneShotEra = false;
+    }
+  }
+  assertTrue('section18',
+    `heads one-shot EVERY type through the whole pre-ramp era (waves 1–${HPC.RAMP_START})`,
+    oneShotEra);
+} catch (err) {
+  failures.push({ file: 'section18', err });
+  console.log(`  FAIL   section 18 threw: ${err.message}`);
+}
+
 // ————— Report —————
 
 console.log('');
