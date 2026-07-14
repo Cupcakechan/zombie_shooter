@@ -1966,6 +1966,8 @@ try {
     await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
   const { WAVES: waves19 } =
     await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { CONFIG: CFG19 } =
+    await import(pathToFileURL(join('src', 'config.js')).href);
   const base19 = types19.proto_zombie;
   const sp = types19.sprinter;
   const br = types19.brute;
@@ -2061,6 +2063,24 @@ try {
     assertTrue('section19',
       `${id}: strike ring inside the arms, outside the body (${t.BODY_RADIUS} < ${ring.toFixed(2)} <= ${ext.arm.toFixed(2)})`,
       ring > t.BODY_RADIUS && ring <= ext.arm);
+    // THE wall bug, pinned in data (13b hardening). Against a wall behind
+    // the player the anti-clip probe holds the crawler's origin at
+    // (WALL.REACH + WALL.RADIUS) off the face — it MUST, or the prone arms
+    // clip through — while the player stands BODY_RADIUS off it. So the
+    // crawler is held at the difference, and that distance is NECESSARILY
+    // greater than its stop ring (the standoff has to cover the arms; the
+    // ring sits inside them by RING_FRACTION). It can never reach the ring
+    // against a wall, so it never settles — it just keeps crawling. Only
+    // RANGE_SLACK bridges the gap, and the margin is thin (~0.3 m). If a
+    // future RING_FRACTION tune eats it, a wall-backed player silently
+    // stops taking crawl damage — the exact bug that shipped in 13b, where
+    // a misplaced paste dropped RING_FRACTION, the ring fell back to 1.1,
+    // and the gate (1.5) could no longer reach the 1.95 standoff.
+    const held = (t.CRAWL.WALL.REACH + t.CRAWL.WALL.RADIUS) - CFG19.PLAYER.BODY_RADIUS;
+    const gate = ring + t.CRAWL.ATTACK.RANGE_SLACK;
+    assertTrue('section19',
+      `${id}: crawl attack gate reaches a wall-backed player (gate ${gate.toFixed(2)} >= held ${held.toFixed(2)}, margin ${(gate - held).toFixed(2)})`,
+      gate >= held);
   }
 
   // — Table debut: both archetypes are reachable through the real table.
@@ -2071,6 +2091,85 @@ try {
 } catch (err) {
   failures.push({ file: 'section19', err });
   console.log(`  FAIL   section 19 threw: ${err.message}`);
+}
+
+// ————— Section 20: a wall-backed player takes crawl damage —————
+//
+// The pin §19 can't be. §19 asserts the GEOMETRY permits the strike; it
+// passes just as happily if the gate code measures the wrong thing. This
+// section drives the REAL loop — real colliders, real prone reach probe,
+// real LOS, real attack gate — and asserts the effect the PLAYER feels:
+// damage lands. It exists because the opposite shipped: a crawler ground
+// the wall in front of a wall-backed player for a whole pass, dealing
+// nothing, and a green-looking suite said everything was fine. Reproduce
+// that state (ring fallen back to 1.1) and this section goes red with the
+// symptom in the message: "0 hits landed".
+//
+// Prone coverage is REAL here: only the crawler carries SPAWN.PRONE, so the
+// others are crippled the way the player does it — leg hits through
+// damageEnemy until legDmg crosses CRAWL.LEG_HP. Spawning them standing and
+// calling it a crawl test is how the brute got "verified" at its STANDING
+// stop distance (2.00) while its true prone standoff is 2.51.
+
+console.log('');
+console.log('— Section 20: wall-backed crawl damage —');
+try {
+  const THREE20 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const {
+    initEnemies: init20, setMapColliders: setCol20, spawnEnemy: spawn20,
+    updateEnemies: upd20, resetEnemies: reset20,
+    getEnemyHittables: hittables20, damageEnemy: damage20, partDamage: partDmg20,
+  } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES: T20 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { resolveCircleAABBs: resolve20 } =
+    await import(pathToFileURL(join('src', 'game', 'movement.js')).href);
+  const { CONFIG: CFG20 } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  // A long flat wall; the player pressed into it by the REAL resolver, so
+  // the standoff isn't hand-placed — it's whatever the game would produce.
+  const wall20 = { minX: -20, maxX: 20, minZ: 0, maxZ: 0.6 };
+  let hits20 = 0;
+  init20(new THREE20.Scene(), { onPlayerHit: () => { hits20 += 1; } });
+  setCol20([wall20]);
+  const pp20 = resolve20(0, -0.05, [wall20], CFG20.PLAYER.BODY_RADIUS);
+  const playerPos20 = new THREE20.Vector3(pp20.x, 1.6, pp20.z);
+
+  // Cripple a standing type through the real path. hpMult is a HARNESS, not
+  // a nerf: the leg hits that trigger the crawl also cost HP, and a proto
+  // would die before its legs gave out. The shot count is DERIVED from the
+  // registry (LEG_HP / the leg tier), never guessed.
+  const cripple = (typeId) => {
+    const t = T20[typeId];
+    const shots = Math.ceil(t.CRAWL.LEG_HP / partDmg20(t, 'leg'));
+    const leg = hittables20().find((m) => m.userData.part === 'leg');
+    for (let i = 0; i < shots; i += 1) damage20(leg);
+  };
+
+  for (const id of ['crawler', 'proto_zombie', 'sprinter', 'brute']) {
+    reset20();
+    hits20 = 0;
+    const g = spawn20(id, { x: 0, z: -6 }, { yaw: 0, hpMult: 50 });
+    if (!T20[id].SPAWN?.PRONE) cripple(id); // the crawler already spawns down
+    // 25 s of 16 ms ticks: generous over the ~6 s approach, so the margin
+    // covers the collapse animation and attack cooldowns, not luck.
+    for (let ms = 16; ms <= 25000; ms += 16) upd20(16, playerPos20);
+    const dist = Math.hypot(pp20.x - g.position.x, pp20.z - g.position.z);
+    const stand = T20[id].STOP_DISTANCE;
+    // Guard the harness itself: if the cripple silently failed, the body is
+    // STANDING at its standing ring and this "crawl test" proves nothing.
+    assertTrue('section20',
+      `${id}: is actually prone (held ${dist.toFixed(2)} m, not the standing ${stand})`,
+      Math.abs(dist - stand) > 0.02);
+    assertTrue('section20',
+      `${id}: a prone body DAMAGES a wall-backed player (${hits20} hits landed)`,
+      hits20 > 0);
+  }
+
+  reset20(); // leave no bodies for a later section
+} catch (err) {
+  failures.push({ file: 'section20', err });
+  console.log(`  FAIL   section 20 threw: ${err.message}`);
 }
 
 // ————— Report —————
