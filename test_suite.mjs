@@ -537,7 +537,7 @@ try {
   // number — the same silent-NaN class as the main schema. Negative-tested
   // by name below, per the section-5 rule.
   const CRAWL_REQUIRED = [
-    'LEG_HP', 'FALL_MS', 'SPEED_MULT', 'STOP_DISTANCE',
+    'LEG_HP', 'FALL_MS', 'SPEED_MULT', 'RING_FRACTION',
     'ATTACK.RANGE_SLACK', 'ATTACK.WINDUP_MS', 'ATTACK.STRIKE_MS',
     'ATTACK.RECOVER_MS', 'ATTACK.COOLDOWN_MS', 'ATTACK.DAMAGE',
     'ATTACK.REAR_RAD', 'ATTACK.THRUST_RAD',
@@ -1643,7 +1643,7 @@ try {
 console.log('');
 console.log('— Section 15: the Crawler (pass 7c) —');
 try {
-  const { partDamage: pd15, collapsePose, CRAWL_POSE } =
+  const { partDamage: pd15, collapsePose, CRAWL_POSE, proneChainExtents } =
     await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
   const { ENEMY_TYPES: ET15 } =
     await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
@@ -1671,9 +1671,18 @@ try {
   // retuning stays safe.
   assertTrue('section15', 'crawl cooldown covers windup+strike+recover',
     CR.ATTACK.COOLDOWN_MS >= CR.ATTACK.WINDUP_MS + CR.ATTACK.STRIKE_MS + CR.ATTACK.RECOVER_MS);
+  // CONSCIOUS MOVE (pass 13b): the old pin — crawl stop INSIDE the
+  // standing stop — encoded the origin-based ring that walked the body
+  // under the player (prone, the hands lead the feet origin by ~2 m).
+  // The ring now derives from the ARM chain × RING_FRACTION, so the new
+  // bounds are physical: the ring must sit INSIDE the arm extent (the
+  // hands can actually connect at strike range) and be a sane fraction.
+  const ring15 = proneChainExtents(zt).arm * CR.RING_FRACTION;
   assertTrue('section15',
-    `crawl stop ring (${CR.STOP_DISTANCE}) inside the standing one (${zt.STOP_DISTANCE})`,
-    CR.STOP_DISTANCE <= zt.STOP_DISTANCE);
+    `strike ring inside the arm extent (${ring15.toFixed(2)} <= ${proneChainExtents(zt).arm.toFixed(2)}) — hands connect`,
+    ring15 <= proneChainExtents(zt).arm && ring15 > 0);
+  assertTrue('section15', 'RING_FRACTION is a real fraction (0 < f <= 1)',
+    CR.RING_FRACTION > 0 && CR.RING_FRACTION <= 1);
   assertTrue('section15', 'crawl is slower than the walk (0 < SPEED_MULT < 1)',
     CR.SPEED_MULT > 0 && CR.SPEED_MULT < 1);
 
@@ -1713,37 +1722,23 @@ try {
 
   // — Prone wall reach vs the registry-derived body extent (the ordering
   // invariant class): lying down, the forward extent from the feet origin
-  // is the LONGER of the head chain and the arm chain. The arm bound is
-  // conservative and exact — sin(PITCH + φ) reaches 1 inside the pull
-  // swing, so at some gait angle the arm points straight world-forward
-  // and contributes its full length past the shoulder. A reach that
+  // is the LONGER of the head chain and the arm chain. A reach that
   // undercovers this buries geometry in any faced wall.
-  // 7c.2: the waist splits the chain. Parts BELOW the pivot rotate by
-  // PITCH about the feet origin; parts ABOVE it ride the pivot and rotate
-  // by PITCH + WAIST — the same transform the build applies, mirrored
-  // here so a retune of either constant re-derives the bound. waistY
-  // mirrors enemyBody.js's pivot (bellyTop - 0.04).
-  const B15 = zt.BODY;
-  const sinP = Math.sin(CRAWL_POSE.PITCH);
-  const sinU = Math.sin(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
-  const cosU = Math.cos(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
-  const hipTop15 = B15.FOOT.H + B15.LEG.LEN;
-  const bellyY15 = hipTop15 + B15.BELLY.H / 2 - 0.06;
-  const bellyTop15 = bellyY15 + B15.BELLY.H / 2;
-  const waistY15 = bellyTop15 - 0.04;
-  const chestY15 = bellyTop15 + B15.CHEST.H / 2 - 0.08;
-  const headY15 = chestY15 + (B15.CHEST.H / 2) * Math.cos(B15.CHEST.HUNCH)
-    + B15.HEAD.H / 2 - 0.06;
-  const headFwd = waistY15 * sinP
-    + (headY15 + B15.HEAD.H / 2 - waistY15) * sinU
-    + (B15.CHEST.FWD + B15.HEAD.FWD + B15.HEAD.D / 2) * cosU;
-  const armFwd = waistY15 * sinP
-    + (B15.ARM.Y - waistY15) * sinU + B15.ARM.FWD * cosU
-    + (B15.ARM.LEN + B15.HAND.SIZE);
-  const extent = Math.max(headFwd, armFwd);
+  // Pass 13b: the chain formula moved into enemies.js (proneChainExtents)
+  // — the SAME function the strike ring uses at runtime, so this pin now
+  // tests the real thing instead of a hand-kept mirror. A retune of the
+  // pose or the body re-derives both consumers at once.
+  const ext15 = proneChainExtents(zt);
+  const extent = Math.max(ext15.head, ext15.arm);
   assertTrue('section15',
     `prone reach covers the body extent (${(CR.WALL.REACH + CR.WALL.RADIUS).toFixed(2)} >= ${extent.toFixed(2)})`,
     CR.WALL.REACH + CR.WALL.RADIUS >= extent);
+  // The formula's own sanity: MEASURED-at-HEAD proto extents (probe
+  // 2026-07-13: arm 2.171 >= head 1.84) — a broken stack fails HERE by
+  // name, not as a mystery undercoverage.
+  assertTrue('section15',
+    `proto chain sanity (arm ${ext15.arm.toFixed(2)} ~ 2.17, head ${ext15.head.toFixed(2)} ~ 1.84)`,
+    Math.abs(ext15.arm - 2.171) < 0.01 && Math.abs(ext15.head - 1.84) < 0.01);
 
   // — Ground field (windowCost 0): NO cell's descent step lands on a
   // window, and coverage still equals the flood minus the target cell —
@@ -1971,8 +1966,6 @@ try {
     await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
   const { WAVES: waves19 } =
     await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
-  const { CRAWL_POSE: POSE19 } =
-    await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
   const base19 = types19.proto_zombie;
   const sp = types19.sprinter;
   const br = types19.brute;
@@ -2045,33 +2038,29 @@ try {
   assertTrue('section19', 'pairing with the real predicate preserves both multisets',
     canon19(p19.kinds) === canon19(kindsIn) && canon19(p19.typeIds) === canon19(typesIn));
 
-  // — Prone coverage for EVERY type from its OWN dims (§15's bound,
-  // generalized): the chain formula mirrors enemyBody.js's stack — the
-  // absolute overlaps (-0.06/-0.08/-0.04) do NOT scale, which is exactly
-  // why a scaled type's reach is derived from its dims, never multiplied
-  // by hand (probe-confirmed 2026-07-13: brute standing extent 1.156, not
-  // the naive 1.25× 1.145... the naive linear guess was 1.264).
+  // — Prone coverage AND strike ring for EVERY type from its OWN dims
+  // (pass 13b: the chain formula lives in enemies.js — proneChainExtents,
+  // the same function the runtime ring uses; a hand-kept mirror here
+  // would be the LESSONS #19 class in test form). The absolute overlaps
+  // (-0.06/-0.08/-0.04) do NOT scale, which is exactly why a scaled
+  // type's reach is derived, never multiplied by hand (probe-confirmed
+  // 2026-07-13: brute standing extent 1.156, not the naive 1.264).
+  const { proneChainExtents: chains19 } =
+    await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
   for (const [id, t] of Object.entries(types19)) {
     if (!t.CRAWL) continue;
-    const B = t.BODY;
-    const sinP = Math.sin(POSE19.PITCH);
-    const sinU = Math.sin(POSE19.PITCH + POSE19.WAIST);
-    const cosU = Math.cos(POSE19.PITCH + POSE19.WAIST);
-    const hipTop = B.FOOT.H + B.LEG.LEN;
-    const bellyY = hipTop + B.BELLY.H / 2 - 0.06;
-    const bellyTop = bellyY + B.BELLY.H / 2;
-    const waistY = bellyTop - 0.04;
-    const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
-    const headY = chestY + (B.CHEST.H / 2) * Math.cos(B.CHEST.HUNCH)
-      + B.HEAD.H / 2 - 0.06;
-    const headFwd = waistY * sinP + (headY + B.HEAD.H / 2 - waistY) * sinU
-      + (B.CHEST.FWD + B.HEAD.FWD + B.HEAD.D / 2) * cosU;
-    const armFwd = waistY * sinP + (B.ARM.Y - waistY) * sinU + B.ARM.FWD * cosU
-      + (B.ARM.LEN + B.HAND.SIZE);
-    const extent = Math.max(headFwd, armFwd);
+    const ext = chains19(t);
+    const extent = Math.max(ext.head, ext.arm);
     assertTrue('section19',
       `${id}: prone reach covers ITS body extent (${(t.CRAWL.WALL.REACH + t.CRAWL.WALL.RADIUS).toFixed(2)} >= ${extent.toFixed(2)})`,
       t.CRAWL.WALL.REACH + t.CRAWL.WALL.RADIUS >= extent);
+    // The strike ring must sit INSIDE the arm extent (the hands can
+    // physically connect at strike range) and OUTSIDE the body's solid
+    // circle (it must stop before standing inside the player).
+    const ring = ext.arm * t.CRAWL.RING_FRACTION;
+    assertTrue('section19',
+      `${id}: strike ring inside the arms, outside the body (${t.BODY_RADIUS} < ${ring.toFixed(2)} <= ${ext.arm.toFixed(2)})`,
+      ring > t.BODY_RADIUS && ring <= ext.arm);
   }
 
   // — Table debut: both archetypes are reachable through the real table.

@@ -243,6 +243,13 @@ ENEMY_TYPES.brute = {
     WALL: {             // prone reach — the suite re-derives the chain
       REACH: 2.50,      //   extent from THESE dims (2.71 m) and pins
       RADIUS: 0.31,     //   REACH + RADIUS = 2.81 covers it
+    SPEED_MULT: 0.45,   // fraction of WALK_SPEED while prone
+      RING_FRACTION: 0.85, // strike ring = this × the prone ARM-chain
+                          //   extent (pass 13b) — prone, the hands lead
+                          //   the feet origin by ~2 m, so an origin-based
+                          //   ring walked the body under the player before
+                          //   the claw fired; deriving from the arms keeps
+                          //   the ring correct for EVERY body (brute incl.)
     },
   },
   COLORS: {

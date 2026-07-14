@@ -142,6 +142,37 @@ export const CRAWL_POSE = {
                      //   read that already feels right at full rate
 };
 
+// Prone chain extents (pass 13b): how far the HEAD and the HANDS reach
+// past the feet origin when the body lies in CRAWL_POSE. This mirrors
+// enemyBody.js's height stack transform-by-transform (the absolute
+// overlaps -0.06/-0.08/-0.04 do NOT scale — probe-confirmed on the 1.25×
+// brute, LESSONS #19): parts BELOW the waist pivot rotate by PITCH about
+// the feet origin; parts ABOVE it ride the pivot and add WAIST. The arm
+// bound is conservative and exact — sin(PITCH + φ) reaches 1 inside the
+// pull swing, so at some gait angle the arm points straight world-forward
+// and contributes its full length past the shoulder.
+// THE one home for this formula: the strike ring (beginCrawl), the §15
+// wall-coverage pin, and the §19 per-type sweep all call it — a body
+// retune re-derives every consumer at once.
+export function proneChainExtents(type) {
+  const B = type.BODY;
+  const sinP = Math.sin(CRAWL_POSE.PITCH);
+  const sinU = Math.sin(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
+  const cosU = Math.cos(CRAWL_POSE.PITCH + CRAWL_POSE.WAIST);
+  const hipTop = B.FOOT.H + B.LEG.LEN;
+  const bellyY = hipTop + B.BELLY.H / 2 - 0.06;
+  const bellyTop = bellyY + B.BELLY.H / 2;
+  const waistY = bellyTop - 0.04; // enemyBody.js's pivot rule
+  const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
+  const headY = chestY + (B.CHEST.H / 2) * Math.cos(B.CHEST.HUNCH)
+    + B.HEAD.H / 2 - 0.06;
+  const head = waistY * sinP + (headY + B.HEAD.H / 2 - waistY) * sinU
+    + (B.CHEST.FWD + B.HEAD.FWD + B.HEAD.D / 2) * cosU;
+  const arm = waistY * sinP + (B.ARM.Y - waistY) * sinU + B.ARM.FWD * cosU
+    + (B.ARM.LEN + B.HAND.SIZE);
+  return { head, arm };
+}
+
 // The collapse timeline (7c), pure in k ∈ [0,1]: the legs give out. Arms
 // shoot forward EARLY (bracing — the body falls onto them), the trunk
 // accelerates into the fall (k², the death fall's read), the legs give
@@ -432,6 +463,15 @@ function beginCrawl(rec, instant = false) {
   }
   rec.crawlPending = false;
   rec.attackPhase = null; // the collapse cancels any swing in progress
+  // The strike ring (pass 13b): RING_FRACTION of the ARM-chain extent —
+  // computed once here, the single place a crawl begins (instant spawns
+  // and the fall path both come through). Guarded twice: a hand-authored
+  // registry still carrying the old STOP_DISTANCE degrades to it, and a
+  // CRAWL-less type (belt — beginCrawl shouldn't fire on one) to 1.1.
+  const CR = rec.type.CRAWL;
+  rec.crawlRing = Number.isFinite(CR?.RING_FRACTION)
+    ? proneChainExtents(rec.type).arm * CR.RING_FRACTION
+    : (CR?.STOP_DISTANCE ?? 1.1);
   rec.crawlState = instant ? 'prone' : 'falling';
   rec.crawlT = 0;
 }
@@ -738,7 +778,12 @@ export function updateEnemies(dtMs, playerPos) {
     const crawling = rec.crawlState === 'prone';
     const CR = type.CRAWL;
     const AT = crawling ? CR.ATTACK : type.ATTACK;
-    const stopDist = crawling ? CR.STOP_DISTANCE : type.STOP_DISTANCE;
+    // The crawl stop ring is DERIVED (pass 13b): set in beginCrawl from
+    // the arm chain × RING_FRACTION. The ?? belt covers a record whose
+    // crawlState was set outside beginCrawl (none exist today).
+    const stopDist = crawling
+      ? (rec.crawlRing ?? CR.STOP_DISTANCE ?? 1.1)
+      : type.STOP_DISTANCE;
     // Arm rest pose comes from the body registry (guarded: a type without a
     // BODY block falls back to the old straight-forward π/2). Every arm
     // animation anchors HERE so the rest pose is one data value.
