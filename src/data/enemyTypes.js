@@ -100,8 +100,12 @@ SCORE: {              // the bounty (pass 10) — becomes spendable in pass 11.
       FALL_MS: 550,       // the collapse — reads like the death fall, then
                           //   the arms catch it
       SPEED_MULT: 0.45,   // fraction of WALK_SPEED while prone
-      STOP_DISTANCE: 1.1, // closer than the standing 2 — it claws at
-                          //   ankles, not faces (suite asserts <= standing)
+      RING_FRACTION: 0.85, // strike ring = this × the prone ARM-chain
+                          //   extent (pass 13b) — prone, the hands lead
+                          //   the feet origin by ~2 m, so an origin-based
+                          //   ring walked the body under the player before
+                          //   the claw fired; deriving from the arms keeps
+                          //   the ring correct for EVERY body (brute incl.)
       ATTACK: {           // the crawl claw: slower tell, longer recovery
         RANGE_SLACK: 0.4,
         WINDUP_MS: 400,
@@ -243,13 +247,6 @@ ENEMY_TYPES.brute = {
     WALL: {             // prone reach — the suite re-derives the chain
       REACH: 2.50,      //   extent from THESE dims (2.71 m) and pins
       RADIUS: 0.31,     //   REACH + RADIUS = 2.81 covers it
-    SPEED_MULT: 0.45,   // fraction of WALK_SPEED while prone
-      RING_FRACTION: 0.85, // strike ring = this × the prone ARM-chain
-                          //   extent (pass 13b) — prone, the hands lead
-                          //   the feet origin by ~2 m, so an origin-based
-                          //   ring walked the body under the player before
-                          //   the claw fired; deriving from the arms keeps
-                          //   the ring correct for EVERY body (brute incl.)
     },
   },
   COLORS: {
