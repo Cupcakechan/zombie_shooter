@@ -32,6 +32,19 @@ TABLE: [
     WINDOW_STEP: 0.03,  // extra window-entry share per wave past the table
     WINDOW_CAP: 0.6,    // sieges stay mixed — never all-window
   },
+  HP: {                 // wave HP scaling (pass 12). No table column — a
+                      //   formula covers every wave, so the table stays
+                      //   the composition dial and this stays the
+                      //   durability dial.
+  RAMP_START: 8,      // the one-shot era ends HERE by design: through
+                      //   this wave hpMult is 1.0, so HITBOX.HEAD 3
+                      //   still one-shots the base HP 3 (suite-pinned)
+  STEP: 0.15,         // extra HP multiplier per wave past RAMP_START
+  CAP: 2.0,           // ceiling — base HP 3 tops out at 6 (torso
+                      //   six-shot); LEG_HP deliberately does NOT scale:
+                      //   crippling is a mobility kill, and cheap legs
+                      //   late is the intended counterplay
+},
   SPAWN: {
     MIN_PLAYER_DIST: 10,          // m — perimeter entries prefer spots at
                                   //   least this far from the player (fair)
