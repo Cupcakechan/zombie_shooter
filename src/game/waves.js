@@ -6,6 +6,7 @@
 
 import { WAVES } from '../data/waveTable.js';
 import { CONFIG } from '../config.js';
+import { ENEMY_TYPES } from '../data/enemyTypes.js';
 
 // ————— Pure composition math (suite-tested) —————
 
@@ -16,7 +17,11 @@ export function waveSpec(n) {
   const { TABLE, EXTEND } = WAVES;
   if (n <= TABLE.length) {
     const row = TABLE[n - 1];
-    return { count: row.count, speedMult: row.speedMult, entry: row.entry };
+    return {
+      count: row.count, speedMult: row.speedMult, entry: row.entry,
+      // Guarded: a hand-edited row without types stays all-Shambler.
+      types: row.types ?? { proto_zombie: 1 },
+    };
   }
   const last = TABLE[TABLE.length - 1];
   const extra = n - TABLE.length;
@@ -28,7 +33,65 @@ export function waveSpec(n) {
     count: last.count + EXTEND.COUNT_STEP * extra,
     speedMult: Math.min(EXTEND.SPEED_CAP, last.speedMult + EXTEND.SPEED_STEP * extra),
     entry: { perimeter: 1 - windowShare, window: windowShare },
+    types: last.types ?? { proto_zombie: 1 }, // the last mix carries forever
   };
+}
+
+// The type of each zombie in a wave (7d), pure with an injected rand.
+// Largest-remainder rounding: floors first, then the highest remainders
+// absorb the leftover — assignments always sum to COUNT exactly, which
+// simple per-share rounding can't promise once there are 3+ types.
+// Fisher–Yates after, same reason as entryKinds (mix lands anywhere in
+// the spawn stagger).
+export function typeAssignments(count, types, rand) {
+  const entries = Object.entries(types ?? {}).filter(([, w]) => w > 0);
+  if (entries.length === 0 || count <= 0) {
+    return Array(Math.max(0, count)).fill('proto_zombie');
+  }
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  const raw = entries.map(([id, w]) => {
+    const exact = (count * w) / total;
+    return { id, exact, base: Math.floor(exact) };
+  });
+  let used = raw.reduce((sum, r) => sum + r.base, 0);
+  raw.sort((a, b) => (b.exact - b.base) - (a.exact - a.base));
+  for (let i = 0; used < count; i += 1, used += 1) {
+    raw[i % raw.length].base += 1;
+  }
+  const ids = [];
+  for (const r of raw) for (let k = 0; k < r.base; k += 1) ids.push(r.id);
+  for (let i = ids.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = ids[i];
+    ids[i] = ids[j];
+    ids[j] = t;
+  }
+  return ids;
+}
+
+// Pair entry kinds with type assignments (7d): 'window' slots must hold
+// climb-capable types — a prone-spawning type at the glass would just
+// stand outside forever (it can't vault). Swap-repair preserves BOTH
+// multisets (suite-pinned); if windows outnumber climbers, the leftover
+// window slots DEMOTE to perimeter rather than strand a spawn.
+export function pairSpawns(kinds, typeIds, canWindow) {
+  const outKinds = kinds.slice();
+  const outTypes = typeIds.slice();
+  for (let i = 0; i < outKinds.length; i += 1) {
+    if (outKinds[i] !== 'window' || canWindow(outTypes[i])) continue;
+    let swapped = false;
+    for (let j = 0; j < outKinds.length; j += 1) {
+      if (outKinds[j] === 'perimeter' && canWindow(outTypes[j])) {
+        const t = outTypes[i];
+        outTypes[i] = outTypes[j];
+        outTypes[j] = t;
+        swapped = true;
+        break;
+      }
+    }
+    if (!swapped) outKinds[i] = 'perimeter'; // no climber left — demote
+  }
+  return { kinds: outKinds, typeIds: outTypes };
 }
 
 // The entry kind of each zombie in a wave (4.3c), pure with an injected
@@ -101,9 +164,14 @@ function enterIntermission() {
 function beginSpawning() {
   phase = 'active';
   const spec = waveSpec(waveNumber);
-  const kinds = entryKinds(spec.count, spec.entry, Math.random);
-  pendingSpawns = kinds.map((kind) => ({
-    typeId: 'proto_zombie', kind, speedMult: spec.speedMult,
+  const rawKinds = entryKinds(spec.count, spec.entry, Math.random);
+  const rawTypes = typeAssignments(spec.count, spec.types, Math.random);
+  // Climb capability derives from the registry — prone spawns can't take
+  // window entries. Guarded lookup: an unknown id demotes gracefully.
+  const canWindow = (id) => !(ENEMY_TYPES[id]?.SPAWN?.PRONE);
+  const { kinds, typeIds } = pairSpawns(rawKinds, rawTypes, canWindow);
+  pendingSpawns = kinds.map((kind, i) => ({
+    typeId: typeIds[i], kind, speedMult: spec.speedMult,
   }));
   spawnGapT = 0; // first spawn is immediate
 }
@@ -131,7 +199,7 @@ export function updateWaves(dtMs) {
           // The picker turns a KIND into a place + entry opts (loiter,
           // facing). Absent picker (suite, legacy callers) degrades to the
           // arena origin — never a throw in the wave loop.
-          const e = (pickEntryFn && pickEntryFn(s.kind)) || { pos: { x: 0, z: 0 }, opts: {} };
+          const e = (pickEntryFn && pickEntryFn(s.kind, s.typeId)) || { pos: { x: 0, z: 0 }, opts: {} };
           spawnFn(s.typeId, e.pos, { speedMult: s.speedMult, ...e.opts });
         }
         aliveCount += 1;

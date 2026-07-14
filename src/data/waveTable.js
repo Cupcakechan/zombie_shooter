@@ -8,13 +8,23 @@
 // group, not a pop-in clump.
 
 export const WAVES = {
-  TABLE: [
-    { count: 1, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 } },
-    { count: 2, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 } },
-    { count: 3, speedMult: 1.05, entry: { perimeter: 0.7, window: 0.3 } },
-    { count: 4, speedMult: 1.1,  entry: { perimeter: 0.6, window: 0.4 } },
-    { count: 5, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 } },
-  ],
+  // TYPES (7d): each row's type mix, shares like the entry mix — rounded
+// per-wave by largest remainder (typeAssignments), so shares survive
+// count changes and new archetypes are just new keys. Prone-spawning
+// types are auto-paired away from window entries (they can't climb).
+// Past the table, EXTEND carries the LAST row's mix unchanged.
+TABLE: [
+  { count: 1, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
+    types: { proto_zombie: 1.0 } },
+  { count: 2, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
+    types: { proto_zombie: 1.0 } },
+  { count: 3, speedMult: 1.05, entry: { perimeter: 0.7, window: 0.3 },
+    types: { proto_zombie: 1.0 } },
+  { count: 4, speedMult: 1.1,  entry: { perimeter: 0.6, window: 0.4 },
+    types: { proto_zombie: 0.75, crawler: 0.25 } },
+  { count: 5, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 },
+    types: { proto_zombie: 0.8, crawler: 0.2 } },
+],
   EXTEND: {
     COUNT_STEP: 1,      // extra zombies per wave past the table
     SPEED_STEP: 0.05,   // extra speed multiplier per wave past the table

@@ -229,7 +229,7 @@ initEnemies(scene, {
 function randomOf(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
-function pickEntry(kind) {
+function pickEntry(kind, typeId) {
   const px = camera.position.x;
   const pz = camera.position.z;
   const minD = WAVES.SPAWN.MIN_PLAYER_DIST;
@@ -242,9 +242,10 @@ function pickEntry(kind) {
     // Spawn AT the facing standoff (CELL/2 + reach + reach radius + a
     // hair), not the cell centre — the centre sits INSIDE the reach
     // resolver's standoff, and the frame-one settling scoot reads as
-    // jank at the glass. Probe-caught. proto_zombie is the only spawned
-    // type today; when 7c adds types, pickEntry gains the typeId.
-    const zt = ENEMY_TYPES.proto_zombie;
+    // jank at the glass. Probe-caught. The standoff derives from the
+    // ACTUAL spawning type's reach (7d) — guarded back to the Shambler
+    // for legacy callers without a typeId.
+    const zt = ENEMY_TYPES[typeId] || ENEMY_TYPES.proto_zombie;
     const standoff = activeMap.CELL / 2
       + (zt.WALL ? zt.WALL.REACH + zt.WALL.RADIUS : 0) + 0.05;
     const wPos = cellToWorld(activeMap, activeGrid, spot.wc, spot.wr);

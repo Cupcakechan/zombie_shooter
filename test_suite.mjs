@@ -1815,6 +1815,79 @@ try {
   console.log(`  FAIL   section 16 threw: ${err.message}`);
 }
 
+// ————— Section 17: spawnable crawlers (pass 7d) —————
+// The type dimension: shares → exact counts (largest remainder), the
+// window/climber pairing repair, spec plumbing, and the crawler entry's
+// structural contract. Pins are relative to the registry/table so Daniel
+// can retune values freely.
+console.log('');
+console.log('— Section 17: spawnable crawlers (pass 7d) —');
+try {
+  const { typeAssignments, pairSpawns, waveSpec: spec17 } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { ENEMY_TYPES: types17 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES: waves17 } =
+    await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const tally = (arr) => arr.reduce((m, id) => {
+    m[id] = (m[id] || 0) + 1;
+    return m;
+  }, {});
+
+  const a4 = tally(typeAssignments(4, { a: 0.75, b: 0.25 }, () => 0));
+  assertTrue('section17', 'shares round by largest remainder (4 × 75/25 → 3+1)',
+    a4.a === 3 && a4.b === 1);
+  const a3 = tally(typeAssignments(3, { a: 0.85, b: 0.15 }, () => 0));
+  assertTrue('section17', 'a thin share at a small count rounds to zero (3 × 85/15 → 3+0)',
+    a3.a === 3 && (a3.b ?? 0) === 0);
+  const a7 = tally(typeAssignments(7, { a: 0.5, b: 0.3, c: 0.2 }, Math.random));
+  assertTrue('section17',
+    `three-way split sums exactly (7 × 50/30/20 → 4+2+1, got ${a7.a}+${a7.b}+${a7.c})`,
+    a7.a === 4 && a7.b === 2 && a7.c === 1);
+  const aNone = typeAssignments(3, undefined, Math.random);
+  assertTrue('section17', 'a typeless row stays all-Shambler (guarded)',
+    aNone.length === 3 && aNone.every((id) => id === 'proto_zombie'));
+
+  const canW = (id) => id !== 'crawler';
+  const paired = pairSpawns(
+    ['window', 'perimeter', 'window', 'perimeter'],
+    ['crawler', 'proto_zombie', 'crawler', 'proto_zombie'], canW,
+  );
+  const windowsOk = paired.kinds.every((k, i) => k !== 'window' || canW(paired.typeIds[i]));
+  assertTrue('section17', 'pairing repair: every window slot holds a climber', windowsOk);
+  // Multiset equality must be key-order-blind: tally() insertion order
+  // follows the (repaired) array order, so canonicalize by sorted keys.
+  const canon = (m) => JSON.stringify(Object.fromEntries(Object.entries(m).sort()));
+  assertTrue('section17', 'pairing repair preserves both multisets',
+    canon(tally(paired.kinds))
+      === canon(tally(['window', 'perimeter', 'window', 'perimeter']))
+    && canon(tally(paired.typeIds))
+      === canon(tally(['crawler', 'proto_zombie', 'crawler', 'proto_zombie'])));
+  const demoted = pairSpawns(['window', 'window'], ['crawler', 'crawler'], canW);
+  assertTrue('section17', 'an all-crawler window wave demotes to perimeter (no stranding)',
+    demoted.kinds.every((k) => k === 'perimeter'));
+
+  const lastRow = waves17.TABLE[waves17.TABLE.length - 1];
+  const crawlerWave = waves17.TABLE.findIndex((r) => (r.types?.crawler ?? 0) > 0) + 1;
+  assertTrue('section17',
+    `the table introduces the crawler (wave ${crawlerWave})`,
+    crawlerWave > 0 && (spec17(crawlerWave).types.crawler ?? 0) > 0);
+  assertTrue('section17', 'EXTEND carries the last row\'s type mix forever',
+    JSON.stringify(spec17(99).types) === JSON.stringify(lastRow.types));
+
+  const cr = types17.crawler;
+  assertTrue('section17', 'crawler: SPAWN.PRONE is set (spawns already down)',
+    cr && cr.SPAWN.PRONE === true);
+  assertTrue('section17', 'crawler: has a CRAWL block (the prone spawn depends on it)',
+    !!cr.CRAWL && Number.isFinite(cr.CRAWL.LEG_HP));
+  assertTrue('section17',
+    `crawler: the head still one-shots (HITBOX.HEAD ${cr.HITBOX.HEAD} >= HP ${cr.HP})`,
+    cr.HITBOX.HEAD >= cr.HP);
+} catch (err) {
+  failures.push({ file: 'section17', err });
+  console.log(`  FAIL   section 17 threw: ${err.message}`);
+}
+
 // ————— Report —————
 
 console.log('');

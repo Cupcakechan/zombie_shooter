@@ -135,4 +135,24 @@ SCORE: {              // the bounty (pass 10) — becomes spendable in pass 11.
                           // the floor instead of half-sinking through it
     },
   },
+  
+};
+// The Crawler as a SPAWNABLE type (7d): derived from the Shambler by
+// spread, so shared dimensions stay single-source — only identity,
+// durability, bounty, palette, and the PRONE spawn flag differ. Nested
+// blocks being overridden are spread too, so untouched siblings survive
+// a future hand-edit to the base (preserve hand-authored data).
+const protoBase = ENEMY_TYPES.proto_zombie;
+ENEMY_TYPES.crawler = {
+  ...protoBase,
+  id: 'crawler',
+  HP: 2,                  // pre-crippled: torso two-shots; the head still
+                          //   one-shots (HITBOX.HEAD 3 carries over ≥ HP)
+  SCORE: { ...protoBase.SCORE, KILL: 125 }, // the low-profile premium —
+                          //   a harder target pays more (pass 10 economy)
+  COLORS: { ...protoBase.COLORS, CLOTH: 0x4a3038 }, // dried-blood cloth:
+                          //   reads at fog distance where the silhouette
+                          //   sits low against the street
+  SPAWN: { ...protoBase.SPAWN, PRONE: true }, // enters the world already
+                          //   down: legs gone, ground field, no climbing
 };

@@ -314,6 +314,17 @@ export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null 
     }
   });
   records.push(rec);
+
+  // Spawnable crawler (7d): a PRONE-flagged type enters the world already
+  // crippled — legDmg pre-loaded to the threshold documents the state
+  // (and the !crawlState guard in damageEnemy makes further leg hits
+  // plain damage), beginCrawl(instant) skips the fall. Ground field,
+  // no-climb belt, crawl gait, and prone turn weight all key off
+  // crawlState — no other flag exists to forget.
+  if (type.SPAWN?.PRONE) {
+    rec.legDmg = type.CRAWL ? type.CRAWL.LEG_HP : 0;
+    beginCrawl(rec, true);
+  }
   return group;
 }
 
