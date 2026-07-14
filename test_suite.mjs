@@ -1612,6 +1612,12 @@ try {
   const { MAPS: VMAPS } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
   for (const [tid, t] of Object.entries(WALL_ET)) {
     if (!t.VAULT) continue;
+    // Non-climbers (PRONE spawns, NO_CLIMB types — pass 13) never reach
+    // the vault branch: they read the ground field and the belt excludes
+    // them, so the trigger/standoff ordering is vacuous for them. The
+    // brute's larger standoff (2.05 > trigger 2) is legal BECAUSE it
+    // can't climb — flip NO_CLIMB off and this pin fires again.
+    if (t.SPAWN?.PRONE || t.NO_CLIMB) continue;
     assertTrue('section14', `${tid}: VAULT.MS finite and positive`,
       Number.isFinite(t.VAULT.MS) && t.VAULT.MS > 0);
     if (t.WALL) {
@@ -1921,18 +1927,161 @@ try {
   assertTrue('section18', 'waveSpec carries hpMult in both branches',
     spec18(1).hpMult === 1 && Math.abs(spec18(99).hpMult - HPC.CAP) < 1e-9);
 
+  // CONSCIOUS MOVE (pass 13): the sweep now exempts HEAVY-declared types.
+  // The brute is DESIGNED outside the one-shot guarantee (HEAD 3 < HP 8,
+  // ~3 headshots base) — the registry flag carries that intent, and the
+  // stale-flag pin below keeps the exemption honest: a HEAVY whose head
+  // one-shots after a retune fails loudly, so the sweep can never shrink
+  // silently.
   let oneShotEra = true;
   for (const [, t] of Object.entries(types18)) {
+    if (t.HEAVY) continue;
     for (let n = 1; n <= HPC.RAMP_START; n += 1) {
       if (t.HITBOX.HEAD < t.HP * hpMultAt(n)) oneShotEra = false;
     }
   }
   assertTrue('section18',
-    `heads one-shot EVERY type through the whole pre-ramp era (waves 1–${HPC.RAMP_START})`,
+    `heads one-shot every NON-HEAVY type through the whole pre-ramp era (waves 1–${HPC.RAMP_START})`,
     oneShotEra);
+  for (const [id, t] of Object.entries(types18)) {
+    if (!t.HEAVY) continue;
+    assertTrue('section18',
+      `${id}: HEAVY is real, not stale (HEAD ${t.HITBOX.HEAD} < HP ${t.HP})`,
+      t.HITBOX.HEAD < t.HP);
+  }
 } catch (err) {
   failures.push({ file: 'section18', err });
   console.log(`  FAIL   section 18 threw: ${err.message}`);
+}
+
+// ————— Section 19: sprinter + brute (pass 13) —————
+// The archetype expansion. scaleBody's metric/non-metric contract, each
+// type's IDENTITY (relative to the Shambler, so retunes stay safe as long
+// as the archetype keeps its point), the speed-cap independence that
+// justifies the sprinter being a TYPE, the NO_CLIMB capability plumbing
+// through typeCanWindow + pairSpawns, and the §15 prone-coverage bound
+// generalized to EVERY type from its OWN dims — a scaled body must carry
+// scaled reach or it buries geometry in walls.
+console.log('');
+console.log('— Section 19: sprinter + brute (pass 13) —');
+try {
+  const { ENEMY_TYPES: types19, scaleBody } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { typeCanWindow, pairSpawns: pair19 } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { WAVES: waves19 } =
+    await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { CRAWL_POSE: POSE19 } =
+    await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const base19 = types19.proto_zombie;
+  const sp = types19.sprinter;
+  const br = types19.brute;
+
+  // — scaleBody: metric fields scale, fractions/angles pass through, the
+  // base is never mutated, and no key is dropped (a dropped key would
+  // fail the §5 schema as NaN downstream — this names the cause).
+  const snap = JSON.stringify(base19.BODY);
+  const scaled = scaleBody(base19.BODY, 2);
+  assertNear('section19', 'scaleBody scales a metric field (ARM.LEN ×2)',
+    scaled.ARM.LEN, base19.BODY.ARM.LEN * 2);
+  assertNear('section19', 'scaleBody scales a nested offset (HEAD.FWD ×2)',
+    scaled.HEAD.FWD, base19.BODY.HEAD.FWD * 2);
+  assertTrue('section19', 'scaleBody leaves fractions alone (KNEE_AT, ELBOW_AT)',
+    scaled.LEG.KNEE_AT === base19.BODY.LEG.KNEE_AT
+    && scaled.ARM.ELBOW_AT === base19.BODY.ARM.ELBOW_AT);
+  assertTrue('section19', 'scaleBody leaves angles alone (HUNCH, COCK, TILT, REST_RAD)',
+    scaled.CHEST.HUNCH === base19.BODY.CHEST.HUNCH
+    && scaled.HEAD.COCK === base19.BODY.HEAD.COCK
+    && scaled.HEAD.TILT === base19.BODY.HEAD.TILT
+    && scaled.ARM.REST_RAD === base19.BODY.ARM.REST_RAD);
+  assertTrue('section19', 'scaleBody never mutates the base (deep copy)',
+    JSON.stringify(base19.BODY) === snap);
+  const keysOf = (b) => Object.entries(b)
+    .flatMap(([p, f]) => Object.keys(f).map((k) => `${p}.${k}`)).sort().join(',');
+  assertTrue('section19', 'scaleBody preserves every key (no field dropped)',
+    keysOf(scaled) === keysOf(base19.BODY));
+
+  // — Archetype identity, relative to the Shambler: the sprinter is the
+  // FAST-FRAGILE question, the brute the SLOW-DURABLE one. Retune values
+  // freely — these fail only if a retune erases the archetype's point.
+  assertTrue('section19', `sprinter is faster than the Shambler (${sp.WALK_SPEED} > ${base19.WALK_SPEED})`,
+    sp.WALK_SPEED > base19.WALK_SPEED);
+  assertTrue('section19', `sprinter is no tougher than the Shambler (HP ${sp.HP} <= ${base19.HP})`,
+    sp.HP <= base19.HP);
+  assertTrue('section19', `brute is slower than the Shambler (${br.WALK_SPEED} < ${base19.WALK_SPEED})`,
+    br.WALK_SPEED < base19.WALK_SPEED);
+  assertTrue('section19', `brute is tougher than the Shambler (HP ${br.HP} > ${base19.HP})`,
+    br.HP > base19.HP);
+  assertTrue('section19', 'brute declares HEAVY + NO_CLIMB (the flags §18 and pairing key off)',
+    br.HEAVY === true && br.NO_CLIMB === true);
+  assertTrue('section19', 'both archetypes carry a bounty above the Shambler\'s',
+    sp.SCORE.KILL > base19.SCORE.KILL && br.SCORE.KILL > base19.SCORE.KILL);
+
+  // — Speed-cap independence: the reason the sprinter is a TYPE and not a
+  // wave multiplier. A base sprinter outruns even a CAP-maxed shambler;
+  // if a retune breaks this, the type has lost its job.
+  assertTrue('section19',
+    `a base sprinter outruns a capped shambler (${sp.WALK_SPEED} > ${(base19.WALK_SPEED * waves19.EXTEND.SPEED_CAP).toFixed(2)})`,
+    sp.WALK_SPEED > base19.WALK_SPEED * waves19.EXTEND.SPEED_CAP);
+
+  // — Capability plumbing: typeCanWindow's truth table, and pairSpawns
+  // fed the REAL predicate (not §17's stub) keeps every window slot
+  // climbable with both multisets preserved.
+  assertTrue('section19', 'typeCanWindow: shambler and sprinter climb',
+    typeCanWindow('proto_zombie') && typeCanWindow('sprinter'));
+  assertTrue('section19', 'typeCanWindow: crawler (PRONE) and brute (NO_CLIMB) don\'t',
+    !typeCanWindow('crawler') && !typeCanWindow('brute'));
+  assertTrue('section19', 'typeCanWindow: an unknown id keeps the legacy climbable default',
+    typeCanWindow('no_such_type') === true);
+  const canon19 = (arr) => JSON.stringify(Object.entries(arr.reduce((m, id) => {
+    m[id] = (m[id] || 0) + 1;
+    return m;
+  }, {})).sort());
+  const kindsIn = ['window', 'window', 'perimeter', 'perimeter'];
+  const typesIn = ['brute', 'proto_zombie', 'sprinter', 'crawler'];
+  const p19 = pair19(kindsIn, typesIn, typeCanWindow);
+  assertTrue('section19', 'pairing with the real predicate: no brute/crawler in a window slot',
+    p19.kinds.every((k, i) => k !== 'window' || typeCanWindow(p19.typeIds[i])));
+  assertTrue('section19', 'pairing with the real predicate preserves both multisets',
+    canon19(p19.kinds) === canon19(kindsIn) && canon19(p19.typeIds) === canon19(typesIn));
+
+  // — Prone coverage for EVERY type from its OWN dims (§15's bound,
+  // generalized): the chain formula mirrors enemyBody.js's stack — the
+  // absolute overlaps (-0.06/-0.08/-0.04) do NOT scale, which is exactly
+  // why a scaled type's reach is derived from its dims, never multiplied
+  // by hand (probe-confirmed 2026-07-13: brute standing extent 1.156, not
+  // the naive 1.25× 1.145... the naive linear guess was 1.264).
+  for (const [id, t] of Object.entries(types19)) {
+    if (!t.CRAWL) continue;
+    const B = t.BODY;
+    const sinP = Math.sin(POSE19.PITCH);
+    const sinU = Math.sin(POSE19.PITCH + POSE19.WAIST);
+    const cosU = Math.cos(POSE19.PITCH + POSE19.WAIST);
+    const hipTop = B.FOOT.H + B.LEG.LEN;
+    const bellyY = hipTop + B.BELLY.H / 2 - 0.06;
+    const bellyTop = bellyY + B.BELLY.H / 2;
+    const waistY = bellyTop - 0.04;
+    const chestY = bellyTop + B.CHEST.H / 2 - 0.08;
+    const headY = chestY + (B.CHEST.H / 2) * Math.cos(B.CHEST.HUNCH)
+      + B.HEAD.H / 2 - 0.06;
+    const headFwd = waistY * sinP + (headY + B.HEAD.H / 2 - waistY) * sinU
+      + (B.CHEST.FWD + B.HEAD.FWD + B.HEAD.D / 2) * cosU;
+    const armFwd = waistY * sinP + (B.ARM.Y - waistY) * sinU + B.ARM.FWD * cosU
+      + (B.ARM.LEN + B.HAND.SIZE);
+    const extent = Math.max(headFwd, armFwd);
+    assertTrue('section19',
+      `${id}: prone reach covers ITS body extent (${(t.CRAWL.WALL.REACH + t.CRAWL.WALL.RADIUS).toFixed(2)} >= ${extent.toFixed(2)})`,
+      t.CRAWL.WALL.REACH + t.CRAWL.WALL.RADIUS >= extent);
+  }
+
+  // — Table debut: both archetypes are reachable through the real table.
+  const debutOf = (id) => waves19.TABLE.findIndex((r) => (r.types?.[id] ?? 0) > 0) + 1;
+  assertTrue('section19',
+    `the table introduces the sprinter (wave ${debutOf('sprinter')}) and the brute (wave ${debutOf('brute')})`,
+    debutOf('sprinter') > 0 && debutOf('brute') > 0);
+} catch (err) {
+  failures.push({ file: 'section19', err });
+  console.log(`  FAIL   section 19 threw: ${err.message}`);
 }
 
 // ————— Report —————

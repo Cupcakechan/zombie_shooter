@@ -22,8 +22,10 @@ TABLE: [
     types: { proto_zombie: 1.0 } },
   { count: 4, speedMult: 1.1,  entry: { perimeter: 0.6, window: 0.4 },
     types: { proto_zombie: 0.75, crawler: 0.25 } },
-  { count: 5, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 },
-    types: { proto_zombie: 0.8, crawler: 0.2 } },
+   { count: 5, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 },
+    types: { proto_zombie: 0.6, crawler: 0.2, sprinter: 0.2 } },
+  { count: 6, speedMult: 1.2,  entry: { perimeter: 0.5, window: 0.5 },
+    types: { proto_zombie: 0.55, crawler: 0.15, sprinter: 0.2, brute: 0.1 } },
 ],
   EXTEND: {
     COUNT_STEP: 1,      // extra zombies per wave past the table

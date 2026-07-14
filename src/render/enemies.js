@@ -840,12 +840,14 @@ export function updateEnemies(dtMs, playerPos) {
         let mx = dx / dist;
         let mz = dz / dist;
         if (!hold && nav && (!los || dist > CONFIG.NAV.BEELINE_DIST)) {
-          // Field per capability (7c): a crawler reads the GROUND field —
+          // Field per capability (7c, generalized pass 13): a crawler OR
+          // a NO_CLIMB type (the brute) reads the GROUND field —
           // windowCost 0, windows not traversable — so its route contains
           // no windows BY CONSTRUCTION and it can never strand at glass it
           // can't climb. Guarded: a nav without a groundField (an old
           // caller) degrades to the shared field.
-          const fld = crawling ? (nav.groundField ?? nav.field) : nav.field;
+          const noClimb = crawling || !!type.NO_CLIMB;
+          const fld = noClimb ? (nav.groundField ?? nav.field) : nav.field;
           const cell = worldToCell(
             nav.map, nav.grid, group.position.x, group.position.z,
           );
@@ -857,11 +859,11 @@ export function updateEnemies(dtMs, playerPos) {
           // standoff — the suite asserts that ordering, because a trigger
           // INSIDE the standoff would freeze zombies at every window, the
           // 4.3a corner-freeze class all over again).
-          // !crawling is a BELT here — the ground field never steps into a
-          // window, so a crawler can't reach this branch off its own field;
-          // the check documents the rule and survives a degraded-field
-          // fallback.
-          if (s && !crawling && (type.VAULT?.MS ?? 0) > 0
+          // !noClimb is a BELT here — the ground field never steps into a
+          // window, so a crawler or brute can't reach this branch off its
+          // own field; the check documents the rule and survives a
+          // degraded-field fallback.
+          if (s && !noClimb && (type.VAULT?.MS ?? 0) > 0
             && nav.grid.at(cell.c + s.dc, cell.r + s.dr) === 'W'
             && nav.grid.walkable(cell.c + 2 * s.dc, cell.r + 2 * s.dr)) {
             const wc = cell.c + s.dc;

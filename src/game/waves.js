@@ -58,6 +58,17 @@ export function waveSpec(n) {
 // simple per-share rounding can't promise once there are 3+ types.
 // Fisher–Yates after, same reason as entryKinds (mix lands anywhere in
 // the spawn stagger).
+// Climb capability derives from the registry (pass 13 generalizes 7d):
+// prone spawns can't climb, and NO_CLIMB types (the brute — a body that
+// shouldn't fit the glass) opt out explicitly. Guarded lookup: an unknown
+// id keeps the legacy climb-capable default, so pairSpawns never demotes
+// on a typo — the schema sweep catches bad ids, not this.
+export function typeCanWindow(id) {
+  const t = ENEMY_TYPES[id];
+  if (!t) return true;
+  return !t.SPAWN?.PRONE && !t.NO_CLIMB;
+}
+
 export function typeAssignments(count, types, rand) {
   const entries = Object.entries(types ?? {}).filter(([, w]) => w > 0);
   if (entries.length === 0 || count <= 0) {
@@ -181,10 +192,7 @@ function beginSpawning() {
   const spec = waveSpec(waveNumber);
   const rawKinds = entryKinds(spec.count, spec.entry, Math.random);
   const rawTypes = typeAssignments(spec.count, spec.types, Math.random);
-  // Climb capability derives from the registry — prone spawns can't take
-  // window entries. Guarded lookup: an unknown id demotes gracefully.
-  const canWindow = (id) => !(ENEMY_TYPES[id]?.SPAWN?.PRONE);
-  const { kinds, typeIds } = pairSpawns(rawKinds, rawTypes, canWindow);
+  const { kinds, typeIds } = pairSpawns(rawKinds, rawTypes, typeCanWindow);
   pendingSpawns = kinds.map((kind, i) => ({
     typeId: typeIds[i], kind, speedMult: spec.speedMult, hpMult: spec.hpMult,
   }));

@@ -155,4 +155,99 @@ ENEMY_TYPES.crawler = {
                           //   sits low against the street
   SPAWN: { ...protoBase.SPAWN, PRONE: true }, // enters the world already
                           //   down: legs gone, ground field, no climbing
+                          //   reads at fog distance where the silhouette
+                          //   sits low against the street
+  SPAWN: { ...protoBase.SPAWN, PRONE: true }, // enters the world already
+                          //   down: legs gone, ground field, no climbing
+                          
+};
+// Pass 13 — the archetype expansion (report #3A). Both are registry
+// spreads like the crawler: shared machinery (flow field, locational
+// damage, windows, crawl transition, bounty scaling) applies with zero
+// new wiring; only the numbers and flags differ.
+
+// scaleBody: a uniformly bigger body as DATA. Every metric field (metres)
+// multiplies by k; fields that are NOT lengths — fractions along a limb
+// (KNEE_AT, ELBOW_AT) and angles in radians (HUNCH, COCK, TILT, REST_RAD)
+// — pass through untouched, because scaling an angle would change the
+// POSE, not the size. Returns a fresh deep copy: the base BODY is never
+// mutated (preserve hand-authored data). The builder's small overlap
+// constants (-0.06/-0.08) stay absolute, so a scaled body is measured,
+// never assumed (LESSONS #19) — the suite re-derives its prone extent
+// from these dims and the probe measured the standing reach below.
+const NON_METRIC = new Set(['KNEE_AT', 'ELBOW_AT', 'HUNCH', 'COCK', 'TILT', 'REST_RAD']);
+export function scaleBody(body, k) {
+  const out = {};
+  for (const [part, fields] of Object.entries(body)) {
+    out[part] = {};
+    for (const [key, v] of Object.entries(fields)) {
+      out[part][key] = NON_METRIC.has(key) ? v : v * k;
+    }
+  }
+  return out;
+}
+
+// The Sprinter (pass 13): low HP, high base speed — the "deal with me
+// FIRST" question. Speed lives in WALK_SPEED, not the wave multiplier:
+// EXTEND.SPEED_CAP caps the WAVE dial (shamblers never become sprinters),
+// while a sprinter TYPE simply starts fast — the wave mult still applies
+// on top (2.4 × 1.4 = 3.36 ceiling; suite pins that a base sprinter
+// outruns even a capped shambler, the reason this is a type and not a
+// mult). Head one-shots through the pre-ramp era like everything else
+// (HP 2 < HEAD 3, §18's tying pin sweeps it) and stops one-shotting at
+// hpMult > 1.5 — wave 12 — a deliberate late-game bite.
+ENEMY_TYPES.sprinter = {
+  ...protoBase,
+  id: 'sprinter',
+  HP: 2,
+  SCORE: { ...protoBase.SCORE, KILL: 150 }, // fast targets pay a premium
+  WALK_SPEED: 2.4,
+  ANIM: {
+    ...protoBase.ANIM,
+    LIMP: 0.1,   // the drag leg mostly heals — a lurching RUN, not a shuffle
+    LEAN: 0.25,  // aggressive forward pitch sells the sprint at fog distance
+  },
+  COLORS: {
+    ...protoBase.COLORS,
+    SKIN: 0x8f9a5a,   // jaundiced — paler than the Shambler's green
+    CLOTH: 0x6a3a2a,  // rust rags
+    EYES: 0xff6a3a,   // hot orange pinpricks — the first thing the fog shows
+  },
+};
+
+// The Brute (pass 13): the camping-breaker. 1.25× body (probe-measured
+// extents below), high HP, slow, and PERIMETER-ONLY — NO_CLIMB routes it
+// onto the ground field (windows not traversable BY CONSTRUCTION, the 7c
+// crawler guarantee generalized) and pairSpawns keeps it out of window
+// spawn slots (7d repair). Brutes pressure the open ground while normals
+// pour through glass. HEAVY declares it OUTSIDE the one-shot guarantee
+// (HEAD 3 < HP 8 — ~3 headshots base, ~6 at the wave-HP cap); §18 pins
+// that the flag is real, not stale. Legs stay cheap (LEG_HP unscaled by
+// design) — crippling a brute into a huge slow crawler IS the counterplay.
+ENEMY_TYPES.brute = {
+  ...protoBase,
+  id: 'brute',
+  HP: 8,
+  HEAVY: true,
+  NO_CLIMB: true,
+  SCORE: { ...protoBase.SCORE, KILL: 250 },
+  WALK_SPEED: 0.75,
+  BODY: scaleBody(protoBase.BODY, 1.25),
+  BODY_RADIUS: 0.56,    // 0.45 × 1.25, the solid circle grows with the mass
+  WALL: {               // standing forward reach — PROBE-MEASURED on the
+    REACH: 0.94,        //   1.25× build: extent 1.156 m past the feet
+    RADIUS: 0.31,       //   (sub-linear — absolute overlaps don't scale);
+  },                    //   REACH + RADIUS = 1.25 covers, margin ~0.09
+  CRAWL: {
+    ...protoBase.CRAWL,
+    WALL: {             // prone reach — the suite re-derives the chain
+      REACH: 2.50,      //   extent from THESE dims (2.71 m) and pins
+      RADIUS: 0.31,     //   REACH + RADIUS = 2.81 covers it
+    },
+  },
+  COLORS: {
+    ...protoBase.COLORS,
+    SKIN: 0x5f7a55,     // darker, muddier green — mass reads dark
+    CLOTH: 0x23262a,    // near-black bulk
+  },
 };
