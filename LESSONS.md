@@ -414,3 +414,41 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: skill reference (html-game.md) — "pose/rig constants are
   probe-measured world-space before shipping; grid-search, don't
   hand-derive."
+## 2026-07-13 — a multi-part delivery was partially applied: the checkpoint can't see a skipped paste-in [HARVESTED — 2026-07-13]
+
+- What broke / what happened: pass 12 shipped as 4 downloads + 1
+  waveTable paste-in. The paste-in was skipped; the checkpoint ran and
+  pushed a commit that doesn't certify (§18 throws on the missing
+  WAVES.HP block). The game itself never broke — `hpMultAt`'s guard
+  returned 1 and it silently ran unscaled — and a second push landed
+  the block.
+- Root cause: the `git status` READ catches unexpected deletions and
+  paths, but a file that was never edited simply doesn't appear — a
+  skipped delivery step leaves NOTHING in the status to notice. The
+  runtime guard also masked the miss in the browser.
+- Plug shipped: checkpoint blocks now carry the expected changed files
+  as a comment above `git status`, so the READ has an expectation to
+  diff against; multi-part deliveries state the count explicitly
+  ("5 files change: 4 downloads + 1 paste-in").
+- Route: general instructions candidate (sibling of the
+  status-is-a-READ rule).
+
+## 2026-07-13 — assert the assert: two suite pins were wrong while the code was right [HARVESTED — 2026-07-13]
+
+- What broke / what happened: in one session, two brand-new pins failed
+  green code. (a) Multiset equality compared via
+  `JSON.stringify(tally(...))` — key INSERTION order made equal
+  multisets unequal strings after the pairing repair reordered an
+  array. (b) A config-guard tested with `fn(50, undefined)` — a default
+  parameter substitutes on `undefined`, silently re-injecting the real
+  config, so the guard branch was never exercised at all.
+- Root cause: pins are code too, and both bugs were representation
+  traps — object key order is not canonical, and `undefined` triggers
+  parameter defaults while `null` does not. A wrong pin either fails
+  good code (a) or certifies nothing (b), which is the same false-green
+  shape as a proxy test in the wrong runtime.
+- Plug shipped: canonicalize before comparing structures (sorted-key
+  stringify); exercise default-parameter guards with `null`; and when a
+  brand-new pin fails, suspect the PIN first — hand-trace its claim
+  before touching the system under test.
+- Route: skill reference candidate (html-game.md testing conventions).
