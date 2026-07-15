@@ -12,7 +12,6 @@ export const CONFIG = {
   PITCH_CLAMP_DEG: 85,        // max look up/down — stops camera flipping over
 
   // — Shooting (consumed by the shooting pass) —
-  FIRE_COOLDOWN_MS: 150,      // semi-auto: clicks inside this window are ignored
 
   // — Round flow (consumed by the round pass) —
   ROUND_LENGTH_S: 60,
@@ -52,11 +51,11 @@ WAVES_SCORE: {
 
   // — Feel (consumed by the feel pass) —
   POP_MS: 120,                // target pop animation
-  RECOIL_MS: 60,
-  RECOIL_KICK_DEG: 1,
-  RECOIL_MS: 60,
-  RECOIL_KICK_DEG: 1,
-  RECOIL_KICK_BACK: 0.06,     // metres the gun slides toward the camera
+  // RECOIL_MS / RECOIL_KICK_DEG / RECOIL_KICK_BACK moved to data/weaponTypes.js
+  //   in pass 17 — recoil is a property of the GUN, not of the game. The pair
+  //   was declared TWICE here and nothing noticed for nine passes; §5 now runs
+  //   a text-level duplicate-key scan, because a runtime schema physically
+  //   cannot see a duplicate (JS keeps the last one and drops the rest).
   FLASH_MS: 50,               // muzzle flash lifetime
   FLASH_INTENSITY: 6,         // point-light peak at the muzzle
 
@@ -187,12 +186,11 @@ FOG: {
     MAX: 40,              // hard pool cap
   },
   // — Ammo (pass 9): finite magazine, unlimited reserve, manual R reload —
-  AMMO: {
-    MAG_SIZE: 12,         // rounds per magazine — 4 kills at zombie HP 3
-    RELOAD_MS: 1200,      // equals the zombie attack cooldown ON PURPOSE:
-                          //   reloading in melee range risks eating a hit
-    LOW_AT: 3,            // HUD counter turns red at/below this
-  },
+  // AMMO moved WHOLE to data/weaponTypes.js in pass 17. Every field in it was
+  //   a fact about the pistol wearing a global name — a 12-round magazine and
+  //   a "3 left" warning are not properties of the game, and the moment a
+  //   second gun existed they were actively wrong about it. GUN.RELOAD_DIP
+  //   stays below: the dip is how the PLAYER's hands move, not the gun.
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',
   // — Debug (dev-only; the suite FAILS any truthy flag when the SHIP env

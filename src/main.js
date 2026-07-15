@@ -7,10 +7,13 @@
 import * as THREE from '../lib/three.module.js';
 import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
-import { initInput, requestLock, getLook, getMoveAxes, onFire, onReload } from './input.js';
+import {
+  initInput, requestLock, getLook, getMoveAxes, onFire, onReload, onSwapWeapon,
+} from './input.js';
 import {
   resetAmmo, canFire as ammoCanFire, consumeRound, startReload,
   updateAmmo, getMag, isReloading, reloadProgress,
+  getActiveWeapon, getActiveWeaponId, setActiveWeapon, weaponIdForSlot, nextWeaponId,
 } from './game/ammo.js';
 import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
@@ -23,7 +26,9 @@ import {
   perimeterSpawnCells, windowEntrySpots,
 } from './game/mapGrid.js';
 import { buildFlowField } from './game/flowField.js';
-import { createGun, kick, updateGun, setReloadProgressSource } from './render/gun.js';
+import {
+  createGuns, setActiveGun, kick, updateGun, setReloadProgressSource,
+} from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
   getHittables as getTargetHittables, hitTarget, updateTargets,
@@ -48,7 +53,7 @@ import {
 import {
   computeMove, clampToArena, resolveCircleObstacles, resolveCircleAABBs,
 } from './game/movement.js';
-import { initShooting } from './game/shooting.js';
+import { initShooting, resetShooting } from './game/shooting.js';
 import {
   registerHit, registerMiss, resetScoring,
   getScore, getMultiplier, getAccuracy, getBestStreak,
@@ -113,7 +118,7 @@ scene.add(camera);
 // the depth buffer is cleared, then the gun renders on top — so it can
 // never clip into a wall the player stands against. The muzzle light stays
 // on BOTH layers so it still lights the world.
-const gunModel = createGun();
+const gunModel = createGuns();
 gunModel.traverse((o) => {
   o.layers.set(1);
   if (o.isLight) o.layers.enable(0);
@@ -194,10 +199,24 @@ initBlastFX(scene);
 // — Reload wiring (pass 9): one entry point so R and the empty click behave
 // identically; startReload() itself refuses full-mag and mid-reload calls.
 function beginReload() {
-  if (startReload()) setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, true);
+  if (startReload()) setAmmo(getActiveWeapon(), getMag(), true);
 }
 onReload(() => {
   if (getState() === States.PLAYING) beginReload();
+});
+
+// — Weapon swap (pass 17): 1 / 2 pick a slot, Q cycles. input.js sends a slot
+// number or null and knows no roster; ammo.js owns the roster and the active
+// id; gun.js owns which viewmodel is drawn. main only makes those three agree,
+// which is the whole of its job. setActiveWeapon refuses a no-op swap, so
+// pressing 1 while already holding the pistol can't cancel a reload by accident.
+onSwapWeapon((slot) => {
+  if (getState() !== States.PLAYING) return;
+  const id = slot === null ? nextWeaponId() : weaponIdForSlot(slot);
+  if (!id) return; // a slot with no weapon in it: silence, not a crash
+  if (!setActiveWeapon(id)) return;
+  setActiveGun(id);
+  setAmmo(getActiveWeapon(), getMag(), isReloading());
 });
 // Clicking on an empty mag never reaches shooting's callbacks (canFire gates
 // it first), so the auto-reload listens to the raw fire hook instead.
@@ -367,56 +386,79 @@ initShooting({
     ? [...getTargetHittables(), ...getEnemyHittables(), ...mapWallMeshes]
     : [...getTargetHittables(), ...getEnemyHittables()]),
   canFire: () => getState() === States.PLAYING && ammoCanFire(),
-  onHit: (mesh, point, rayDir) => {
+  getWeapon: getActiveWeapon,
+  // ONE call per trigger pull (pass 17). `hits` is the PELLET results and is
+  // empty when the whole pattern missed — there is no onMiss any more,
+  // because with eight pellets in the air 'hit' and 'miss' stopped being
+  // opposites. Everything belonging to the SHOT happens once, out here;
+  // everything belonging to a PELLET happens in the loop. That division is
+  // the entire reason a shotgun costs one round instead of eight, and it is
+  // structural rather than remembered: there is no loop out here to get wrong.
+  onShot: (hits, weapon) => {
     kick();
     ejectCasing();
     consumeRound();
-    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
-    if (mesh.userData.kind === 'enemy') {
-      // Damage first so the burst can size itself: a headshot sprays double
-      // (the reward has to READ). The kill eruption + pool fire inside via
-      // the onEnemyKilled callback, same frame.
-      const res = damageEnemy(mesh);
-      if (point) {
-        // Double spray on a headshot AND on the leg-destroying hit (7c) —
-        // the collapse is a payoff and the transform has to READ.
-        const n = res && (res.part === 'head' || res.legsOut)
-          ? CONFIG.BLOOD.HIT_PARTICLES * 2
-          : CONFIG.BLOOD.HIT_PARTICLES;
-        spawnBurst(point, rayDir, n);
+    setAmmo(getActiveWeapon(), getMag(), false);
+
+    // Per-pellet spray, divided so a shot's TOTAL mess stays roughly constant
+    // whatever the pellet count. Undivided, a point-blank shotgun would ask
+    // for 8 x HIT_PARTICLES = 80 from a 64-slot pool and starve the kill
+    // eruption firing two lines later — spawnBurst degrades by spraying less,
+    // so that bug would surface as a missing payoff, never as a crash.
+    // At PELLETS 1 this is HIT_PARTICLES exactly: the pistol is untouched.
+    const perPellet = Math.max(
+      2,
+      Math.round(CONFIG.BLOOD.HIT_PARTICLES / Math.max(1, weapon.PELLETS)),
+    );
+
+    let popped = false; // did ANY pellet pop a Range target?
+    for (const { mesh, point, rayDir } of hits) {
+      if (mesh.userData.kind === 'enemy') {
+        // Damage first so the burst can size itself: a headshot sprays double
+        // (the reward has to READ). The kill eruption + pool fire inside via
+        // the onEnemyKilled callback, same frame. Every pellet damages
+        // separately — eight pellets in one head IS the shotgun, and the
+        // spread thinning with distance IS its falloff.
+        const res = damageEnemy(mesh);
+        if (point) {
+          // Double spray on a headshot AND on the leg-destroying hit (7c) —
+          // the collapse is a payoff and the transform has to READ.
+          const n = res && (res.part === 'head' || res.legsOut)
+            ? perPellet * 2
+            : perPellet;
+          spawnBurst(point, rayDir, n);
+        }
+        // Kill scoring (pass 10): enemies exist only in Waves, so no mode
+        // guard is needed here. Headshot kills get the praise popup — the
+        // +pts it prints is the REAL awarded number from the single write site.
+        if (res && res.killed) {
+          const pts = scoreKill(res);
+          setWavesScore(getWavesScore());
+          if (res.part === 'head') showPraise(`HEADSHOT +${pts}`);
+        }
+        continue;
       }
-      // Kill scoring (pass 10): enemies exist only in Waves, so no mode
-      // guard is needed here (mirrors the "Waves owns no range scoring"
-      // rule in onMiss). Headshot kills get the praise popup — the +pts
-      // it prints is the REAL awarded number from the single write site.
-      if (res && res.killed) {
-        const pts = scoreKill(res);
-        setWavesScore(getWavesScore());
-        if (res.part === 'head') showPraise(`HEADSHOT +${pts}`);
-      }
-      return;
+      // The wall ate the pellet (4.2): the shot was real (kick, casing, round
+      // consumed above) — it just hit architecture. Waves is scoring-neutral.
+      if (mesh.userData.kind === 'wall') continue;
+      // hitTarget() can only refuse an already-popping sphere; hittables are
+      // filtered at raycast time, so a refusal means a race — don't pay for a
+      // target that didn't pop.
+      if (hitTarget(mesh)) popped = true;
     }
-    if (mesh.userData.kind === 'wall') {
-      // The wall ate the bullet (4.2): the shot was real (kick, casing,
-      // round consumed above) — it just hit architecture. Waves is
-      // scoring-neutral, so nothing else to do.
-      return;
+
+    // Range scoring: ONE accuracy sample per SHOT, never per pellet. This is
+    // the line the old shape got wrong for free — eight pellets into one
+    // sphere would have logged one pop and SEVEN misses, because hitTarget
+    // refuses an already-popping target. Accuracy means 'did that trigger
+    // pull connect', so one pull is one sample, and a shell that clears three
+    // targets is one hit and three pops. Waves owns no range scoring, and in
+    // Range the hittables are targets only, so `popped` is the whole story.
+    if (mode === 'range') {
+      if (popped) registerHit();
+      else registerMiss();
+      refreshHud();
     }
-    // hitTarget() can only refuse an already-popping sphere; hittables are
-    // filtered at raycast time, so a refusal means a race — count it as a
-    // miss rather than paying for a target that didn't pop.
-    if (hitTarget(mesh)) registerHit();
-    else registerMiss();
-    refreshHud();
-  },
-  onMiss: () => {
-    kick();
-    ejectCasing();
-    consumeRound();
-    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
-    if (mode !== 'range') return; // Waves owns no range scoring
-    registerMiss();
-    refreshHud();
   },
 });
 
@@ -474,7 +516,9 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetCasings();
     resetProjectiles(); // a glob in flight must not outlive its round
     resetAmmo();
-    setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
+    resetShooting(); // a new round must not inherit the last one's trigger timing
+    setActiveGun(getActiveWeaponId());
+    setAmmo(getActiveWeapon(), getMag(), false);
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
@@ -580,7 +624,7 @@ renderer.setAnimationLoop(() => {
   if (st === States.PLAYING) {
     // Reload ticks ONLY while playing — a pause freezes it mid-motion, same
     // rule as the round clock. The completion tick refreshes the counter.
-    if (updateAmmo(dtMs)) setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
+    if (updateAmmo(dtMs)) setAmmo(getActiveWeapon(), getMag(), false);
 
     const axes = getMoveAxes();
     if (axes.x !== 0 || axes.z !== 0) {

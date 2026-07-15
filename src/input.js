@@ -15,6 +15,7 @@ let onLockChangeCb = null;
 let onLockErrorCb = null;
 const fireHandlers = [];
 const reloadHandlers = [];
+const swapHandlers = [];
 
 // Movement key state, tracked by e.code so WASD works on any keyboard
 // layout (AZERTY 'Z' still reports code 'KeyW').
@@ -58,6 +59,13 @@ export function initInput({ onLockChange, onLockError } = {}) {
     // Reload hook (pass 9): same pattern as fire — subscribers attach via
     // onReload without touching this file. Locked-only, like everything else.
     if (e.code === 'KeyR') reloadHandlers.forEach((fn) => fn());
+    // Weapon swap hook (pass 17): 1 and 2 pick a hotbar SLOT, Q asks for the
+    // next one. The slot number goes out raw and null means "cycle" — this
+    // file doesn't know the roster, so it can't be the thing that has to
+    // change when pass 18 adds a third gun.
+    if (e.code === 'Digit1') swapHandlers.forEach((fn) => fn(1));
+    if (e.code === 'Digit2') swapHandlers.forEach((fn) => fn(2));
+    if (e.code === 'KeyQ') swapHandlers.forEach((fn) => fn(null));
   });
   document.addEventListener('keyup', (e) => {
     // Accept keyups even unlocked — releasing outside the lock must never
@@ -93,6 +101,10 @@ export function requestLock(el) {
 
 export function onFire(fn) {
   fireHandlers.push(fn);
+}
+
+export function onSwapWeapon(fn) {
+  swapHandlers.push(fn);
 }
 
 export function onReload(fn) {

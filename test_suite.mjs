@@ -84,7 +84,7 @@ const EXCLUDE = new Set([join('src', 'main.js')]);
 // added projectiles.js and never raised the floor, so for two passes the
 // guard would have shrugged at that module disappearing entirely. A floor
 // that lags the truth is not a floor. 30 = 31 files under src/ minus main.js.
-const MIN_EXPECTED_MODULES = 30;
+const MIN_EXPECTED_MODULES = 31;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -354,15 +354,14 @@ try {
 
   const SCHEMA = {
     'FOV': 'number', 'EYE_HEIGHT': 'number', 'MOUSE_SENSITIVITY': 'number',
-    'PITCH_CLAMP_DEG': 'number', 'FIRE_COOLDOWN_MS': 'number',
+    'PITCH_CLAMP_DEG': 'number',
     'ROUND_LENGTH_S': 'number', 'COUNTDOWN_S': 'number',
     'TARGETS_LIVE': 'number', 'TARGET_RADIUS': 'number', 'MIN_TARGET_SEPARATION': 'number',
     'SPAWN.SLOT_XS': 'numberArray', 'SPAWN.SLOT_ZS': 'numberArray',
     'SPAWN.JITTER_X': 'number', 'SPAWN.JITTER_Z': 'number',
     'SPAWN.Y_MIN': 'number', 'SPAWN.Y_MAX': 'number',
     'POINTS_PER_HIT': 'number', 'STREAK_TIERS': 'tierArray',
-    'POP_MS': 'number', 'RECOIL_MS': 'number', 'RECOIL_KICK_DEG': 'number',
-    'RECOIL_KICK_BACK': 'number', 'FLASH_MS': 'number', 'FLASH_INTENSITY': 'number',
+    'POP_MS': 'number', 'FLASH_MS': 'number', 'FLASH_INTENSITY': 'number',
     'GUN.OFFSET_X': 'number', 'GUN.OFFSET_Y': 'number', 'GUN.OFFSET_Z': 'number',
     'RANGE.WIDTH': 'number', 'RANGE.BACK_Z': 'number', 'RANGE.FRONT_Z': 'number',
     'RANGE.WALL_HEIGHT': 'number', 'FOG.NEAR': 'number', 'FOG.FAR': 'number',
@@ -394,7 +393,6 @@ try {
     'CASINGS.GRAVITY': 'number', 'CASINGS.RESTITUTION': 'number',
     'CASINGS.LINGER_MS': 'number', 'CASINGS.VANISH_MS': 'number',
     'CASINGS.MAX': 'number',
-    'AMMO.MAG_SIZE': 'number', 'AMMO.RELOAD_MS': 'number', 'AMMO.LOW_AT': 'number',
     'GUN.RELOAD_DIP': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
@@ -423,6 +421,49 @@ try {
   }
   if (schemaFails === 0) {
     console.log(`  ok     schema: all ${Object.keys(SCHEMA).length} required keys present, typed, finite`);
+  }
+
+  // Duplicate-key scan. A schema check reads the CONFIG OBJECT, and by then
+  // JS has already collapsed any duplicate key — last one wins, the rest
+  // vanish silently. So a runtime guard physically CANNOT see this class of
+  // bug, and config.js carried `RECOIL_MS` and `RECOIL_KICK_DEG` twice each
+  // for nine passes with a full schema watching. Tuning the first copy of a
+  // doubled key does nothing, and nothing tells you.
+  //
+  // Text-level, because that is the only level where the duplicate still
+  // exists. It exists because config.js is delivered as PASTE-INS, and a
+  // paste that lands one block low doubles lines with nothing to catch it
+  // (it did exactly that in 14c — see LESSONS).
+  {
+    const cfgText = readFileSync(join('src', 'config.js'), 'utf8');
+    // Same leaf name under two different blocks is legal and common
+    // (BLOOD.COLOR / CASINGS.COLOR, PROJECTILES.MAX / BLAST.MAX), so a raw
+    // count can't be the test — scope each key to its enclosing block.
+    const perBlock = new Map(); // block -> Map(key -> count)
+    let block = '(root)';
+    for (const line of cfgText.split('\n')) {
+      const open = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*:\s*\{\s*$/);
+      const close = line.match(/^\s{2}\},?\s*$/);
+      const leaf = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*:\s*[^{\s]/);
+      if (open) { block = open[1]; perBlock.set(block, new Map()); continue; }
+      if (close) { block = '(root)'; continue; }
+      if (leaf) {
+        if (!perBlock.has(block)) perBlock.set(block, new Map());
+        const m = perBlock.get(block);
+        m.set(leaf[1], (m.get(leaf[1]) || 0) + 1);
+      }
+    }
+    const dups = [];
+    for (const [b, m] of perBlock) {
+      for (const [k, n] of m) if (n > 1) dups.push(`${b}.${k} x${n}`);
+    }
+    assertTrue('section5',
+      `config.js declares no key twice${dups.length ? ' — FOUND: ' + dups.join(', ') : ''}`,
+      dups.length === 0);
+    // Guard-the-guard: a rotted regex finding nothing must fail, not pass.
+    assertTrue('section5',
+      `dup scan actually parsed config.js (${perBlock.size} blocks seen)`,
+      perBlock.size >= 5);
   }
 
   // The descending order is load-bearing (first tier reached wins).
@@ -458,6 +499,8 @@ try {
 
   // Registries get the same finite-leaf guarantee as CONFIG.
   const { TARGET_TYPES } = await import(pathToFileURL(join('src', 'data', 'targetTypes.js')).href);
+  const { WEAPON_TYPES: WEAPON_TYPES_5 } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
   const { ENEMY_TYPES } = await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
   const { WAVES } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
   let leafCount = 0;
@@ -489,6 +532,10 @@ try {
   sweepRegistry(TARGET_TYPES, 'TARGET_TYPES');
   sweepRegistry(ENEMY_TYPES, 'ENEMY_TYPES');
   sweepRegistry(WAVES, 'WAVES');
+  // Weapons earn the same finite-leaf guarantee the day they become data
+  // (pass 17). A NaN in PARTS would build a gun with an invalid geometry and
+  // three.js would take it without complaint.
+  sweepRegistry(WEAPON_TYPES_5, 'WEAPON_TYPES');
   if (regFails === 0) {
     console.log(`  ok     registries: ${leafCount} leaves defined and finite`);
   }
@@ -908,9 +955,13 @@ console.log('');
 console.log('— Section 10: ammo + reload —');
 try {
   const A = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
-  const { CONFIG: ACFG } = await import(pathToFileURL(join('src', 'config.js')).href);
-  const M = ACFG.AMMO.MAG_SIZE;
-  const R = ACFG.AMMO.RELOAD_MS;
+  const { WEAPON_TYPES: WT } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
+  // Pass 17: the magazine is a property of the WEAPON. Derived from the
+  // registry, never typed in — a pin holding its own copy of MAG_SIZE would
+  // pass forever while the gun disagreed with it.
+  const M = WT.pistol.MAG_SIZE;
+  const R = WT.pistol.RELOAD_MS;
 
   A.resetAmmo();
   assertNear('section10', 'fresh mag is full', A.getMag(), M);
@@ -936,6 +987,73 @@ try {
   A.consumeRound();
   assertTrue('section10', 'partial mag may reload manually', A.startReload() === true);
   assertNear('section10', 'progress at half reload', (A.updateAmmo(R / 2), A.reloadProgress()), 0.5);
+
+  // — Pass 17: the magazines are INDEPENDENT and they PERSIST across swaps —
+  // The block that would have caught a shared-magazine implementation, which
+  // reads identically at a glance and turns every swap into a free reload.
+  {
+    A.resetAmmo();
+    assertTrue('section10', 'a fresh round starts on slot 1',
+      A.getActiveWeaponId() === 'pistol');
+    A.consumeRound();
+    A.consumeRound();
+    const pistolLeft = A.getMag();
+    assertNear('section10', 'pistol down two', pistolLeft, M - 2);
+
+    assertTrue('section10', 'swap to a real weapon reports true',
+      A.setActiveWeapon('shotgun') === true);
+    assertNear('section10', "the shotgun has its OWN full tube (not the pistol's count)",
+      A.getMag(), WT.shotgun.MAG_SIZE);
+    assertTrue('section10', 'and the pistol still holds what it held',
+      A.getMagOf('pistol') === pistolLeft);
+
+    A.consumeRound();
+    assertNear('section10', 'firing the shotgun spends the SHOTGUN',
+      A.getMag(), WT.shotgun.MAG_SIZE - 1);
+    assertNear('section10', '...and never touches the pistol',
+      A.getMagOf('pistol'), pistolLeft);
+
+    assertTrue('section10', 'swapping back finds the pistol as you left it',
+      (A.setActiveWeapon('pistol'), A.getMag() === pistolLeft));
+    assertTrue('section10', 'a no-op swap reports false (so it cannot cancel a reload)',
+      A.setActiveWeapon('pistol') === false);
+    assertTrue('section10', 'an unknown weapon is refused, not thrown',
+      A.setActiveWeapon('railgun') === false);
+  }
+
+  // — The reload is the ACTIVE weapon's, and a swap CANCELS it —
+  {
+    A.resetAmmo();
+    A.setActiveWeapon('shotgun');
+    A.consumeRound();
+    assertTrue('section10', 'shotgun reload starts', A.startReload() === true);
+    // The shotgun's reload is longer than the pistol's; at the pistol's
+    // RELOAD_MS it must still be running, or the timing is not per-weapon.
+    A.updateAmmo(WT.pistol.RELOAD_MS);
+    assertTrue('section10',
+      `the shotgun reloads on ITS clock (${WT.shotgun.RELOAD_MS} ms), not the pistol's (${WT.pistol.RELOAD_MS} ms)`,
+      A.isReloading());
+
+    assertTrue('section10', 'swapping away CANCELS the reload',
+      (A.setActiveWeapon('pistol'), !A.isReloading()));
+    assertTrue('section10', 'and the cancelled reload banked NOTHING',
+      A.getMagOf('shotgun') === WT.shotgun.MAG_SIZE - 1);
+    assertNear('section10', 'a cancelled reload leaves no progress behind',
+      A.reloadProgress(), 0);
+  }
+
+  // — Slot resolution + cycling: Q's whole implementation —
+  {
+    A.resetAmmo();
+    assertTrue('section10', 'slot 1 is the pistol', A.weaponIdForSlot(1) === 'pistol');
+    assertTrue('section10', 'slot 2 is the shotgun', A.weaponIdForSlot(2) === 'shotgun');
+    assertTrue('section10', 'an empty slot resolves to null, never undefined-indexing',
+      A.weaponIdForSlot(9) === null && A.weaponIdForSlot(0) === null);
+    assertTrue('section10', 'cycle goes forward', A.nextWeaponId() === 'shotgun');
+    A.setActiveWeapon('shotgun');
+    assertTrue('section10', 'cycle WRAPS at the end of the roster',
+      A.nextWeaponId() === 'pistol');
+  }
 } catch (err) {
   failures.push({ file: 'section10', err });
   console.log(`  FAIL   section 10 threw: ${err.message}`);
@@ -2975,6 +3093,290 @@ try {
 } catch (err) {
   failures.push({ file: 'section23', err });
   console.log(`  FAIL   section 23 threw: ${err.message}`);
+}
+
+// ————— Section 24: weapons (pass 17) —————
+//
+// Three claims:
+//   (a) the registry landed WITHOUT retuning the gun you already know — the
+//       pistol's ray is bit-identical to the pre-17 path, and every number
+//       that moved off config.js arrived intact;
+//   (b) the spread is real maths, not a vibe: the disc is uniform by AREA,
+//       it lands exactly on the rim at the edge, and it is exactly nothing
+//       at zero — that last one IS (a)'s guarantee;
+//   (c) one trigger pull is ONE shot however many pellets it puts in the
+//       air. That is the claim the old onHit-per-ray shape got wrong for
+//       free, and it is pinned by driving fireShot at a real mesh with a
+//       real camera rather than by reading the loop and nodding.
+//
+// What is NOT here: the per-shot bookkeeping (one kick, one casing, one
+// round) lives in main.js and is unreachable from Node. It is safe by
+// STRUCTURE instead — shooting.js calls onShot exactly once per pull, so
+// there is no loop up there to get wrong. That is the point of the split.
+
+console.log('');
+console.log('— Section 24: weapons (pass 17) —');
+try {
+  const THREE24 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const { WEAPON_TYPES: W, WEAPON_ORDER: ORDER } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
+  const { spreadOffset, degToRad, fireShot } =
+    await import(pathToFileURL(join('src', 'game', 'shooting.js')).href);
+  const { createGuns, setActiveGun, getActiveGunId } =
+    await import(pathToFileURL(join('src', 'render', 'gun.js')).href);
+  const { CONFIG: CFG24 } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const { ENEMY_TYPES: ET24 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+
+  // — (a) the registry contract —
+  // The sweep in §5 proves every field that EXISTS is finite. This names the
+  // fields that MUST exist — a missing one NaNs exactly like a missing config
+  // key did on 2026-07-11. Extend this list when weapons gain required fields.
+  const REQUIRED = [
+    'NAME', 'MAG_SIZE', 'RELOAD_MS', 'LOW_AT', 'COOLDOWN_MS',
+    'PELLETS', 'SPREAD_DEG', 'RECOIL_MS', 'RECOIL_DEG', 'RECOIL_BACK',
+    'COLOR', 'ROUGH', 'METAL', 'PARTS', 'MUZZLE',
+  ];
+  let missing24 = [];
+  for (const id of ORDER) {
+    if (!W[id]) { missing24.push(`${id} (not in WEAPON_TYPES at all)`); continue; }
+    for (const f of REQUIRED) if (W[id][f] === undefined) missing24.push(`${id}.${f}`);
+  }
+  assertTrue('section24',
+    `every weapon in WEAPON_ORDER is complete${missing24.length ? ' — MISSING: ' + missing24.join(', ') : ''}`,
+    missing24.length === 0);
+  assertTrue('section24',
+    `WEAPON_ORDER is the whole roster (${ORDER.length} ordered / ${Object.keys(W).length} defined)`,
+    ORDER.length === Object.keys(W).length);
+  // A weapon whose id disagrees with its key is how a swap silently targets
+  // the wrong gun — setActiveWeapon keys off the id, gun.js keys off the map.
+  assertTrue('section24', 'every entry\'s id matches its registry key',
+    Object.entries(W).every(([k, w]) => w.id === k));
+
+  // Shapes, not just presence: PARTS drives BoxGeometry directly, and a
+  // two-element size builds a gun out of NaN without three.js complaining.
+  let shapeBad = [];
+  for (const id of ORDER) {
+    const w = W[id];
+    if (!Array.isArray(w.PARTS) || w.PARTS.length === 0) shapeBad.push(`${id}.PARTS empty`);
+    if (!Array.isArray(w.MUZZLE) || w.MUZZLE.length !== 3) shapeBad.push(`${id}.MUZZLE`);
+    for (const [i, p] of (w.PARTS ?? []).entries()) {
+      if (!Array.isArray(p.size) || p.size.length !== 3) shapeBad.push(`${id}.PARTS[${i}].size`);
+      if (!Array.isArray(p.pos) || p.pos.length !== 3) shapeBad.push(`${id}.PARTS[${i}].pos`);
+      if (p.rot && p.rot.length !== 3) shapeBad.push(`${id}.PARTS[${i}].rot`);
+    }
+  }
+  assertTrue('section24',
+    `every PARTS entry is a real box${shapeBad.length ? ' — BAD: ' + shapeBad.join(', ') : ''}`,
+    shapeBad.length === 0);
+
+  // — the design window —
+  const P24 = W.pistol;
+  const S24 = W.shotgun;
+  assertTrue('section24',
+    'the pistol is the BASELINE: one pellet, no spread (this is what makes its ray bit-identical to pre-17)',
+    P24.PELLETS === 1 && P24.SPREAD_DEG === 0);
+  assertTrue('section24',
+    `the shotgun pays for its pellets with RATE: COOLDOWN ${S24.COOLDOWN_MS} > pistol ${P24.COOLDOWN_MS}`,
+    S24.COOLDOWN_MS > P24.COOLDOWN_MS);
+  assertTrue('section24',
+    `...and with CAPACITY: MAG ${S24.MAG_SIZE} < pistol ${P24.MAG_SIZE}`,
+    S24.MAG_SIZE < P24.MAG_SIZE);
+  assertTrue('section24',
+    `...and with RELOAD: ${S24.RELOAD_MS} ms > pistol ${P24.RELOAD_MS} ms`,
+    S24.RELOAD_MS > P24.RELOAD_MS);
+  assertTrue('section24',
+    `the shotgun actually scatters: PELLETS ${S24.PELLETS} > 1 and SPREAD ${S24.SPREAD_DEG} > 0`,
+    S24.PELLETS > 1 && S24.SPREAD_DEG > 0);
+  // Guards that make every weapon safe BY CONSTRUCTION rather than by being
+  // tuned carefully. A 0 cooldown is a machine gun on a mouse button; a 0
+  // reload divides by zero in reloadProgress; a LOW_AT at or above the mag
+  // is a warning light that is always on and therefore says nothing.
+  for (const id of ORDER) {
+    const w = W[id];
+    assertTrue('section24', `${id}: COOLDOWN_MS ${w.COOLDOWN_MS} > 0`, w.COOLDOWN_MS > 0);
+    assertTrue('section24', `${id}: RELOAD_MS ${w.RELOAD_MS} > 0 (reloadProgress divides by it)`, w.RELOAD_MS > 0);
+    assertTrue('section24', `${id}: MAG_SIZE ${w.MAG_SIZE} > 0`, w.MAG_SIZE > 0);
+    assertTrue('section24', `${id}: PELLETS ${w.PELLETS} >= 1`, w.PELLETS >= 1);
+    assertTrue('section24',
+      `${id}: the low-ammo warning can be BOTH on and off (0 < LOW_AT ${w.LOW_AT} < MAG ${w.MAG_SIZE})`,
+      w.LOW_AT > 0 && w.LOW_AT < w.MAG_SIZE);
+  }
+
+  // — (b) the spread maths —
+  // THE guarantee of the pass: at zero spread the offset is EXACTLY zero, so
+  // the pistol takes the unperturbed ray. === not assertNear: 1e-17 is not
+  // zero, and 'the registry did not retune your gun' has to be exact.
+  {
+    let allZero = true;
+    for (let i = 0; i <= 20; i++) {
+      const o = spreadOffset(0, i / 20, (20 - i) / 20);
+      if (o.x !== 0 || o.y !== 0) allZero = false;
+    }
+    assertTrue('section24',
+      'spreadOffset at ZERO spread is EXACTLY {0,0} across the whole random range',
+      allZero);
+  }
+  const sRad = degToRad(S24.SPREAD_DEG);
+  const rim = Math.tan(sRad);
+  assertNear('section24', 'the rim sample lands exactly on tan(spread)',
+    Math.hypot(spreadOffset(sRad, 0, 1).x, spreadOffset(sRad, 0, 1).y), rim);
+  assertNear('section24', 'the centre sample is dead centre',
+    Math.hypot(spreadOffset(sRad, 0.37, 0).x, spreadOffset(sRad, 0.37, 0).y), 0);
+  // sqrt(u2), not u2. Linear radius sampling bunches pellets at the middle of
+  // the disc and leaves the rim bare — which reads as a slug, not a scatter.
+  // At u2 = 0.25 the sqrt puts the pellet at HALF the rim; linear would put
+  // it at a quarter. That single number is the whole difference.
+  assertNear('section24', 'the radius is sqrt-sampled (uniform by AREA, not by radius)',
+    Math.hypot(spreadOffset(sRad, 0, 0.25).x, spreadOffset(sRad, 0, 0.25).y), rim * 0.5);
+  {
+    let inside = true;
+    for (let i = 0; i <= 40; i++) {
+      for (let j = 0; j <= 40; j++) {
+        const o = spreadOffset(sRad, i / 40, j / 40);
+        if (Math.hypot(o.x, o.y) > rim + 1e-9) inside = false;
+      }
+    }
+    assertTrue('section24', 'no pellet ever leaves the cone (41x41 sweep)', inside);
+  }
+  assertTrue('section24', 'spreadOffset survives a negative/NaN spread',
+    Number.isFinite(spreadOffset(-1, 0.5, 0.5).x)
+    && Number.isFinite(spreadOffset(NaN, 0.5, 0.5).x));
+
+  // — (c) one pull, N pellets: driven for real —
+  {
+    const cam = new THREE24.PerspectiveCamera(75, 16 / 9, 0.1, 100);
+    cam.position.set(0, 0, 0);
+    cam.lookAt(0, 0, -1);
+    cam.updateMatrixWorld(true);
+
+    // A wall 2 m downrange, wide enough that the whole 4.5-degree cone lands
+    // on it (tan(4.5) * 2 = 0.157 m — 4 m of plane is enormous headroom).
+    const wall = new THREE24.Mesh(
+      new THREE24.PlaneGeometry(4, 4),
+      new THREE24.MeshBasicMaterial(),
+    );
+    wall.position.set(0, 0, -2);
+    wall.updateMatrixWorld(true);
+
+    const pistolHits = fireShot(cam, P24, [wall]);
+    assertNear('section24', 'ONE pull of a 1-pellet weapon returns exactly 1 pellet result',
+      pistolHits.length, 1);
+
+    const shotHits = fireShot(cam, S24, [wall]);
+    assertNear('section24',
+      `ONE pull of the shotgun returns ${S24.PELLETS} pellet results — from ONE call`,
+      shotHits.length, S24.PELLETS);
+
+    // The pin that matters: the pellets went to DIFFERENT places. A spread
+    // that silently collapsed would return 8 identical points and every count
+    // assert above would still pass.
+    let maxSep = 0;
+    for (const a of shotHits) {
+      for (const b of shotHits) maxSep = Math.max(maxSep, a.point.distanceTo(b.point));
+    }
+    assertTrue('section24',
+      `the pellets actually SCATTER (widest pair ${maxSep.toFixed(3)} m apart at 2 m)`,
+      maxSep > 0.01);
+    assertTrue('section24',
+      `...and the scatter respects the cone (${maxSep.toFixed(3)} m <= 2 x tan(spread) x 2 m = ${(2 * rim * 2).toFixed(3)} m)`,
+      maxSep <= 2 * rim * 2 + 1e-6);
+
+    // The control: the pistol does NOT scatter. Without this, a spread that
+    // leaked onto every weapon would pass everything above.
+    let pistolCentred = true;
+    for (let i = 0; i < 12; i++) {
+      const h = fireShot(cam, P24, [wall]);
+      if (h.length !== 1 || Math.hypot(h[0].point.x, h[0].point.y) > 1e-9) pistolCentred = false;
+    }
+    assertTrue('section24',
+      'the pistol puts every shot DEAD CENTRE across 12 pulls (the zero-spread path is untouched)',
+      pistolCentred);
+
+    // A pattern that finds nothing returns EMPTY — that empty array IS the
+    // miss, and main.js reads it as one.
+    assertNear('section24', 'a shot that hits nothing returns an empty array, not null',
+      fireShot(cam, S24, []).length, 0);
+
+    // — MAX_RANGE: the shotgun's leash —
+    // Walls at either side of the cap. The camera sits at the origin looking
+    // down -Z, so a plane at z = -d is exactly d metres away.
+    const wallAt = (d) => {
+      const m = new THREE24.Mesh(new THREE24.PlaneGeometry(40, 40), new THREE24.MeshBasicMaterial());
+      m.position.set(0, 0, -d);
+      m.updateMatrixWorld(true);
+      return m;
+    };
+    const inside = wallAt(S24.MAX_RANGE - 0.1);
+    const outside = wallAt(S24.MAX_RANGE + 0.1);
+    assertTrue('section24',
+      `the shotgun REACHES just inside its leash (${(S24.MAX_RANGE - 0.1).toFixed(1)} m)`,
+      fireShot(cam, S24, [inside]).length > 0);
+    assertNear('section24',
+      `and finds NOTHING just past it (${(S24.MAX_RANGE + 0.1).toFixed(1)} m) — every pellet, not most`,
+      fireShot(cam, S24, [outside]).length, 0);
+
+    // THE pin this shape exists for. The raycaster is module scope and shared
+    // by every weapon, and setFromCamera does not reset .far — so a MAX_RANGE
+    // written anywhere but on every single shot LEAKS. The failure is silent
+    // and permanent: fire the shotgun once and the pistol quietly inherits a
+    // 13 m leash for the rest of the session, with nothing in the game saying
+    // so. Fire the capped weapon FIRST, then check the uncapped one still
+    // reaches — that ORDER is the whole test.
+    const far30 = wallAt(30);
+    fireShot(cam, S24, [far30]); // the shotgun, capped, fires first
+    assertTrue('section24',
+      'an UNCAPPED weapon still reaches 30 m right after a capped one fired (no .far leak)',
+      fireShot(cam, P24, [far30]).length === 1);
+    assertTrue('section24',
+      'the pistol carries no MAX_RANGE at all — no field means no limit',
+      P24.MAX_RANGE === undefined);
+  }
+
+  // — where the leash is allowed to sit —
+  // Two edges, and the design lives between them. Inequalities, not equality:
+  // the cap is 13 BECAUSE the fog is 13, but if the fog ever grows the shotgun
+  // should not silently grow with it.
+  assertTrue('section24',
+    `the shotgun never outranges your EYES: MAX_RANGE ${S24.MAX_RANGE} <= FOG.WAVES.FAR ${CFG24.FOG.WAVES.FAR}`,
+    S24.MAX_RANGE <= CFG24.FOG.WAVES.FAR);
+  assertTrue('section24',
+    `...and it can still answer the spitter at its post: MAX_RANGE ${S24.MAX_RANGE} > STOP_DISTANCE ${ET24.spitter.STOP_DISTANCE}`,
+    S24.MAX_RANGE > ET24.spitter.STOP_DISTANCE);
+  // The shotgun must remain a CLOSE weapon: its leash cannot reach past the
+  // point where a scatter gun stops being one. If a future tune pushes this
+  // out, the archetype has quietly become a rifle.
+  assertTrue('section24',
+    `the 100% zone sits inside the exploder's blast: that is the DECISION this weapon poses (EXPLODE.RADIUS ${ET24.exploder.EXPLODE.RADIUS} m)`,
+    ET24.exploder.EXPLODE.RADIUS > 3);
+
+  // — the viewmodels: built once, swapped by visibility —
+  {
+    const root = createGuns();
+    assertNear('section24',
+      `every weapon is built AT INIT (${root.children.length} viewmodels for ${ORDER.length} weapons)`,
+      root.children.length, ORDER.length);
+    // The design IS data: the mesh count has to follow PARTS, or gun.js is
+    // drawing something it invented.
+    for (const [i, id] of ORDER.entries()) {
+      const meshes = root.children[i].children.filter((c) => c.isMesh && c.geometry.type === 'BoxGeometry');
+      assertNear('section24', `${id} draws exactly its PARTS (${W[id].PARTS.length} boxes)`,
+        meshes.length, W[id].PARTS.length);
+    }
+    assertTrue('section24', 'exactly ONE viewmodel is visible at a time',
+      root.children.filter((c) => c.visible).length === 1);
+    assertTrue('section24', 'and it starts on slot 1', getActiveGunId() === ORDER[0]);
+    assertTrue('section24', 'swapping draws the other one',
+      (setActiveGun('shotgun'), getActiveGunId() === 'shotgun'));
+    assertTrue('section24', 'still exactly one visible after a swap',
+      root.children.filter((c) => c.visible).length === 1);
+    assertTrue('section24', 'an unknown weapon is refused, not thrown',
+      setActiveGun('railgun') === false && getActiveGunId() === 'shotgun');
+    setActiveGun(ORDER[0]);
+  }
+} catch (err) {
+  failures.push({ file: 'section24', err });
+  console.log(`  FAIL   section 24 threw: ${err.message}`);
 }
 
 // ————— Report —————

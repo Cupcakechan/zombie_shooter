@@ -193,11 +193,18 @@ export function setWavesScore(score) {
   els.hudWavesScore.textContent = `SCORE ${score}`;
 }
 
-// Bottom-right ammo counter (pass 9): count while idle, RELOADING while the
-// mag is out, red pill when running dry.
-export function setAmmo(mag, size, reloading) {
-  els.hudAmmo.textContent = reloading ? 'RELOADING\u2026' : `${mag} / ${size}`;
-  els.hudAmmo.classList.toggle('low', !reloading && mag <= CONFIG.AMMO.LOW_AT);
+// Bottom-right ammo counter (pass 9; pass 17 names the gun): count while
+// idle, RELOADING while the mag is out, red pill when running dry.
+//
+// Takes the WEAPON rather than loose numbers — the readout needs its name, its
+// mag size and its own LOW_AT, and passing three parallel arguments that must
+// all describe the same gun is how they end up describing two.
+export function setAmmo(weapon, mag, reloading) {
+  if (!weapon) return; // never paint a readout for a gun that isn't in hand
+  els.hudAmmo.textContent = reloading
+    ? 'RELOADING\u2026'
+    : `${weapon.NAME}  ${mag} / ${weapon.MAG_SIZE}`;
+  els.hudAmmo.classList.toggle('low', !reloading && mag <= weapon.LOW_AT);
 }
 
 // Red edge-flash on taking damage: restart the CSS animation by removing
