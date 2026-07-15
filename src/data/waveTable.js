@@ -26,6 +26,12 @@ TABLE: [
     types: { proto_zombie: 0.6, crawler: 0.2, sprinter: 0.2 } },
   { count: 6, speedMult: 1.2,  entry: { perimeter: 0.5, window: 0.5 },
     types: { proto_zombie: 0.55, crawler: 0.15, sprinter: 0.2, brute: 0.1 } },
+    // Wave 7 (pass 14): the exploder debuts, and EXTEND carries the last
+  // row's mix forever — so from here on every wave asks the positional
+  // question. Its 0.1 share comes out of the Shambler's, not the other
+  // archetypes': the specials keep the density they were tuned at.
+  { count: 7, speedMult: 1.25, entry: { perimeter: 0.5, window: 0.5 },
+    types: { proto_zombie: 0.45, crawler: 0.15, sprinter: 0.2, brute: 0.1, exploder: 0.1 } },
 ],
   EXTEND: {
     COUNT_STEP: 1,      // extra zombies per wave past the table

@@ -180,5 +180,12 @@ export function buildBody(type) {
     group,
     parts: { armL, armR, foreL, foreR, legL, legR, shinL, shinR, head, jaw, waist },
     materials: [skin, cloth, feetMat, eyeMat],
+    // The eye material by NAME (pass 14). It is already inside `materials`,
+    // but the exploder's pulse needs to drive THIS one specifically, and
+    // reaching for it by array index — or by sniffing for the only material
+    // without .emissive, the way setFlash discriminates — would break
+    // silently the day a body gains a second unlit material. Both eyes share
+    // it, so one write throbs the pair.
+    eyeMat,
   };
 }

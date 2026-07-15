@@ -565,6 +565,38 @@ try {
       named.length === 1 && named[0] === 'CRAWL.FALL_MS');
   }
 
+  // EXPLODE block schema (pass 14): OPTIONAL, exactly like CRAWL — no block
+  // means the type never blasts, and blastDamage() returns 0 for it. But a
+  // block that's PRESENT and half-filled is the RING_FRACTION incident all
+  // over again: it parses, it imports, it greps clean, and the game quietly
+  // runs a NaN radius that no comparison ever wins. Every field the blast
+  // path reads unguarded is named here.
+  const EXPLODE_REQUIRED = [
+    'RADIUS', 'CORE_RADIUS', 'DAMAGE', 'CORE_DAMAGE',
+    'PARTICLES', 'PULSE_HZ', 'PULSE_COLOR',
+  ];
+  const missingExplodeKeys = (type) => (!type.EXPLODE ? [] : EXPLODE_REQUIRED
+    .filter((fp) => {
+      const v = resolvePath(type.EXPLODE, fp);
+      return typeof v !== 'number' || !Number.isFinite(v);
+    })
+    .map((fp) => `EXPLODE.${fp}`));
+  for (const [typeId, type] of Object.entries(ENEMY_TYPES)) {
+    const missing = missingExplodeKeys(type);
+    assertTrue('section5',
+      `${typeId}: EXPLODE schema ${type.EXPLODE ? `complete (${EXPLODE_REQUIRED.length} keys)` : 'absent — allowed'}`,
+      missing.length === 0);
+    if (missing.length) console.log(`         missing: ${missing.join(', ')}`);
+  }
+  {
+    // Negative: the checker must NAME a deleted key, never pass silently.
+    const broken = structuredClone(ENEMY_TYPES.exploder);
+    delete broken.EXPLODE.RADIUS;
+    const named = missingExplodeKeys(broken);
+    assertTrue('section5', 'EXPLODE schema names a missing key (negative test)',
+      named.length === 1 && named[0] === 'EXPLODE.RADIUS');
+  }
+
   // SHIP gate: with the SHIP env var set, every DEBUG flag must be false.
   const truthyFlags = Object.entries(CONFIG.DEBUG || {})
     .filter(([, v]) => v)
@@ -2170,6 +2202,276 @@ try {
 } catch (err) {
   failures.push({ file: 'section20', err });
   console.log(`  FAIL   section 20 threw: ${err.message}`);
+}
+
+// ————— Section 21: the Exploder (pass 14) —————
+//
+// Three claims, deliberately kept apart (one probe, one claim):
+//   (a) blastDamage IS the two-band model it advertises — inclusive at both
+//       boundaries, zero for a type carrying no EXPLODE block;
+//   (b) the radius sits in the design window the registry promises: past the
+//       claw, inside the beeline. That window IS the pass — break either
+//       half and the archetype is a non-event or an unfair one;
+//   (c) the tell and the crippled-exploder freebie are REAL, driven through
+//       the live update loop rather than asserted from the registry.
+//
+// (c) is why the damage model lives in enemies.js as a pure export instead
+// of at its call site: main.js is DOM-coupled and unreachable from here, so
+// a model written there would be certified by nothing.
+
+console.log('');
+console.log('— Section 21: the Exploder (pass 14) —');
+try {
+  const THREE21 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const {
+    initEnemies: init21, spawnEnemy: spawn21, updateEnemies: upd21,
+    resetEnemies: reset21, getEnemyHittables: hittables21,
+    damageEnemy: damage21, partDamage: partDmg21, blastDamage: blast21,
+    CRAWL_POSE: POSE21,
+  } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES: T21 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES: W21 } =
+    await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { CONFIG: CFG21 } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  const X = T21.exploder.EXPLODE;
+
+  // — (a) the band model, exact —
+  assertNear('section21', 'blast at the epicentre = CORE_DAMAGE',
+    blast21(T21.exploder, 0), X.CORE_DAMAGE);
+  assertNear('section21', 'blast AT the core edge = CORE_DAMAGE (inclusive)',
+    blast21(T21.exploder, X.CORE_RADIUS), X.CORE_DAMAGE);
+  assertNear('section21', 'blast just past the core = DAMAGE',
+    blast21(T21.exploder, X.CORE_RADIUS + 1e-6), X.DAMAGE);
+  assertNear('section21', 'blast AT the outer edge = DAMAGE (inclusive)',
+    blast21(T21.exploder, X.RADIUS), X.DAMAGE);
+  assertNear('section21', 'blast past the outer edge = 0',
+    blast21(T21.exploder, X.RADIUS + 1e-6), 0);
+  // The two guards that make main.js's single call site safe BY CONSTRUCTION
+  // rather than by remembering to check.
+  assertNear('section21', 'a type with NO EXPLODE block never blasts (proto at 0 m)',
+    blast21(T21.proto_zombie, 0), 0);
+  assertNear('section21', 'blastDamage survives a missing type (undefined at 0 m)',
+    blast21(undefined, 0), 0);
+  // A sweep, so a future tune that inverts the bands (rim harder than core)
+  // fails here rather than in a play session.
+  let mono21 = true;
+  let prev21 = Infinity;
+  for (let d = 0; d <= X.RADIUS + 0.5; d += 0.01) {
+    const v = blast21(T21.exploder, d);
+    if (v > prev21 + 1e-9) mono21 = false;
+    prev21 = v;
+  }
+  assertTrue('section21',
+    'damage never RISES with distance (0 → RADIUS+0.5 sweep)', mono21);
+
+  // — (b) the design window —
+  // The exploder's threat is WHERE you kill it. That only works if BOTH
+  // halves hold: inside the claw's range the blast must be unavoidable, and
+  // there must always be a range at which killing it is free.
+  const gate21 = T21.exploder.STOP_DISTANCE + T21.exploder.ATTACK.RANGE_SLACK;
+  assertTrue('section21',
+    `blast reaches PAST the claw: RADIUS ${X.RADIUS} > attack gate ${gate21}`,
+    X.RADIUS > gate21);
+  assertTrue('section21',
+    `a safe kill range EXISTS: RADIUS ${X.RADIUS} <= NAV.BEELINE_DIST ${CFG21.NAV.BEELINE_DIST}`,
+    X.RADIUS <= CFG21.NAV.BEELINE_DIST);
+  assertTrue('section21',
+    `the core sits INSIDE the blast: CORE_RADIUS ${X.CORE_RADIUS} < RADIUS ${X.RADIUS}`,
+    X.CORE_RADIUS < X.RADIUS);
+  assertTrue('section21',
+    `the core BITES harder: CORE_DAMAGE ${X.CORE_DAMAGE} >= DAMAGE ${X.DAMAGE}`,
+    X.CORE_DAMAGE >= X.DAMAGE);
+  // The tell has to actually tick. The §5 schema only proves PULSE_HZ is
+  // FINITE, and 0 is finite — a 0 Hz throb passes the schema and ships a
+  // decorative constant.
+  assertTrue('section21',
+    `the tell actually ticks: PULSE_HZ ${X.PULSE_HZ} > 0`,
+    X.PULSE_HZ > 0);
+  // Survivable by construction: one blast must never erase a full-health
+  // player, or the tell is decoration and the lesson never gets taught.
+  assertTrue('section21',
+    `one blast cannot kill from full: CORE_DAMAGE ${X.CORE_DAMAGE} < PLAYER.MAX_HITS ${CFG21.PLAYER.MAX_HITS}`,
+    X.CORE_DAMAGE < CFG21.PLAYER.MAX_HITS);
+  // The particle pool is a hard ceiling, and the kill burst spends from it
+  // FIRST — spawnBurst degrades by spraying less, so an over-budget blast
+  // would silently shrink instead of failing loudly.
+  assertTrue('section21',
+    `blast fits the pool: PARTICLES ${X.PARTICLES} + KILL_PARTICLES ${CFG21.BLOOD.KILL_PARTICLES} <= MAX_PARTICLES ${CFG21.BLOOD.MAX_PARTICLES}`,
+    X.PARTICLES + CFG21.BLOOD.KILL_PARTICLES <= CFG21.BLOOD.MAX_PARTICLES);
+  // Reachable through the REAL table (the §19 rule): a registry entry no
+  // wave ever spawns is a dead letter that still passes every other pin.
+  const debut21 = W21.TABLE.findIndex((r) => (r.types?.exploder ?? 0) > 0);
+  assertTrue('section21',
+    `exploder is reachable through the real wave table (debuts wave ${debut21 + 1})`,
+    debut21 >= 0);
+  // EXTEND carries the LAST row forever, so the last row must still carry it
+  // — otherwise the archetype appears for exactly one wave and vanishes.
+  assertTrue('section21',
+    'the LAST table row carries the exploder, so EXTEND keeps it forever',
+    (W21.TABLE[W21.TABLE.length - 1].types?.exploder ?? 0) > 0);
+
+  // — (c) the tell and the freebie, driven through the LIVE loop —
+  let killed21 = [];
+  init21(new THREE21.Scene(), {
+    onPlayerHit: () => {},
+    onEnemyKilled: (id, pos) => killed21.push({ id, pos }),
+  });
+  const far21 = new THREE21.Vector3(0, 1.6, 200); // far away: no attacks
+
+  // The live eye COLOUR, found by identity and never by iteration order: the
+  // eyes are the only UNLIT material on a body (enemyBody.js builds them
+  // MeshBasicMaterial + fog:false so they punch through the murk), and both
+  // eyes share the one instance. Returns the Color, not the material — the
+  // first cut of this probe returned the material and read `.r` off it,
+  // which is undefined, so every comparison went NaN and the "stays on the
+  // segment" assert passed on zero real samples (NaN > 1e-6 is false). A
+  // probe that cannot fail certifies nothing; isFiniteColour below is the
+  // guard that would have caught it.
+  const eyeColourOf = (group) => {
+    const found = new Set();
+    group.traverse((c) => {
+      if (c.isMesh && c.material && c.material.isMeshBasicMaterial) found.add(c.material);
+    });
+    return found.size === 1 ? [...found][0].color : null;
+  };
+  const isFiniteColour = (c) => !!c
+    && Number.isFinite(c.r) && Number.isFinite(c.g) && Number.isFinite(c.b);
+
+  {
+    reset21();
+    const g = spawn21('exploder', { x: 0, z: -30 }, { yaw: 0 });
+    const col = eyeColourOf(g);
+    // Guard the probe itself twice over: if a body ever grows a second unlit
+    // material this returns null, and if the handle stops being a Color the
+    // channels stop being finite. Either way the throb test below would
+    // certify nothing, so both are named here rather than assumed.
+    assertTrue('section21', 'the exploder exposes exactly ONE unlit eye material',
+      col !== null);
+    assertTrue('section21', 'the eye handle is a real Color (finite r/g/b)',
+      isFiniteColour(col));
+
+    const base = new THREE21.Color(T21.exploder.COLORS.EYES);
+    const peak = new THREE21.Color(X.PULSE_COLOR);
+    // Parametric position along base→peak, read off the widest-spread
+    // channel. Both endpoints are built here exactly as enemies.js builds
+    // them, so any colour-management conversion cancels out.
+    const span = { r: peak.r - base.r, g: peak.g - base.g, b: peak.b - base.b };
+    const axis = ['r', 'g', 'b']
+      .reduce((a, c) => (Math.abs(span[c]) > Math.abs(span[a]) ? c : a), 'r');
+    const kOf = () => (col[axis] - base[axis]) / span[axis];
+
+    // PULSE_HZ is pinned > 0 above, but the sample budget is clamped anyway:
+    // 1000/0 is Infinity, and `ms < Infinity` is a loop that never ends. A
+    // suite that HANGS diagnoses nothing at all — strictly worse than one
+    // that fails, and it costs a session to work out why. Found by bite-test,
+    // which is exactly what bite-tests are for.
+    const periodMs = 1000 / X.PULSE_HZ;
+    const samples = Math.min(400, Math.ceil(periodMs / 4));
+    let kMin = Infinity;
+    let kMax = -Infinity;
+    let offSegment = 0;
+    for (let i = 0; i < samples; i += 1) {
+      upd21(4, far21);
+      const k = kOf();
+      kMin = Math.min(kMin, k);
+      kMax = Math.max(kMax, k);
+      // ON the segment: predict every channel from k and compare. The axis
+      // channel is exact by construction; the others are the real claim.
+      // A non-finite sample counts as a stray, so the NaN shape above can
+      // never pass this again.
+      for (const c of ['r', 'g', 'b']) {
+        const err = Math.abs(col[c] - (base[c] + span[c] * k));
+        if (!(err <= 1e-6)) offSegment += 1;
+      }
+    }
+    assertTrue('section21',
+      `the eyes throb: k spans ${kMin.toFixed(3)} → ${kMax.toFixed(3)} across one ${periodMs.toFixed(0)} ms period`,
+      kMin < 0.02 && kMax > 0.98);
+    assertTrue('section21',
+      `the throb stays ON the base→peak segment (${offSegment} stray samples)`,
+      offSegment === 0);
+  }
+
+  {
+    // The control that stops the throb test being vacuous: a type with no
+    // EXPLODE block must NOT tick. Without this, a pulse that fired on every
+    // zombie in the game would pass everything above.
+    reset21();
+    const g = spawn21('proto_zombie', { x: 0, z: -30 }, { yaw: 0 });
+    const col = eyeColourOf(g);
+    const before = col.getHex();
+    for (let ms = 0; ms < 1000; ms += 4) upd21(4, far21);
+    assertTrue('section21',
+      "a non-exploder's eyes are CONSTANT (the EXPLODE guard holds)",
+      col.getHex() === before);
+  }
+
+  {
+    // The freebie, measured by CONTROL DIFFERENCE rather than asserted. The
+    // roadmap claims leg-crippling an exploder yields a ticking crawler with
+    // no extra wiring; two runs, identical but for the cripple, say whether
+    // that is true of the code or only of the sentence.
+    //
+    // hpMult 50 is a HARNESS, as in §20: the leg hits that trigger the crawl
+    // also cost HP, and an HP-2 exploder would die long before its legs gave
+    // out. Shot counts are DERIVED from the registry, never guessed.
+    const shots = Math.ceil(T21.exploder.CRAWL.LEG_HP / partDmg21(T21.exploder, 'leg'));
+    const killWith = (part) => {
+      const m = hittables21().find((h) => h.userData.part === part);
+      for (let i = 0; i < 400 && killed21.length === 0; i += 1) damage21(m);
+    };
+
+    // Control: a STANDING exploder detonates at standing chest height.
+    reset21();
+    killed21 = [];
+    spawn21('exploder', { x: 0, z: -30 }, { yaw: 0, hpMult: 50 });
+    for (let ms = 0; ms < 200; ms += 16) upd21(16, far21);
+    killWith('head');
+    const standY = killed21[0]?.pos?.y ?? NaN;
+
+    // Treatment: cripple it through the REAL leg path first.
+    reset21();
+    killed21 = [];
+    const g = spawn21('exploder', { x: 0, z: -30 }, { yaw: 0, hpMult: 50 });
+    const leg = hittables21().find((m) => m.userData.part === 'leg');
+    for (let i = 0; i < shots; i += 1) damage21(leg);
+    // Past FALL_MS, so the collapse has finished and the drag has settled.
+    for (let ms = 0; ms < T21.exploder.CRAWL.FALL_MS + 400; ms += 16) upd21(16, far21);
+    assertNear('section21',
+      'a crippled exploder is genuinely PRONE (group pitch = CRAWL_POSE.PITCH)',
+      g.rotation.x, POSE21.PITCH);
+    // The tell survives the transition — checked BEFORE the kill, because a
+    // dying body stops ticking (the pulse lives on the alive path).
+    {
+      const col = eyeColourOf(g);
+      const seen = new Set();
+      for (let ms = 0; ms < 1000 / X.PULSE_HZ; ms += 4) {
+        upd21(4, far21);
+        seen.add(col.getHex());
+      }
+      assertTrue('section21',
+        `a PRONE exploder still ticks (${seen.size} distinct eye colours over one period)`,
+        seen.size > 10);
+    }
+    killWith('head');
+    assertTrue('section21',
+      `the crippled exploder still detonates AS an exploder (id '${killed21[0]?.id}')`,
+      killed21[0]?.id === 'exploder');
+    const proneY = killed21[0]?.pos?.y ?? NaN;
+    // The pass-12 eruption anchor is what makes this free: the blast rides
+    // the LIVE waist, so a legless exploder detonates at the floor instead
+    // of at the chest height of a body that isn't standing any more.
+    assertTrue('section21',
+      `and it detonates at its CORPSE, not standing height (prone ${proneY.toFixed(3)} m << standing ${standY.toFixed(3)} m)`,
+      proneY < standY - 0.5);
+  }
+
+  reset21(); // leave no bodies for a later section
+} catch (err) {
+  failures.push({ file: 'section21', err });
+  console.log(`  FAIL   section 21 threw: ${err.message}`);
 }
 
 // ————— Report —————

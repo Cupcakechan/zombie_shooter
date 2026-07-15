@@ -255,3 +255,61 @@ ENEMY_TYPES.brute = {
     CLOTH: 0x23262a,    // near-black bulk
   },
 };
+// The Exploder (pass 14): the positional puzzle — a zombie whose threat is
+// WHERE you kill it, not whether you can. Stat-only like the sprinter: no
+// scaleBody, so no new probe cycle (LESSONS #19); the read is the PULSE,
+// not the silhouette. Fires on ANY death — no headshot defuse, because
+// HITBOX.HEAD 3 one-shots HP 2 through the whole pre-ramp era, so a defuse
+// rule would hand every exploder to the exact skill the game already
+// trains (and would fight §18's one-shot guarantee). Distance is the
+// counterplay, and it is legible: see the EXPLODE.RADIUS note.
+ENEMY_TYPES.exploder = {
+  ...protoBase,
+  id: 'exploder',
+  HP: 2,                  // dies easily at range — that IS the design; the
+                          //   head still one-shots (HITBOX.HEAD 3 >= HP)
+  SCORE: { ...protoBase.SCORE, KILL: 175 }, // between the sprinter (150)
+                          //   and the brute (250) — a positional puzzle
+  WALK_SPEED: 1.1,        // waddles: slower than the Shambler, so killing
+                          //   it at a safe range is ALWAYS available — the
+                          //   punishment is for impatience, never for speed
+  EXPLODE: {              // OPTIONAL block — a type without it never blasts
+                          //   (blastDamage returns 0 on a missing block, and
+                          //   the pulse is guarded too). Same contract as
+                          //   CRAWL; the suite pins every field finite when
+                          //   the block IS present.
+    RADIUS: 3.5,          // m, measured in XZ like every other range here.
+                          //   Sits PAST the standing attack gate (2.5) and
+                          //   INSIDE NAV.BEELINE_DIST (4): if it can claw
+                          //   you it can blast you, and there is always a
+                          //   safe range to kill it from. Suite §21 pins
+                          //   both halves — that pair IS the design.
+    CORE_RADIUS: 1.8,     // m — about a body length; you must be nearly on it
+    DAMAGE: 1,            // hearts in the outer band
+    CORE_DAMAGE: 2,       // hearts in the core: 2 of PLAYER.MAX_HITS 5 —
+                          //   harsh, survivable, and memorable in one hit
+    PARTICLES: 30,        // blast fountain, ON TOP of the normal kill burst.
+                          //   BLOOD.MAX_PARTICLES 64 − KILL_PARTICLES 22
+                          //   leaves 42 of headroom, so this fits with room
+                          //   for a hit spray; spawnBurst degrades by
+                          //   spawning fewer when starved, never crashing.
+    PULSE_HZ: 2.2,        // eye throb, cycles/sec — THE tell. The eyes are
+                          //   the only fog-free material on the body
+                          //   (MeshBasicMaterial fog:false, enemyBody.js),
+                          //   so this is the one lever that reads through
+                          //   the Waves murk: body emissive is swallowed by
+                          //   FOG.WAVES.FAR 13, and group.scale already
+                          //   belongs to the squash spring.
+    PULSE_COLOR: 0xeaffc0, // the throb peak — pale acid. A SWELL, not a
+                          //   strobe: it lerps from COLORS.EYES and back.
+  },
+  COLORS: {
+    ...protoBase.COLORS,
+    SKIN: 0xa6b070,       // pale sallow — bloat reads PALE, exactly where
+                          //   the brute's mass reads dark
+    CLOTH: 0x4a5224,      // stained olive
+    EYES: 0x9dff2e,       // acid green — the one hue no other type uses
+                          //   (proto/crawler/brute amber, sprinter orange),
+                          //   so the tell is a colour AND a motion
+  },
+};

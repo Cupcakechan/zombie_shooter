@@ -269,7 +269,7 @@ export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null,
   // Graceful: a missing position falls back to back-centre rather than NaN.
   const at = pos || { x: 0, z: -28 };
 
-  const { group, parts, materials } = buildBody(type);
+  const { group, parts, materials, eyeMat } = buildBody(type);
   group.position.set(at.x, 0, at.z);
   // Spawn facing (4.3c): window entries materialize FACING the glass —
   // a spawn-time set, so no snap concern (turnToward owns yaw after).
@@ -332,6 +332,15 @@ export function spawnEnemy(typeId, pos, { speedMult = 1, holdMs = 0, yaw = null,
     squash: createSecondOrder(
       type.COMBAT.SQUASH_F ?? 5, type.COMBAT.SQUASH_ZETA ?? 0.4, 1, 0,
     ),
+    // The Exploder's tell (pass 14): the live eye material plus its two
+    // precomputed throb endpoints, so the per-frame lerp allocates nothing
+    // in the update path (the BLOOD/CASINGS pooling rule, applied to
+    // colour). All three are null for every other type — the pulse is
+    // guarded on the EXPLODE block AND on eyeMat, so a future body that
+    // somehow builds without eyes degrades to no tell, never a crash.
+    eyeMat: type.EXPLODE ? eyeMat : null,
+    eyeBase: type.EXPLODE ? new THREE.Color(type.COLORS.EYES) : null,
+    eyePulse: type.EXPLODE ? new THREE.Color(type.EXPLODE.PULSE_COLOR) : null,
   };
   // Emerging from the fog bank: start invisible; the update loop fades in.
   if (rec.spawnFadeT > 0) {
@@ -505,6 +514,28 @@ export function partDamage(type, part) {
   return HB?.TORSO ?? 1;
 }
 
+// The Exploder's blast as a PURE function of distance (pass 14) — the
+// damage model lives here, not at the call site, because main.js is
+// DOM-coupled and therefore suite-invisible; §21 drives this directly.
+//
+// Two BANDS, not a falloff curve. damagePlayer() takes integer hearts
+// against PLAYER.MAX_HITS 5 and does no rounding, so a continuous curve
+// would either render fractional hearts or quantize into bands the player
+// can neither see nor predict. Explicit bands are the honest form of the
+// same idea, and the core teaches "get out of the middle" in one hit.
+//
+// Both boundaries are INCLUSIVE (dist === CORE_RADIUS is core; dist ===
+// RADIUS still bites) — pinned exactly, so a future tune can't drift the
+// edges without saying so. Returns 0 for any type without an EXPLODE
+// block, which is what makes the single call site in main.js guarded BY
+// CONSTRUCTION rather than by remembering to check.
+export function blastDamage(type, dist) {
+  const E = type?.EXPLODE;
+  if (!E) return 0;
+  if (dist > E.RADIUS) return 0;
+  return dist <= E.CORE_RADIUS ? E.CORE_DAMAGE : E.DAMAGE;
+}
+
 // Returns null on a dead/unknown mesh; on a landed hit returns
 // { part, killed } — truthy, so old boolean-style callers keep working.
 export function damageEnemy(mesh) {
@@ -597,6 +628,25 @@ export function updateEnemies(dtMs, playerPos) {
     // — Alive —
     rec.t += dtMs;
     rec.cooldownT = Math.max(0, rec.cooldownT - dtMs);
+
+    // The Exploder's tell (pass 14): throb the eyes between COLORS.EYES and
+    // EXPLODE.PULSE_COLOR. This sits ABOVE every branch on purpose — an
+    // exploder ticks while it walks, while it vaults a window, through the
+    // collapse, and while it crawls. That last one is the whole
+    // crippled-exploder freebie: a legless exploder dragging itself at you
+    // is a live grenade, and it LOOKS like one without a line of extra
+    // wiring. (Dying bodies never reach here; the corpse's eyes simply hold
+    // their last value through the death fade.)
+    //
+    // Raised cosine off the ACCUMULATED rec.t, never a scaled elapsed time:
+    // that's the 7a.7 lesson — multiplying raw elapsed time by anything that
+    // moves sweeps the phase and produces a strobe. An integral can't jump.
+    // Nothing else writes eyeMat.color: setFlash skips the eyes (they have
+    // no .emissive), and the fades own opacity, not colour.
+    if (rec.eyeMat) {
+      const k = 0.5 - 0.5 * Math.cos((rec.t / 1000) * type.EXPLODE.PULSE_HZ * Math.PI * 2);
+      rec.eyeMat.color.copy(rec.eyeBase).lerp(rec.eyePulse, k);
+    }
 
     // Spawn fade-in: opacity tracks time since spawn. When done, transparency
     // switches OFF again — a permanently transparent body pays sort costs and

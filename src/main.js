@@ -31,7 +31,7 @@ import {
 import {
   initEnemies, spawnEnemy, resetEnemies, updateEnemies,
   getEnemyHittables, getLivingPositions, damageEnemy, setMapColliders,
-  setFlowField, getCongestedWindows,
+  setFlowField, getCongestedWindows, blastDamage,
 } from './render/enemies.js';
 import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
@@ -208,6 +208,44 @@ function ejectCasing() {
   spawnCasing(EJECT_PORT, getLook().yaw);
 }
 
+// The Exploder's blast (pass 14). Thin wiring on purpose: the damage model
+// is blastDamage() in enemies.js, where the suite can drive it — main.js is
+// DOM-coupled and never imported by test_suite.mjs.
+//
+// Fires on ANY death of a type carrying an EXPLODE block, including a
+// leg-crippled one: rec.type survives beginCrawl, so a crawling exploder is
+// still an exploder with no extra wiring. Two free interactions fall out of
+// startDeath's existing order, both worth knowing before tuning:
+//   • the anchor is the pass-12 eruption point (the LIVE waist), so a prone
+//     exploder detonates at its corpse rather than at standing chest height;
+//   • a climber shot off the sill is teleported back OUTSIDE before this
+//     callback runs, so killing an exploder mid-vault detonates it outside
+//     the wall. Shooting the free-hit window is already the right answer,
+//     and against this type it's also the SAFE one.
+//
+// Distance is XZ, like every other range in this project (the attack gate,
+// separation, the flow field). The anchor's y comes from last frame's
+// matrixWorld — fine for a fountain, and irrelevant here because y is not
+// in the test.
+//
+// Player only, deliberately. An AoE that damaged other zombies would bump
+// the kill counter through notifyKill() below while scoreKill() stayed back
+// in onHit with the part context — kills and score would visibly disagree
+// within one wave. That's a scoring decision, and it gets its own round.
+function detonate(typeId, pos) {
+  const type = ENEMY_TYPES[typeId];
+  const E = type?.EXPLODE;
+  if (!E) return; // every non-exploder death: inert, one property read
+  spawnBurst({ x: pos.x, y: pos.y ?? 1.1, z: pos.z }, null, E.PARTICLES);
+  const dmg = blastDamage(
+    type,
+    Math.hypot(camera.position.x - pos.x, camera.position.z - pos.z),
+  );
+  // handlePlayerHit owns the state/mode guard, the HUD, and the game-over
+  // check — the blast is just another source of hits.
+  if (dmg > 0) handlePlayerHit(dmg);
+}
+
 initEnemies(scene, {
   onPlayerHit: handlePlayerHit,
   onEnemyKilled: (typeId, pos) => {
@@ -218,6 +256,7 @@ initEnemies(scene, {
     if (pos) {
       spawnPool(pos.x, pos.z);
       spawnBurst({ x: pos.x, y: pos.y ?? 1.1, z: pos.z }, null, CONFIG.BLOOD.KILL_PARTICLES);
+      detonate(typeId, pos); // inert for every type without an EXPLODE block
     }
   },
 });
