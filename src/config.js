@@ -132,6 +132,45 @@ FOG: {
                           //   DECLINING the shot, never by stealing a glob
                           //   already in flight: recycling the oldest would
                           //   delete a hit the player had already dodged.
+                          //   already in flight: recycling the oldest would
+                          //   delete a hit the player had already dodged.
+  },
+  // — Blast FX (pass 14c): the Exploder's blast, drawn so the player can
+  //   READ it. SHAPE AND TIMING ONLY — every radius comes from the type's
+  //   EXPLODE block (render/blastFX.js), so the picture and the damage can
+  //   never disagree. Nothing here is a distance.
+  BLAST: {
+    MAX: 6,                 // hard pool cap. One blast lives 450 ms (below),
+                            //   so this covers 6 exploders dying inside half
+                            //   a second — well past any wave mix. Degrades
+                            //   by reclaiming the OLDEST, which is nearly
+                            //   faded: unlike a glob, a blast is a picture of
+                            //   damage already dealt, so nothing is lost.
+    FLASH_LIFE_MS: 120,     // the discharge. Named _LIFE_ because CONFIG
+                            //   already has a top-level FLASH_MS (the MUZZLE
+                            //   flash) and two FLASH_MS in one file is a
+                            //   grep away from an expensive mistake.
+    FLASH_RADIUS_MULT: 1.0, // flash radius = EXPLODE.CORE_RADIUS × this. At
+                            //   1.0 the flash IS the 2-heart band, so the FX
+                            //   teaches both bands and not just the outer
+                            //   one. Turn it down if 1.8 m of additive acid
+                            //   in the face reads as a bug rather than a hit.
+    RING_GROW_MS: 300,      // the shockwave's expansion. Its outer edge lands
+                            //   EXACTLY on EXPLODE.RADIUS at this instant —
+                            //   that arrival is the whole pass (suite §23).
+    RING_FADE_MS: 150,      // then it RESTS at full extent and fades from
+                            //   there. Fading while growing would dim it
+                            //   exactly when it was most worth reading.
+    RING_THICKNESS: 0.08,   // band width as a fraction of the current radius,
+                            //   so it thickens as it grows the way a real
+                            //   ripple does. The OUTER edge is the boundary.
+    RING_SEGMENTS: 48,      // enough that a 3.5 m circle reads as a circle
+    RING_Y: 0.03,           // above the floor (0), the grid helper (0.01) and
+                            //   the blood pools (0.02): no z-fighting with a
+                            //   stain the same corpse just made
+    BURST_SPEED: 5.0,       // m/s — the blast THROWS gore (BLOOD.PARTICLE_
+                            //   SPEED 2.2 is a bullet spatter; a detonation
+                            //   is not a spatter)
   },
 // — Casings (pass 8.4): ejected brass, pooled like BLOOD —
   CASINGS: {

@@ -37,13 +37,16 @@ export function initBloodFX(scene) {
   sceneRef = scene;
   const B = CONFIG.BLOOD;
 
-  // Burst particles: one shared geometry + one shared material for the whole
-  // pool (they vanish by scaling to zero, not by fading, so no transparency
-  // and no per-particle material cost).
+  // Burst particles: one shared geometry, and — since 14c — a material EACH.
+  // They still vanish by scaling to zero rather than fading, so this is not
+  // about transparency; it is about colour. The burst's colour became caller
+  // data when the Exploder started throwing acid instead of blood, and with a
+  // single shared material a blast would repaint every red droplet still in
+  // the air from the last kill, mid-flight. 64 MeshBasicMaterials over one
+  // shared geometry is a trivial cost for that not happening.
   const pGeo = new THREE.BoxGeometry(B.PARTICLE_SIZE, B.PARTICLE_SIZE, B.PARTICLE_SIZE);
-  const pMat = new THREE.MeshBasicMaterial({ color: B.COLOR });
   for (let i = 0; i < B.MAX_PARTICLES; i++) {
-    const mesh = new THREE.Mesh(pGeo, pMat);
+    const mesh = new THREE.Mesh(pGeo, new THREE.MeshBasicMaterial({ color: B.COLOR }));
     mesh.visible = false;
     scene.add(mesh);
     particles.push({ mesh, vx: 0, vy: 0, vz: 0, lifeT: 0, active: false });
@@ -70,9 +73,19 @@ export function initBloodFX(scene) {
 
 // Burst at a world point, sprayed away from the bullet's travel direction
 // (i.e. out of the "exit" side) with an upward bias, then gravity takes over.
-export function spawnBurst(point, rayDir, count) {
+//
+// `opts` (14c) is entirely optional and every field falls back to the pass-8.3
+// constants, so the existing three-argument call sites are unchanged BY
+// CONSTRUCTION rather than by anyone remembering to pass nothing:
+//   color  — hex; a blast throws its type's FX_COLOR, a bullet throws blood
+//   speed  — m/s; a detonation throws harder than a hit
+//   radial — true for a THROW (every direction at once) instead of a cone
+export function spawnBurst(point, rayDir, count, opts = {}) {
   if (!sceneRef) return;
   const B = CONFIG.BLOOD;
+  const color = opts.color ?? B.COLOR;
+  const s = opts.speed ?? B.PARTICLE_SPEED;
+  const radial = opts.radial ?? false;
   let spawned = 0;
   for (const p of particles) {
     if (spawned >= count) break;
@@ -82,13 +95,26 @@ export function spawnBurst(point, rayDir, count) {
     p.mesh.visible = true;
     p.mesh.position.copy(point);
     p.mesh.scale.setScalar(1);
-    // Random cone around the reversed ray direction; rayDir may be absent
-    // (defensive) — then the spray is a plain upward fountain.
-    const back = rayDir ? { x: -rayDir.x, y: -rayDir.y, z: -rayDir.z } : { x: 0, y: 0, z: 0 };
-    const s = B.PARTICLE_SPEED;
-    p.vx = (back.x * 0.6 + (Math.random() - 0.5)) * s;
-    p.vy = (back.y * 0.3 + 0.5 + Math.random() * 0.7) * s; // upward bias
-    p.vz = (back.z * 0.6 + (Math.random() - 0.5)) * s;
+    p.mesh.material.color.setHex(color);
+    if (radial) {
+      // A detonation has no exit side — it throws in every direction at once.
+      // Uniform sphere directions (the y-then-ring construction, which is the
+      // one that doesn't bunch at the poles), biased upward so nothing is
+      // fired straight into the floor it would stop against on frame one.
+      const theta = Math.random() * Math.PI * 2;
+      const y = Math.random() * 2 - 1;
+      const r = Math.sqrt(Math.max(0, 1 - y * y)); // max(0,…): float noise at |y| = 1
+      p.vx = Math.cos(theta) * r * s;
+      p.vy = (y * 0.5 + 0.6) * s; // 0.1…1.1 × s — always some lift, never a face-plant
+      p.vz = Math.sin(theta) * r * s;
+    } else {
+      // Random cone around the reversed ray direction; rayDir may be absent
+      // (defensive) — then the spray is a plain upward fountain.
+      const back = rayDir ? { x: -rayDir.x, y: -rayDir.y, z: -rayDir.z } : { x: 0, y: 0, z: 0 };
+      p.vx = (back.x * 0.6 + (Math.random() - 0.5)) * s;
+      p.vy = (back.y * 0.3 + 0.5 + Math.random() * 0.7) * s; // upward bias
+      p.vz = (back.z * 0.6 + (Math.random() - 0.5)) * s;
+    }
     spawned++;
   }
   // Pool exhausted mid-frenzy: the oldest bursts are already near-invisible,

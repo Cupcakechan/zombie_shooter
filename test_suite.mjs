@@ -79,7 +79,12 @@ function walk(dir) {
 const EXCLUDE = new Set([join('src', 'main.js')]);
 // Guard-the-guard: exactly this many modules exist today. Raise it when a
 // module is added; a drop below means a module silently went missing.
-const MIN_EXPECTED_MODULES = 28;
+//
+// This sat at 28 from pass 14 until 14c while the walker found 29 — pass 15
+// added projectiles.js and never raised the floor, so for two passes the
+// guard would have shrugged at that module disappearing entirely. A floor
+// that lags the truth is not a floor. 30 = 31 files under src/ minus main.js.
+const MIN_EXPECTED_MODULES = 30;
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -377,6 +382,11 @@ try {
     'BLOOD.POOL_FADE_MS': 'number', 'BLOOD.COLOR': 'number',
     'BLOOD.POOL_COLOR': 'number', 'BLOOD.MAX_PARTICLES': 'number',
     'BLOOD.MAX_POOLS': 'number',
+    'BLAST.MAX': 'number', 'BLAST.FLASH_LIFE_MS': 'number',
+    'BLAST.FLASH_RADIUS_MULT': 'number', 'BLAST.RING_GROW_MS': 'number',
+    'BLAST.RING_FADE_MS': 'number', 'BLAST.RING_THICKNESS': 'number',
+    'BLAST.RING_SEGMENTS': 'number', 'BLAST.RING_Y': 'number',
+    'BLAST.BURST_SPEED': 'number',
     'CASINGS.SIZE': 'number', 'CASINGS.COLOR': 'number',
     'CASINGS.PORT_UP': 'number', 'CASINGS.PORT_FWD': 'number',
     'CASINGS.EJECT_SPEED': 'number', 'CASINGS.EJECT_UP': 'number',
@@ -2731,6 +2741,240 @@ try {
 } catch (err) {
   failures.push({ file: 'section22', err });
   console.log(`  FAIL   section 22 threw: ${err.message}`);
+}
+
+// ————— Section 23: the blast FX (pass 14c) —————
+//
+// This section exists because most of 14c is render-path and therefore
+// invisible to a headless suite — which is exactly the condition under which
+// a pass ships a lie. What CAN be certified here is the only claim that
+// matters: the picture agrees with the damage.
+//
+// Three claims:
+//   (a) the curves land where they say — the ring's outer edge arrives on the
+//       radius EXACTLY and then HOLDS, both opacities fall to exactly 0, and
+//       neither divides by zero;
+//   (b) the picture IS the model — the ring's rendered radius is measured
+//       against blastDamage() itself rather than against a shared constant,
+//       so a duplicated 3.5 that drifted out of agreement fails HERE;
+//   (c) the guards hold — a type with no EXPLODE block draws nothing, and a
+//       blast never leaks a pool slot.
+//
+// (b) is driven through the LIVE pool and read off the rendered geometry
+// (mesh.scale), not off the pure function that should produce it: a probe
+// that checks the maths while the mesh does something else certifies nothing.
+
+console.log('');
+console.log('— Section 23: the blast FX (pass 14c) —');
+try {
+  const THREE23 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const {
+    ringRadius, ringOpacity, flashOpacity, blastLifeMs,
+    initBlastFX: init23, spawnBlast: blast23,
+    updateBlastFX: upd23, resetBlastFX: reset23,
+  } = await import(pathToFileURL(join('src', 'render', 'blastFX.js')).href);
+  const { blastDamage: dmg23 } =
+    await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES: T23 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { CONFIG: CFG23 } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  const BL = CFG23.BLAST;
+  const X23 = T23.exploder.EXPLODE;
+
+  // — (a) the curves —
+  // Bit-exact, not near-enough: === rather than assertNear, because "lands on
+  // the radius EXACTLY" is the claim the ease-out-quad was chosen for. A
+  // tolerance here would pass the sine curve this deliberately isn't.
+  assertTrue('section23',
+    `the ring starts at nothing: ringRadius(0) = ${ringRadius(0, BL.RING_GROW_MS, X23.RADIUS)}`,
+    ringRadius(0, BL.RING_GROW_MS, X23.RADIUS) === 0);
+  assertTrue('section23',
+    `the ring lands on the radius EXACTLY at RING_GROW_MS (${ringRadius(BL.RING_GROW_MS, BL.RING_GROW_MS, X23.RADIUS)} === ${X23.RADIUS})`,
+    ringRadius(BL.RING_GROW_MS, BL.RING_GROW_MS, X23.RADIUS) === X23.RADIUS);
+  // The HOLD. Without it the exact arrival would be unreachable in a browser:
+  // frames land where they land, and a 16.7 ms step jumps 296 → 312 without
+  // ever sampling 300. The clamp is what makes the arrival frame-rate-
+  // independent rather than a lucky sample.
+  assertTrue('section23',
+    'the ring HOLDS at full extent past RING_GROW_MS (the teaching frame is the one that rests)',
+    ringRadius(BL.RING_GROW_MS * 2, BL.RING_GROW_MS, X23.RADIUS) === X23.RADIUS
+    && ringRadius(BL.RING_GROW_MS + 1e-6, BL.RING_GROW_MS, X23.RADIUS) === X23.RADIUS);
+  // Fixed loop bound — deliberately NOT derived from the value under test,
+  // which is how a bite that feeds a probe zero turns into a suite hang
+  // (LESSONS 2026-07-15).
+  let mono23 = true;
+  let prevR23 = -Infinity;
+  for (let ms = 0; ms <= 600; ms += 2) {
+    const r = ringRadius(ms, BL.RING_GROW_MS, X23.RADIUS);
+    if (r < prevR23 - 1e-9) mono23 = false;
+    prevR23 = r;
+  }
+  assertTrue('section23',
+    'the ring never SHRINKS across a 0 → 600 ms sweep', mono23);
+  // "Full bright WHILE growing" has to be sampled while it is growing. The
+  // first version of this pin only checked t === RING_GROW_MS — the one
+  // instant the growth branch doesn't own (t < growMs is false at 300) — so a
+  // ring that faded the entire way down to the radius passed it. Caught by
+  // 14c's bite harness. Sweep the interval the claim is actually about.
+  let solid23 = true;
+  for (let ms = 0; ms < BL.RING_GROW_MS; ms += 5) {
+    if (ringOpacity(ms, BL.RING_GROW_MS, BL.RING_FADE_MS) !== 1) solid23 = false;
+  }
+  assertTrue('section23',
+    'the ring is FULL BRIGHT for the WHOLE expansion (it fades from rest, not while growing)',
+    solid23);
+  assertTrue('section23',
+    'and it is still full bright at the instant it lands',
+    ringOpacity(BL.RING_GROW_MS, BL.RING_GROW_MS, BL.RING_FADE_MS) === 1);
+  assertTrue('section23',
+    'the ring reaches exactly 0 opacity at GROW + FADE',
+    ringOpacity(BL.RING_GROW_MS + BL.RING_FADE_MS, BL.RING_GROW_MS, BL.RING_FADE_MS) === 0);
+  assertTrue('section23',
+    `the flash starts full and ends at exactly 0 (${flashOpacity(0, BL.FLASH_LIFE_MS)} → ${flashOpacity(BL.FLASH_LIFE_MS, BL.FLASH_LIFE_MS)})`,
+    flashOpacity(0, BL.FLASH_LIFE_MS) === 1
+    && flashOpacity(BL.FLASH_LIFE_MS, BL.FLASH_LIFE_MS) === 0);
+  let monoF23 = true;
+  let prevF23 = Infinity;
+  for (let ms = 0; ms <= 300; ms += 2) {
+    const o = flashOpacity(ms, BL.FLASH_LIFE_MS);
+    if (o > prevF23 + 1e-9) monoF23 = false;
+    prevF23 = o;
+  }
+  assertTrue('section23', 'the flash never brightens once lit (0 → 300 ms sweep)', monoF23);
+  // The /0 guards. Number.isFinite, never assertNear — NaN slips through a
+  // tolerance comparison silently (LESSONS 2026-07-15), which is the exact
+  // shape of the NaN-light bug that started section 5.
+  assertTrue('section23',
+    'ringRadius survives a zero growth time (no NaN into mesh.scale)',
+    Number.isFinite(ringRadius(0, 0, X23.RADIUS)));
+  // The sample matters more than the assert. t = growMs + 1 with fadeMs = 0
+  // divides to Infinity, and Infinity >= 1 is TRUE, so the fade branch
+  // returns a clean 0 and an unguarded function passes. The NaN only appears
+  // at t === growMs exactly, where the division is 0/0 — and NaN >= 1 is
+  // false, so it falls through to `1 - NaN`. Bite-caught; pin both.
+  assertTrue('section23',
+    'ringOpacity survives a zero fade time AT the boundary (0/0, the sample that actually NaNs)',
+    Number.isFinite(ringOpacity(BL.RING_GROW_MS, BL.RING_GROW_MS, 0)));
+  assertTrue('section23',
+    'ringOpacity survives a zero fade time past the boundary (x/0)',
+    Number.isFinite(ringOpacity(BL.RING_GROW_MS + 1, BL.RING_GROW_MS, 0)));
+  assertTrue('section23',
+    'flashOpacity survives a zero flash time',
+    Number.isFinite(flashOpacity(0, 0)));
+  assertTrue('section23',
+    'the ring outlives the flash, so blastLifeMs is the ring clock',
+    blastLifeMs(BL.FLASH_LIFE_MS, BL.RING_GROW_MS, BL.RING_FADE_MS)
+      === BL.RING_GROW_MS + BL.RING_FADE_MS);
+
+  // — the shape config has to hold for the picture to BE a picture —
+  assertTrue('section23',
+    `the flash is a POP inside the ring's sweep: FLASH_LIFE_MS ${BL.FLASH_LIFE_MS} < RING_GROW_MS ${BL.RING_GROW_MS}`,
+    BL.FLASH_LIFE_MS < BL.RING_GROW_MS);
+  assertTrue('section23',
+    `the ring is an ANNULUS: 0 < RING_THICKNESS ${BL.RING_THICKNESS} < 1 (1 would be a filled disc, 0 invisible)`,
+    BL.RING_THICKNESS > 0 && BL.RING_THICKNESS < 1);
+  assertTrue('section23',
+    `the ring clears the blood pools it lands among: RING_Y ${BL.RING_Y} > 0.02`,
+    BL.RING_Y > 0.02);
+  assertTrue('section23',
+    `the ring is round: RING_SEGMENTS ${BL.RING_SEGMENTS} >= 3`, BL.RING_SEGMENTS >= 3);
+  assertTrue('section23', `the blast pool is non-empty (MAX ${BL.MAX})`, BL.MAX > 0);
+  assertTrue('section23',
+    `a blast THROWS harder than a bullet spatters: BURST_SPEED ${BL.BURST_SPEED} > BLOOD.PARTICLE_SPEED ${CFG23.BLOOD.PARTICLE_SPEED}`,
+    BL.BURST_SPEED > CFG23.BLOOD.PARTICLE_SPEED);
+
+  // — (b) the picture IS the model, driven through the live pool —
+  init23(new THREE23.Scene());
+  {
+    reset23();
+    const b = blast23({ x: 0, y: 1.163, z: -30 }, X23);
+    assertTrue('section23', 'a blast with a real EXPLODE block takes a pool slot', !!b);
+
+    // Ragged 16.67 ms frames — the browser's steps, not a divisor of
+    // RING_GROW_MS. If the exact arrival depended on landing a sample on 300
+    // it would fail here, which is the whole point of testing it this way.
+    let landed = -1;
+    for (let f = 0; f < 24; f += 1) {
+      upd23(16.67);
+      if (b.ring.scale.x === X23.RADIUS && landed < 0) landed = f;
+    }
+    assertTrue('section23',
+      `the RENDERED ring reaches exactly EXPLODE.RADIUS on ragged frames (frame ${landed})`,
+      landed >= 0);
+
+    // THE pin of the pass. The ring's rendered edge is measured against
+    // blastDamage() itself: everything the ring encloses bites, and a
+    // hair outside it does not. A hand-copied radius that drifted from the
+    // registry fails right here rather than in a play session.
+    const edge = X23.RADIUS;
+    assertTrue('section23',
+      'everything the ring encloses BITES (blastDamage at the drawn edge > 0)',
+      dmg23(T23.exploder, edge) > 0);
+    assertTrue('section23',
+      'and a hair outside the drawn edge is SAFE (the ring is the boundary, not a suggestion)',
+      dmg23(T23.exploder, edge + 1e-6) === 0);
+  }
+  {
+    // The control that stops the arrival test being vacuous: half way through
+    // the growth the ring must be visibly SHORT of the radius. Without this a
+    // ring that snapped to full size on frame one would pass everything above.
+    reset23();
+    const b = blast23({ x: 0, y: 1.163, z: -30 }, X23);
+    upd23(BL.RING_GROW_MS / 2);
+    assertTrue('section23',
+      `the ring is still SHORT at half time (${b.ring.scale.x.toFixed(3)} < ${X23.RADIUS})`,
+      b.ring.scale.x < X23.RADIUS);
+    assertTrue('section23',
+      'the ring is drawn in the registry\'s FX_COLOR, not a constant of its own',
+      b.ring.material.color.getHex() === X23.FX_COLOR);
+    assertTrue('section23',
+      `the flash tracks the CORE band: scale ${b.flash.scale.x} === CORE_RADIUS ${X23.CORE_RADIUS} × MULT ${BL.FLASH_RADIUS_MULT}`,
+      b.flash.scale.x === X23.CORE_RADIUS * BL.FLASH_RADIUS_MULT);
+  }
+  {
+    // — (c) the guards —
+    reset23();
+    assertTrue('section23',
+      'a type with NO EXPLODE block draws nothing (proto)',
+      blast23({ x: 0, y: 1, z: 0 }, T23.proto_zombie.EXPLODE) === null);
+    assertTrue('section23',
+      'spawnBlast survives a missing block entirely (undefined)',
+      blast23({ x: 0, y: 1, z: 0 }, undefined) === null);
+  }
+  {
+    // No leaked slots: a finished blast must hide itself and free its seat, or
+    // MAX blasts into a round the effect silently stops appearing.
+    reset23();
+    const b = blast23({ x: 0, y: 1.163, z: -30 }, X23);
+    const life = blastLifeMs(BL.FLASH_LIFE_MS, BL.RING_GROW_MS, BL.RING_FADE_MS);
+    for (let ms = 0; ms <= life + 32; ms += 16) upd23(16);
+    assertTrue('section23',
+      'a spent blast retires: both meshes hidden, slot freed',
+      b.active === false && b.ring.visible === false && b.flash.visible === false);
+    // And the flash is gone long before that — it must not sit at opacity 0
+    // still drawing for the ring's whole life.
+    reset23();
+    const b2 = blast23({ x: 0, y: 1.163, z: -30 }, X23);
+    upd23(BL.FLASH_LIFE_MS + 1);
+    assertTrue('section23',
+      'the flash hides itself the instant it is spent, while the ring plays on',
+      b2.flash.visible === false && b2.ring.visible === true);
+  }
+  {
+    reset23();
+    const b = blast23({ x: 0, y: 1.163, z: -30 }, X23);
+    upd23(16);
+    reset23();
+    assertTrue('section23',
+      'resetBlastFX clears a blast mid-expansion (it belongs to the round that made it)',
+      b.active === false && b.ring.visible === false);
+  }
+
+  reset23();
+} catch (err) {
+  failures.push({ file: 'section23', err });
+  console.log(`  FAIL   section 23 threw: ${err.message}`);
 }
 
 // ————— Report —————

@@ -302,6 +302,15 @@ ENEMY_TYPES.exploder = {
                           //   belongs to the squash spring.
     PULSE_COLOR: 0xeaffc0, // the throb peak — pale acid. A SWELL, not a
                           //   strobe: it lerps from COLORS.EYES and back.
+                          FX_COLOR: 0x9dff30,   // the blast itself (14c): saturated acid, one hue
+                          //   for the flash, the shockwave ring AND the gore
+                          //   throw, so the whole event reads as one thing.
+                          //   Lives HERE and not in CONFIG.BLAST for the same
+                          //   reason RANGED.COLOR does: a shared constant
+                          //   would force every future exploding type to burst
+                          //   in this one's colour. Distinct from PULSE_COLOR
+                          //   on purpose — the tell is a PALE swell against
+                          //   the eyes, the payoff is a saturated discharge.
   },
   COLORS: {
     ...protoBase.COLORS,

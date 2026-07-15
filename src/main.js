@@ -40,6 +40,9 @@ import {
   initProjectiles, spawnGlob, updateProjectiles, resetProjectiles,
 } from './render/projectiles.js';
 import {
+  initBlastFX, spawnBlast, updateBlastFX, resetBlastFX,
+} from './render/blastFX.js';
+import {
   initCasings, spawnCasing, updateCasings, resetCasings,
 } from './render/casings.js';
 import {
@@ -184,6 +187,9 @@ initCasings(scene);
 // owns the hearts, the vignette, the splatter, the shake, and the game-over
 // check, so a spit inherits every bit of that feedback for free.
 initProjectiles(scene, { onPlayerHit: handlePlayerHit });
+// Pure decoration — no callback, because a blast's damage is already resolved
+// by detonate() the same frame it fires. This module only draws.
+initBlastFX(scene);
 
 // — Reload wiring (pass 9): one entry point so R and the empty click behave
 // identically; startReload() itself refuses full-mag and mid-reload calls.
@@ -243,7 +249,17 @@ function detonate(typeId, pos) {
   const type = ENEMY_TYPES[typeId];
   const E = type?.EXPLODE;
   if (!E) return; // every non-exploder death: inert, one property read
-  spawnBurst({ x: pos.x, y: pos.y ?? 1.1, z: pos.z }, null, E.PARTICLES);
+  const at = { x: pos.x, y: pos.y ?? 1.1, z: pos.z };
+  // 14c: the same anchor now feeds three things that read as ONE event — an
+  // acid gore THROW (radial, no exit side), a flash sized to the core band,
+  // and a ground ring that lands on EXPLODE.RADIUS. The dimensions all come
+  // from E, so tuning the registry moves the picture too.
+  spawnBurst(at, null, E.PARTICLES, {
+    color: E.FX_COLOR,
+    speed: CONFIG.BLAST.BURST_SPEED,
+    radial: true,
+  });
+  spawnBlast(at, E);
   const dmg = blastDamage(
     type,
     Math.hypot(camera.position.x - pos.x, camera.position.z - pos.z),
@@ -454,6 +470,7 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetScoring();
     resetEnemies();
     resetBloodFX(); // stains and droplets belong to the round that made them
+    resetBlastFX(); // ...and so does a shockwave mid-expansion
     resetCasings();
     resetProjectiles(); // a glob in flight must not outlive its round
     resetAmmo();
@@ -637,6 +654,7 @@ renderer.setAnimationLoop(() => {
     }
     updateEnemies(dtMs, camera.position);
     updateBloodFX(dtMs);
+    updateBlastFX(dtMs);
     updateCasings(dtMs);
     // The camera IS the player column's top — see projectiles.js for why
     // that's the honest reading rather than a PLAYER.HEIGHT constant.
