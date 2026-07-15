@@ -597,6 +597,36 @@ try {
       named.length === 1 && named[0] === 'EXPLODE.RADIUS');
   }
 
+  // RANGED block schema (pass 15): OPTIONAL, the third of the same family
+  // (CRAWL, EXPLODE, RANGED). Present-and-half-filled is the silent-NaN
+  // class one more time, and this one is especially quiet: a NaN GLOB_SPEED
+  // divides into a NaN flight time, arcVelocity returns a NaN velocity, and
+  // the glob is spawned at NaN — invisible, harmless, and reported nowhere.
+  const RANGED_REQUIRED = [
+    'GLOB_SPEED', 'GRAVITY', 'GLOB_RADIUS', 'DAMAGE', 'LIFE_MS', 'COLOR',
+  ];
+  const missingRangedKeys = (type) => (!type.RANGED ? [] : RANGED_REQUIRED
+    .filter((fp) => {
+      const v = resolvePath(type.RANGED, fp);
+      return typeof v !== 'number' || !Number.isFinite(v);
+    })
+    .map((fp) => `RANGED.${fp}`));
+  for (const [typeId, type] of Object.entries(ENEMY_TYPES)) {
+    const missing = missingRangedKeys(type);
+    assertTrue('section5',
+      `${typeId}: RANGED schema ${type.RANGED ? `complete (${RANGED_REQUIRED.length} keys)` : 'absent — allowed'}`,
+      missing.length === 0);
+    if (missing.length) console.log(`         missing: ${missing.join(', ')}`);
+  }
+  {
+    // Negative: the checker must NAME a deleted key, never pass silently.
+    const broken = structuredClone(ENEMY_TYPES.spitter);
+    delete broken.RANGED.GLOB_SPEED;
+    const named = missingRangedKeys(broken);
+    assertTrue('section5', 'RANGED schema names a missing key (negative test)',
+      named.length === 1 && named[0] === 'RANGED.GLOB_SPEED');
+  }
+
   // SHIP gate: with the SHIP env var set, every DEBUG flag must be false.
   const truthyFlags = Object.entries(CONFIG.DEBUG || {})
     .filter(([, v]) => v)
@@ -2472,6 +2502,235 @@ try {
 } catch (err) {
   failures.push({ file: 'section21', err });
   console.log(`  FAIL   section 21 threw: ${err.message}`);
+}
+
+// ————— Section 22: the Spitter (pass 15) —————
+//
+// Three claims:
+//   (a) the arc math puts the glob WHERE IT AIMED — integrated through the
+//       same Euler step the game runs, not the closed form it doesn't;
+//   (b) the design window: it never closes, it isn't invisible, its own
+//       safety cap can't eat its shot, and a MOVING player cannot be hit —
+//       that last one IS the archetype, written as a number;
+//   (c) the hook fires for RANGED types and only RANGED types, and legging
+//       one genuinely disarms it.
+
+console.log('');
+console.log('— Section 22: the Spitter (pass 15) —');
+try {
+  const THREE22 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const {
+    arcVelocity, flightMsFor, initProjectiles: initP22,
+    spawnGlob: glob22, updateProjectiles: updP22, resetProjectiles: resetP22,
+  } = await import(pathToFileURL(join('src', 'render', 'projectiles.js')).href);
+  const {
+    initEnemies: init22, spawnEnemy: spawn22, updateEnemies: upd22,
+    resetEnemies: reset22, getEnemyHittables: hit22,
+    damageEnemy: dmg22, partDamage: part22, setMapColliders: setCol22,
+  } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+
+  // Section 20 sets a wall collider and never clears it — and mapColliders
+  // is MODULE state, so every later section inherits it. §20's wall spans
+  // z ∈ [0, 0.6], which is exactly where this section's player stands, so
+  // every attack here whiffed on a silently-failed LOS check: the spitter
+  // fired nothing AND the shambler control clawed nothing, which is what
+  // gave the leak away — untouched code doesn't break for a new enemy.
+  // A section that spawns enemies has to own its own world.
+  setCol22([]);
+  const { ENEMY_TYPES: T22 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES: W22 } =
+    await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { typeAssignments: assign22, waveSpec: spec22 } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { CONFIG: C22 } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  const S = T22.spitter;
+  const R = S.RANGED;
+
+  // — (a) the arc math —
+  // Integrate the launch velocity through the SAME semi-implicit Euler step
+  // updateProjectiles runs. Pinning the closed form would certify physics
+  // the game never executes: Euler on a constant acceleration accumulates a
+  // known offset, and the honest pin is that the offset stays inside its
+  // derived bound rather than that it doesn't exist.
+  const integrate = (from, to, flightMs, gravity, dtMs) => {
+    const v = arcVelocity(from, to, flightMs, gravity);
+    const p = { x: from.x, y: from.y, z: from.z };
+    let vy = v.vy;
+    const dt = dtMs / 1000;
+    const n = Math.round(flightMs / dtMs);
+    for (let i = 0; i < n; i += 1) {
+      vy -= gravity * dt;
+      p.x += v.vx * dt; p.y += vy * dt; p.z += v.vz * dt;
+    }
+    return p;
+  };
+  const from22 = { x: 0, y: 1.5, z: -S.STOP_DISTANCE };
+  const to22 = { x: 0, y: 1.7, z: 0 };
+  const fm22 = flightMsFor(from22, to22, R.GLOB_SPEED);
+  const land = integrate(from22, to22, fm22, R.GRAVITY, 16);
+  // XZ carries no acceleration, so Euler is exact there — but the FLIGHT
+  // truncates to a whole number of ticks, so the glob stops up to one
+  // tick's travel short of its aim. The first cut of this pin demanded
+  // exactness and failed by 4 cm: a 1125 ms flight is 70.3 ticks of 16 ms,
+  // and the missing 0.3 of a tick at 8 m/s IS 4 cm. The probe was wrong,
+  // not the arc — so the pin is now the bound that actually holds.
+  const errXZ = Math.hypot(land.x - to22.x, land.z - to22.z);
+  const tickTravel = R.GLOB_SPEED * 0.016;
+  assertTrue('section22',
+    `XZ lands within one tick's travel (${errXZ.toFixed(3)} m, one tick = ${tickTravel.toFixed(3)} m)`,
+    errXZ <= tickTravel);
+  // Y drifts by semi-implicit Euler's ½·g·T·dt. That drop is REAL — the
+  // glob lands slightly LOW, which the floor-to-camera hit cylinder
+  // absorbs. Pinned to the derived bound so a future dt or gravity change
+  // can't quietly widen it into a miss.
+  const bound = 0.5 * R.GRAVITY * (fm22 / 1000) * 0.016;
+  const errY = Math.abs(land.y - to22.y);
+  assertTrue('section22',
+    `the glob arrives in Y within Euler's own drift (${errY.toFixed(3)} m, bound ${bound.toFixed(3)})`,
+    errY <= bound + 1e-9);
+  // And the claim the GAME cares about, which neither of the above is on
+  // its own: the accumulated miss has to stay inside what the hit cylinder
+  // can absorb, or a dead-on shot at a standing player sails past them.
+  const err3 = Math.hypot(land.x - to22.x, land.y - to22.y, land.z - to22.z);
+  const hitR22 = R.GLOB_RADIUS + C22.PLAYER.BODY_RADIUS;
+  assertTrue('section22',
+    `a dead-on shot lands INSIDE the hit cylinder (${err3.toFixed(3)} m vs a ${hitR22.toFixed(2)} m radius)`,
+    err3 < hitR22);
+
+  // Both /0 guards: a zero flight time and a zero speed must degrade, not
+  // fling a glob to Infinity.
+  assertNear('section22', 'arcVelocity survives a zero flight time (no /0)',
+    arcVelocity({ x: 0, y: 0, z: 0 }, { x: 5, y: 0, z: 0 }, 0, 9).vx, 0);
+  assertNear('section22', 'flightMsFor survives a zero glob speed (no /0)',
+    flightMsFor({ x: 0, z: 0 }, { x: 5, z: 0 }, 0), 0);
+
+  // — (b) the design window —
+  assertTrue('section22',
+    `it never beelines: STOP_DISTANCE ${S.STOP_DISTANCE} > NAV.BEELINE_DIST ${C22.NAV.BEELINE_DIST}`,
+    S.STOP_DISTANCE > C22.NAV.BEELINE_DIST);
+  const meleeStops = Object.values(T22).filter((t) => !t.RANGED).map((t) => t.STOP_DISTANCE);
+  assertTrue('section22',
+    `it outranges every melee type (max melee stop ${Math.max(...meleeStops)})`,
+    S.STOP_DISTANCE > Math.max(...meleeStops));
+  // NOT an invisible attacker: parked past the fog's FAR plane it becomes a
+  // thing that shells you from a grey wall you can't shoot back at.
+  assertTrue('section22',
+    `visible at its post: STOP_DISTANCE ${S.STOP_DISTANCE} < FOG.WAVES.FAR ${C22.FOG.WAVES.FAR}`,
+    S.STOP_DISTANCE < C22.FOG.WAVES.FAR);
+  // Its own safety cap must not retire the glob MID-FLIGHT.
+  const flightAtPost = (S.STOP_DISTANCE / R.GLOB_SPEED) * 1000;
+  assertTrue('section22',
+    `LIFE_MS ${R.LIFE_MS} outlasts the flight from its post (${flightAtPost.toFixed(0)} ms)`,
+    R.LIFE_MS > flightAtPost);
+  // The archetype as a number: a player who MOVES cannot be hit.
+  const dodge = C22.PLAYER.MOVE_SPEED * (flightAtPost / 1000);
+  const hitR = R.GLOB_RADIUS + C22.PLAYER.BODY_RADIUS;
+  assertTrue('section22',
+    `a moving player clears the glob: ${dodge.toFixed(2)} m travelled vs a ${hitR.toFixed(2)} m hit radius`,
+    dodge > hitR * 3);
+  assertTrue('section22', `the glob pool is non-empty (MAX ${C22.PROJECTILES.MAX})`,
+    C22.PROJECTILES.MAX > 0);
+  const debut = W22.TABLE.findIndex((r) => (r.types?.spitter ?? 0) > 0);
+  assertTrue('section22',
+    `spitter is reachable through the real wave table (debuts wave ${debut + 1})`,
+    debut >= 0);
+  assertTrue('section22',
+    'the LAST table row carries the spitter, so EXTEND keeps it forever',
+    (W22.TABLE[W22.TABLE.length - 1].types?.spitter ?? 0) > 0);
+  // The share must actually SURVIVE largest-remainder rounding. A share
+  // under 1/count floors to zero and the debut silently never happens —
+  // every other pin here would still be green.
+  {
+    const sp = spec22(debut + 1);
+    const got = assign22(sp.count, sp.types, () => 0.5).filter((x) => x === 'spitter').length;
+    assertTrue('section22',
+      `the debut share PRODUCES a spitter through the real rounding (${got} at wave ${debut + 1})`,
+      got >= 1);
+  }
+
+  // — (c) the hit, the dodge, the hook, the disarm —
+  let hits22 = 0;
+  initP22(new THREE22.Scene(), { onPlayerHit: () => { hits22 += 1; } });
+  const post = { x: 0, y: 1.5, z: -S.STOP_DISTANCE };
+  {
+    resetP22();
+    hits22 = 0;
+    const player = new THREE22.Vector3(0, 1.7, 0);
+    glob22(S, post, { x: player.x, y: player.y, z: player.z });
+    for (let ms = 0; ms < R.LIFE_MS; ms += 16) updP22(16, player);
+    assertTrue('section22', `a STATIONARY player is hit (${hits22})`, hits22 === 1);
+  }
+  {
+    // The control difference that IS the design: same shot, same ticks, the
+    // only change is that the player moved one stride.
+    resetP22();
+    hits22 = 0;
+    glob22(S, post, { x: 0, y: 1.7, z: 0 });
+    const moved = new THREE22.Vector3(3, 1.7, 0);
+    for (let ms = 0; ms < R.LIFE_MS; ms += 16) updP22(16, moved);
+    assertTrue('section22', `a player who STEPPED ASIDE is not hit (${hits22})`, hits22 === 0);
+  }
+  {
+    resetP22();
+    hits22 = 0;
+    glob22(T22.proto_zombie, post, { x: 0, y: 1.7, z: 0 });
+    assertTrue('section22', 'a type with NO RANGED block cannot throw a glob',
+      glob22(T22.proto_zombie, post, { x: 0, y: 1.7, z: 0 }) === null);
+  }
+
+  const playerV = new THREE22.Vector3(0, 1.7, 0);
+  let fired = [];
+  let clawed = 0;
+  init22(new THREE22.Scene(), {
+    onPlayerHit: () => { clawed += 1; },
+    onRangedAttack: (id) => fired.push(id),
+  });
+  {
+    reset22();
+    fired = [];
+    spawn22('spitter', { x: 0, z: -S.STOP_DISTANCE }, { yaw: 0 });
+    for (let ms = 0; ms < 4000; ms += 16) upd22(16, playerV);
+    assertTrue('section22', `a spitter at its post FIRES (${fired.length} globs in 4 s)`,
+      fired.length > 0 && fired.every((id) => id === 'spitter'));
+  }
+  {
+    // Control: the hook must not leak onto a clawing type.
+    reset22();
+    fired = [];
+    clawed = 0;
+    spawn22('proto_zombie', { x: 0, z: -1.5 }, { yaw: 0 });
+    for (let ms = 0; ms < 4000; ms += 16) upd22(16, playerV);
+    assertTrue('section22', `a SHAMBLER never fires the ranged hook (${fired.length} globs)`,
+      fired.length === 0);
+    assertTrue('section22', `...and still claws normally (${clawed} hits — the harness works)`,
+      clawed > 0);
+  }
+  {
+    // The disarm, by control difference: same body, same post, same ticks —
+    // the ONLY change is leg damage. If legging it doesn't take the
+    // artillery away, this is the pin that says so.
+    reset22();
+    fired = [];
+    clawed = 0;
+    spawn22('spitter', { x: 0, z: -3 }, { yaw: 0, hpMult: 50 });
+    const shots = Math.ceil(S.CRAWL.LEG_HP / part22(S, 'leg'));
+    const leg = hit22().find((m) => m.userData.part === 'leg');
+    for (let i = 0; i < shots; i += 1) dmg22(leg);
+    for (let ms = 0; ms < 25000; ms += 16) upd22(16, playerV);
+    assertTrue('section22', `a LEGGED spitter never spits again (${fired.length} globs)`,
+      fired.length === 0);
+    assertTrue('section22',
+      `...but it drags into claw range and still bites (${clawed} hits — proves it wasn't just inert)`,
+      clawed > 0);
+  }
+
+  reset22();
+  resetP22();
+} catch (err) {
+  failures.push({ file: 'section22', err });
+  console.log(`  FAIL   section 22 threw: ${err.message}`);
 }
 
 // ————— Report —————

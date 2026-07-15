@@ -121,6 +121,18 @@ FOG: {
     MAX_PARTICLES: 64,      // hard pool caps: worst case cost is fixed
     MAX_POOLS: 24,
   },
+  // — Projectiles (pass 15): the Spitter's glob, pooled like BLOOD —
+  PROJECTILES: {
+    MAX: 16,              // hard pool cap: worst-case scene cost is fixed.
+                          //   A spitter fires every 2.6 s (ATTACK.COOLDOWN_MS,
+                          //   start-to-start) and a glob from its post flies
+                          //   ~1.13 s, so each spitter keeps at most ONE glob
+                          //   airborne — 16 covers far more spitters than any
+                          //   wave mix produces. The pool degrades by
+                          //   DECLINING the shot, never by stealing a glob
+                          //   already in flight: recycling the oldest would
+                          //   delete a hit the player had already dodged.
+  },
 // — Casings (pass 8.4): ejected brass, pooled like BLOOD —
   CASINGS: {
     SIZE: 0.035,          // metres — shell length (cross-section is half)

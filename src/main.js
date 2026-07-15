@@ -37,6 +37,9 @@ import {
   initBloodFX, spawnBurst, spawnPool, updateBloodFX, resetBloodFX,
 } from './render/bloodFX.js';
 import {
+  initProjectiles, spawnGlob, updateProjectiles, resetProjectiles,
+} from './render/projectiles.js';
+import {
   initCasings, spawnCasing, updateCasings, resetCasings,
 } from './render/casings.js';
 import {
@@ -177,6 +180,10 @@ function handlePlayerHit(damage) {
 initTargets(scene);
 initBloodFX(scene);
 initCasings(scene);
+// Globs damage the player exactly like a claw does — handlePlayerHit already
+// owns the hearts, the vignette, the splatter, the shake, and the game-over
+// check, so a spit inherits every bit of that feedback for free.
+initProjectiles(scene, { onPlayerHit: handlePlayerHit });
 
 // — Reload wiring (pass 9): one entry point so R and the empty click behave
 // identically; startReload() itself refuses full-mag and mid-reload calls.
@@ -248,6 +255,16 @@ function detonate(typeId, pos) {
 
 initEnemies(scene, {
   onPlayerHit: handlePlayerHit,
+  // The Spitter (pass 15): enemies.js doesn't know what a glob IS — it
+  // reports that a RANGED type released something, and from where. main owns
+  // the camera, so main owns the aim: the glob is thrown at the player's
+  // HEAD, at the position it occupied the instant the strike beat landed.
+  // Everything after that is ballistics and your feet.
+  onRangedAttack: (typeId, from) => {
+    spawnGlob(ENEMY_TYPES[typeId], from, {
+      x: camera.position.x, y: camera.position.y, z: camera.position.z,
+    });
+  },
   onEnemyKilled: (typeId, pos) => {
     notifyKill();
     setKills(getKills());
@@ -438,6 +455,7 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetEnemies();
     resetBloodFX(); // stains and droplets belong to the round that made them
     resetCasings();
+    resetProjectiles(); // a glob in flight must not outlive its round
     resetAmmo();
     setAmmo(getMag(), CONFIG.AMMO.MAG_SIZE, false);
     // Fresh rounds start from the spot the arena was designed around.
@@ -620,6 +638,9 @@ renderer.setAnimationLoop(() => {
     updateEnemies(dtMs, camera.position);
     updateBloodFX(dtMs);
     updateCasings(dtMs);
+    // The camera IS the player column's top — see projectiles.js for why
+    // that's the honest reading rather than a PLAYER.HEIGHT constant.
+    updateProjectiles(dtMs, camera.position);
     if (mode === 'range') setTimer(getRemainingS());
     else updateWaves(dtMs); // spawning + intermissions only run while playing
   }

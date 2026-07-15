@@ -205,13 +205,25 @@ let sceneRef = null;
 let mapColliders = []; // set by main per map (4.2); empty = open arena
 let onPlayerHitCb = null;
 let onEnemyKilledCb = null;
+let onRangedAttackCb = null;
+// The Spitter's launch point (pass 15), reused across every shot: a spit is
+// rare (one per ~3 s per spitter) but this module allocates nothing in the
+// update path by policy, and the exception is where the leaks start.
+const rangedFrom = new THREE.Vector3();
 const records = []; // see spawnEnemy for the record shape
 const byMesh = new Map(); // any body mesh -> record
 
-export function initEnemies(scene, { onPlayerHit, onEnemyKilled } = {}) {
+// onRangedAttack(typeId, from) fires at a RANGED type's strike beat (15).
+// It's a CALLBACK rather than a direct import of projectiles.js on purpose:
+// enemies.js already hands its player damage and its kills up to main the
+// same way, and a render module reaching sideways into another render module
+// is how the import graph turns into a knot. enemies.js does not know what a
+// glob is; it knows something was thrown, and from where.
+export function initEnemies(scene, { onPlayerHit, onEnemyKilled, onRangedAttack } = {}) {
   sceneRef = scene;
   onPlayerHitCb = onPlayerHit || null;
   onEnemyKilledCb = onEnemyKilled || null;
+  onRangedAttackCb = onRangedAttack || null;
 }
 
 // The map's wall colliders (4.2). Zombies can't pass walls either; with the
@@ -858,7 +870,36 @@ export function updateEnemies(dtMs, playerPos) {
           // player's window to cancel it (shoot), DODGE out of reach, or
           // (4.3) break line of sight around a corner: no LOS = a whiff.
           const inRange = los && dist <= stopDist + AT.RANGE_SLACK;
-          if (inRange && onPlayerHitCb) onPlayerHitCb(AT.DAMAGE);
+          if (inRange) {
+            // The Spitter (pass 15): a RANGED type RELEASES a glob at the
+            // same beat a clawing type lands its damage — the phase machine,
+            // the LOS gate, and the range gate are all reused untouched, so
+            // a spitter can no more lob through a wall corner than a
+            // shambler can swipe through one.
+            //
+            // Gated on !crawling, deliberately. Prone, AT is already
+            // CRAWL.ATTACK — a melee block with its own reach and damage —
+            // so a legged spitter reverts to the claw it is now physically
+            // posed for. That makes legging it genuinely DISARM the
+            // artillery: real counterplay paid out by the locational damage
+            // system, and the crawl ring drags it into shotgun range to
+            // collect. (Contrast the exploder, whose threat is its type and
+            // so survives the collapse — different question, different rule.)
+            if (type.RANGED && !crawling) {
+              if (onRangedAttackCb) {
+                // Launch from the head: the mouth is the muzzle, and it
+                // rides the live rig, so a spitter on a window sill throws
+                // from the sill. Last frame's matrixWorld is fine here —
+                // getWorldPosition refreshes the chain anyway.
+                rec.parts.head.getWorldPosition(rangedFrom);
+                onRangedAttackCb(type.id, {
+                  x: rangedFrom.x, y: rangedFrom.y, z: rangedFrom.z,
+                });
+              }
+            } else if (onPlayerHitCb) {
+              onPlayerHitCb(AT.DAMAGE);
+            }
+          }
         }
       } else if (rec.attackPhase === 'strike') {
         const k = Math.min(1, rec.attackT / AT.STRIKE_MS);

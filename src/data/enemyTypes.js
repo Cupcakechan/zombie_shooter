@@ -313,3 +313,78 @@ ENEMY_TYPES.exploder = {
                           //   so the tell is a colour AND a motion
   },
 };
+// The Spitter (pass 15, report #3C): the first thing in this game that
+// REACHES you. Every other threat is melee, so distance has always been
+// safety; a spitter parks in the murk at STOP_DISTANCE and shells the
+// ground you're standing on. Its question is "are you moving?" — and the
+// horde's question is "can you afford to?".
+//
+// Stat-only again: no scaleBody, so no probe cycle (LESSONS #19). It reuses
+// the attack phase machine wholesale — the windup IS the tell, the LOS gate
+// means it can no more lob through a wall corner than a shambler can swipe
+// through one, and the flow field walks it into position for free.
+ENEMY_TYPES.spitter = {
+  ...protoBase,
+  id: 'spitter',
+  HP: 2,                  // fragile artillery: the answer is "kill it first",
+                          //   and at 9 m in the fog that's already a hard
+                          //   shot — low HP is what keeps it fair
+  SCORE: { ...protoBase.SCORE, KILL: 200 }, // the priority target pays most
+  WALK_SPEED: 0.8,        // shuffles into position — a siege piece, not a
+                          //   chaser. It never needs to reach you.
+  STOP_DISTANCE: 9,       // m — WAY outside every melee ring (proto 2) and
+                          //   NAV.BEELINE_DIST 4, so it never beelines and
+                          //   never closes. At FOG.WAVES NEAR 3 / FAR 13
+                          //   the body is ~60% erased at this range: the
+                          //   EYES are the read, which is the whole idea.
+  ATTACK: {               // the same phase machine as the claw — only the
+                          //   payload at the strike beat differs
+    ...protoBase.ATTACK,
+    WINDUP_MS: 700,       // the big rear-back IS the tell, and it has to
+                          //   read at 9 m through fog — more than double
+                          //   the shambler's 300
+    RECOVER_MS: 500,
+    COOLDOWN_MS: 2600,    // artillery, not a machine gun. START-to-start:
+                          //   enemies.js sets cooldownT when the WINDUP
+                          //   begins, not after recover, so the true period
+                          //   is 2.6 s flat — the windup lives inside it,
+                          //   not on top of it. One spitter is a rhythm;
+                          //   three are a crossfire. (MEASURED, not
+                          //   derived: an earlier note here said 3.3 s,
+                          //   which was 2600 + WINDUP_MS double-counted.)
+    DAMAGE: 1,            // NOT read while it's standing (the glob carries
+                          //   RANGED.DAMAGE) — this is what it claws with
+                          //   once it's been legged. Kept sane, not dead.
+    REAR_RAD: 1.0,        // a deeper cock than the 0.6 claw — silhouette
+                          //   legibility at range is the point
+  },
+  RANGED: {               // OPTIONAL block, same contract as CRAWL/EXPLODE:
+                          //   no block = never throws, and the strike-beat
+                          //   hook is gated on it, so every other type is
+                          //   untouched by construction.
+    GLOB_SPEED: 8,        // m/s horizontal. Flight time = dist / this, so
+                          //   at STOP_DISTANCE 9 a glob hangs ~1.13 s —
+                          //   and PLAYER.MOVE_SPEED 4.5 covers 5 m in that
+                          //   time. It CANNOT hit a moving player. It hits
+                          //   you when you're reloading, cornered, or
+                          //   camping: that's the archetype, stated as a
+                          //   number.
+    GRAVITY: 9,           // matches BLOOD.GRAVITY — one world, one g
+    GLOB_RADIUS: 0.13,    // m — the sphere's true radius AND its hit radius
+    DAMAGE: 1,            // hearts on a direct hit
+    LIFE_MS: 4000,        // safety cap: a glob that never lands must not
+                          //   leak a pool slot for the rest of the round
+    COLOR: 0xc46bff,      // the SAME violet as the eyes: the thing in the
+                          //   fog with violet eyes throws violet globs, so
+                          //   the tell and the payload teach each other
+  },
+  COLORS: {
+    ...protoBase.COLORS,
+    SKIN: 0x6b5a7a,       // greyed violet — a distended, sac-like read
+    CLOTH: 0x2e2438,
+    EYES: 0xc46bff,       // violet — the last unused hue (amber proto /
+                          //   crawler / brute, orange sprinter, acid green
+                          //   exploder). At 9 m this pinprick is the ONLY
+                          //   part of it you can see.
+  },
+};
