@@ -544,3 +544,143 @@ updates and mark them `HARVESTED — <date>` (or delete them).
 - Route: general instructions candidate — "a counterfactual about a code
   change must be RUN, not derived from the current build's numbers"; sibling
   of ARTIFACT-WINS (measure the real thing — and measure the RIGHT build).
+
+## 2026-07-15 — the probe held a Material and read `.r` off it: NaN passed the assert it should have failed
+
+- What broke / what happened: §21's eye-pulse probe fetched the exploder's eye
+  handle with a helper that returned `c.material` — a MeshBasicMaterial — then
+  read `.r`/`.g`/`.b` and `.getHex()` off it as if it were a `THREE.Color`. The
+  colour lives at `material.color`, so every channel read came back `undefined`
+  and every arithmetic result was NaN. Two asserts went red loudly
+  (`getHex is not a function`, `k spans NaN → NaN`) — but a third, "the throb
+  stays ON the base→peak segment", reported **0 stray samples and PASSED**,
+  because its check was `if (Math.abs(x - y) > 1e-6) strays += 1` and
+  `NaN > 1e-6` is `false`. It certified a probe that had never measured
+  anything.
+- Root cause: a comparison written as `> tolerance` silently treats NaN as
+  "within tolerance". The failure mode isn't the wrong handle — that was loud —
+  it's that the SAME wrong handle produced a green assert next to two red ones,
+  so a partial fix would have left the vacuous pin standing.
+- Verification gap it exposed: the suite has no guard that a probe's INPUT is
+  live. Every pin downstream of a dead handle passes or fails on noise.
+- Plug shipped: helper renamed `eyeColourOf` and returns `.color`; an
+  `isFiniteColour` guard plus an explicit "the eye handle is a real Color
+  (finite r/g/b)" assert now pins the input itself; and the stray check was
+  inverted to `if (!(err <= 1e-6))` so NaN counts as a stray instead of a pass.
+- Route: skill reference candidate (html-game.md testing conventions) —
+  extends #21 and the 2026-07-14 false-green family: "write tolerance checks as
+  `!(err <= tol)`, never `err > tol` — the two differ exactly on NaN, which is
+  the value a broken probe produces"; and "a probe pins its own INPUT before it
+  pins the system."
+
+## 2026-07-15 — the suite HUNG on a zero divisor; a hang diagnoses nothing, so it is worse than a failure
+
+- What broke / what happened: §21 derived its sample budget from the value
+  under test — `periodMs = 1000 / X.PULSE_HZ`, then `for (let ms = 0; ms <
+  periodMs; ms += 4)`. The bite-test for "a dead tell" sets `PULSE_HZ: 0`.
+  `1000 / 0` is `Infinity`, `ms < Infinity` is always true, and the whole suite
+  ran forever. The bite batch timed out with no output at all, and — worse —
+  the timeout killed the harness before its `restore` step, leaving `PULSE_HZ:
+  0` sitting in the working tree.
+- Root cause: a loop bound computed from the system under test. The bite-test
+  is *designed* to feed pathological values, so any probe whose control flow
+  depends on those values can be driven off a cliff by its own test.
+- Verification gap it exposed: a red suite names the broken thing; a hung suite
+  names nothing, produces no output to grep, and costs a session to diagnose. A
+  failing test is a diagnosis — a hanging one is an outage.
+- Plug shipped: the budget is clamped (`samples = Math.min(400,
+  Math.ceil(periodMs / 4))`) and the loop counts iterations, not milliseconds.
+  Separately, §21 now pins `PULSE_HZ > 0` outright — the §5 schema only proves
+  a field is FINITE, and 0 is finite, so a 0 Hz throb passed the schema and
+  shipped a decorative constant. Bite harnesses now carry a per-run `timeout`.
+- Route: skill reference candidate (html-game.md testing conventions) — "a
+  probe must BOUND its own loop with a constant, never with a value it is
+  testing"; and "a schema that proves FINITE does not prove USEFUL — zero,
+  negative, and empty all pass a finiteness check."
+
+## 2026-07-15 — Claude-side: my bite harness tested the wrong pin and ran a sed with no landing report
+
+- What broke / what happened: bite-testing §22, two bites came back "PIN GUARDS
+  NOTHING". Both verdicts were wrong, in different ways. (a) The harness ran
+  `grep -E "reachable through the real wave table" | head -1` — but §21 carries
+  a sibling pin with nearly the same label, sorts earlier, and `head -1` grabbed
+  the EXPLODER's line while the SPITTER's line right below it was correctly red.
+  (b) A second bite's `sed` printed no landing report, so I couldn't tell a
+  no-op from a real miss and had to re-run it to find out.
+- Root cause: the bite-test harness is code, and I exempted it from the rules I
+  apply to every other scripted edit — unique anchors, and a landing report
+  whose silence is itself a signal. A suite with sibling sections (§19/§21/§22
+  all pin "reachable through the real wave table") makes a substring grep
+  ambiguous by construction.
+- Verification gap it exposed: a false "guards nothing" wastes time; a false
+  "fires correctly" ships an unguarded pin. The same ambiguous grep produces
+  both, and nothing catches it.
+- Plug shipped: bite greps now target the section-unique wording (`spitter is
+  reachable`, not `reachable through the real wave table`), and every bite's
+  mutation prints a landing report (`grep -c` on the bitten string) before the
+  suite runs. Re-run properly, 16 of 16 §22 pins fired.
+- Route: general instructions candidate — "the test harness gets the same
+  scripted-edit discipline as the code: unique anchors, landing reports, and a
+  verdict you can distinguish from a no-op." Sibling of #18 and the 2026-07-14
+  bite-test rule.
+
+## 2026-07-15 — a registry comment stated a falsifiable claim, and float noise made it false
+
+- What broke / what happened: the wave-8 row justified the spitter's 0.125
+  share with "at count 8 it is EXACTLY 1.0 zombies, so largest-remainder cannot
+  round the debut away. A 0.05 share would have been 0.4 and quietly floored to
+  none." I bit the pin with a 0.05 share expecting it to go red. It stayed
+  GREEN — the spitter still spawned. `0.05 × 8 − 0 = 0.40000000000000002220`,
+  while `0.425 × 8 − 3 = 0.39999999999999991118`; the spitter WON the remainder
+  tie-break on float noise and took the slot.
+- Root cause: two things at once. The comment's example was simply false. And
+  underneath it, largest-remainder rounding resolves exact ties by whatever the
+  float representation happens to produce — so any share below `1/count`
+  survives or vanishes by luck, not design.
+- Verification gap it exposed: the pin ("the debut share PRODUCES a spitter
+  through the real rounding") is honest and does fire at a 0.01 share — but it
+  is weaker than its label implies, and nothing at all checks a comment. A
+  wrong comment ON A TUNABLE is a trap for the next tune.
+- Plug shipped: the comment now carries the measured numbers, states the real
+  reason (at exactly 1.0 the debut wins a FLOOR slot and never touches the
+  tie-break), and warns "don't tune below 1/count without re-checking §22's
+  rounding pin". Same session, two sibling comment errors fixed the same way:
+  `COOLDOWN_MS` was annotated "~3.3 s between shots" when the code sets
+  `cooldownT` at the WINDUP (start-to-start), making the true period 2.6 s flat
+  — 3.3 was `2600 + WINDUP_MS` double-counted, and `config.js` had inherited the
+  same wrong figure in its pool-sizing rationale.
+- Route: general instructions candidate — extends ARTIFACT-WINS to comments:
+  "a comment that states a falsifiable claim about a tunable is code — verify it
+  against the artifact or don't write it"; plus "exact ties in remainder
+  rounding are decided by float noise; never let a design depend on winning
+  one."
+
+## 2026-07-15 — code of unknown provenance appeared in the sandbox; the `git status` READ is the only thing that caught it
+
+- What broke / what happened: after syncing the sandbox to origin/main (`git
+  reset --hard`, verified clean, suite green) and doing nothing but reads, a
+  later `git status` showed six modified files plus an untracked
+  `src/render/projectiles.js` — a complete, uncommitted pass 15 implementation
+  with its own suite section, passing at 29 modules. It was in neither HEAD nor
+  origin nor the session transcript (which greps clean for `projectiles`,
+  `RANGED`, `arcVelocity` while showing 38 hits for `exploder`). I could not
+  account for its authorship.
+- Root cause: unknown, and that is the point. What matters is what nearly
+  happened next: the routine checkpoint I hand Daniel every pass is `git add .`,
+  and he runs those blocks verbatim by design. Had I not READ the status output,
+  ~560 lines of unexplained code would have been silently absorbed into a commit
+  in his portfolio repo.
+- Verification gap it exposed: none of the automated gates care where code came
+  from. The suite was GREEN on this work before I had read a line of it — which
+  is exactly the assurance #21 says to distrust.
+- Plug shipped: surfaced it to Daniel as an options round rather than absorbing
+  or deleting it (deletion got the pre-flight: `projectiles.js` uniquely lived
+  in the sandbox and nowhere else). On his call, it was adopted only after the
+  full gate set: line-by-line read, end-state grep walk, ES-module import gate,
+  and a BITE-TEST of all 16 new pins — which is what surfaced the float-noise
+  tie-break and the two wrong tunable comments above. Verification is
+  provenance-independent; trust is not.
+- Route: general instructions candidate — "`git add .` is a blind instrument;
+  the `git status` READ is what makes it safe, and it catches arrivals as well
+  as deletions"; and "code you did not write yourself is adoptable only through
+  the same gates you would apply to your own — green tests are not a review."
