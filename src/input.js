@@ -16,6 +16,7 @@ let onLockErrorCb = null;
 const fireHandlers = [];
 const reloadHandlers = [];
 const swapHandlers = [];
+const meleeHandlers = [];
 
 // Movement key state, tracked by e.code so WASD works on any keyboard
 // layout (AZERTY 'Z' still reports code 'KeyW').
@@ -66,6 +67,13 @@ export function initInput({ onLockChange, onLockError } = {}) {
     if (e.code === 'Digit1') swapHandlers.forEach((fn) => fn(1));
     if (e.code === 'Digit2') swapHandlers.forEach((fn) => fn(2));
     if (e.code === 'KeyQ') swapHandlers.forEach((fn) => fn(null));
+    // Melee hook (17a): V, the COD default. Same locked-only, hook-out shape
+    // as fire/reload/swap — this file stays ignorant of what a bash costs or
+    // whether the current mode even has one. Note there is no keyup pair and
+    // no auto-repeat guard: a held V repeats keydown, and melee.js's cooldown
+    // is what swallows the repeats — the same division as the fire button,
+    // where the trigger's clock lives in shooting.js and not in here.
+    if (e.code === 'KeyV') meleeHandlers.forEach((fn) => fn());
   });
   document.addEventListener('keyup', (e) => {
     // Accept keyups even unlocked — releasing outside the lock must never
@@ -109,6 +117,10 @@ export function onSwapWeapon(fn) {
 
 export function onReload(fn) {
   reloadHandlers.push(fn);
+}
+
+export function onMelee(fn) {
+  meleeHandlers.push(fn);
 }
 
 // Move axes for the frame loop: x = strafe (−1 left … +1 right),

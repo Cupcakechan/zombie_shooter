@@ -65,6 +65,54 @@ WAVES_SCORE: {
     RELOAD_DIP: 0.18,       // how far the viewmodel dips during a reload
   },
 
+  // — Melee (17a): the bash. A flat-damage, short-reach swing that costs no
+  //   ammo, so the early waves can be answered with the gun butt and the
+  //   magazine saved for later. It exists BEFORE ammo is finite on purpose:
+  //   the conservation lesson needs its answer already in the player's hands
+  //   when the question gets asked, and a floor that costs RISK instead of
+  //   RESOURCE is what lets 17b's drop rate be genuinely scarce. Config and
+  //   not weaponTypes.js because there is exactly one bash today — the day a
+  //   gun wants its own, `weapon.MELEE ?? CONFIG.MELEE` is the same widening
+  //   MAX_RANGE/EXPLODE/CRAWL already prove, and it costs one `??`.
+  MELEE: {
+    DAMAGE: 3,              // FLAT — the hitbox tier is not read at all (see
+                            //   damageEnemy's bash path). Rides pass 12's HP
+                            //   ramp for free: base proto HP 3 dies in ONE
+                            //   swing through wave 8 — the "one-shot era"
+                            //   waveTable.js names at HP.RAMP_START — and
+                            //   needs two from wave 9 (hp 3.45). That IS the
+                            //   whole conservation curve, and it cost no
+                            //   melee-specific scaling code to get.
+    REACH: 2.0,             // m along the ray, same semantics as a weapon's
+                            //   MAX_RANGE. Sits INSIDE the standing claw
+                            //   (ATTACK.STOP_DISTANCE 2 + RANGE_SLACK 0.5 =
+                            //   2.5): a bash always puts you where the zombie
+                            //   can hit back, and that price is the entire
+                            //   design. Outreach the claw and melee is free
+                            //   damage with no counterplay — §25 pins
+                            //   REACH <= 2.5 as an INEQUALITY, so if the gate
+                            //   is ever retuned down, this fires.
+    COOLDOWN_MS: 600,       // swing-start to swing-start — HALF the zombie's
+                            //   ATTACK.COOLDOWN_MS 1200, so one bash-and-back-off
+                            //   beats the claw and a greedy second swing pays
+                            //   for itself. The rate lever if melee reads too
+                            //   strong; DAMAGE is the wrong one to reach for
+                            //   (it would move the one-shot era off wave 8).
+    SWING_MS: 220,          // the animation only — damage lands instantly on
+                            //   the keypress, like every other hitscan here.
+                            //   Must stay < COOLDOWN_MS or the gun is still
+                            //   mid-bash when the next one starts; §25 pins it.
+
+    // Viewmodel feel — pure taste, tune freely. The bash sweeps the gun
+    // leftward across the view: x slides it in, +yaw swings the muzzle left
+    // (a -Z-facing object turns its nose toward -X under +Y rotation), z
+    // rolls the butt over. See gun.js for why these three channels and no
+    // others.
+    SWING_X: 0.22,          // metres the gun slides across (from OFFSET_X 0.28)
+    SWING_YAW_DEG: 32,
+    SWING_ROLL_DEG: 18,
+  },
+
   // — Range environment (shell) —
   RANGE: {
     WIDTH: 36,                // x spans ±WIDTH/2

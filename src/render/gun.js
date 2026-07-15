@@ -30,6 +30,7 @@ let active = null; // the { group, flash, light, weapon } currently drawn
 // Infinity = animation inactive; 0..MS = animating.
 let recoilT = Infinity;
 let flashT = Infinity;
+let swingT = Infinity; // 17a, the melee bash
 
 export function createGuns() {
   root = new THREE.Group();
@@ -105,11 +106,17 @@ export function setActiveGun(id) {
   }
   active = next;
   active.group.visible = true;
-  // A swap lands the new gun at rest: no inherited recoil from the last one.
+  // A swap lands the new gun at rest: no inherited recoil from the last one,
+  // and (17a) no inherited half-bash either — swapping mid-swing must not
+  // draw the pistol already slewed 30 degrees off-axis.
   recoilT = Infinity;
   flashT = Infinity;
+  swingT = Infinity;
   root.position.z = CONFIG.GUN.OFFSET_Z;
   root.rotation.x = 0;
+  root.position.x = CONFIG.GUN.OFFSET_X;
+  root.rotation.y = 0;
+  root.rotation.z = 0;
   return true;
 }
 
@@ -138,6 +145,14 @@ export function kick() {
   active.light.intensity = CONFIG.FLASH_INTENSITY;
 }
 
+// The melee bash (17a). Deliberately NOT part of kick(): a bash is not a shot
+// — no muzzle flash, no light, no casing, no round. main.js calls this on every
+// accepted swing, hit or miss, exactly as it calls kick() on every real shot.
+export function swingGun() {
+  if (!active) return;
+  swingT = 0;
+}
+
 export function updateGun(dtMs) {
   if (!active) return;
   const w = active.weapon;
@@ -163,6 +178,37 @@ export function updateGun(dtMs) {
       // Land exactly on base so repeated shots can't accumulate drift.
       root.position.z = CONFIG.GUN.OFFSET_Z;
       root.rotation.x = 0;
+    }
+  }
+
+  // — Melee bash (17a): a sine envelope — 0 at both ends, full deflection at
+  // the midpoint — so the gun sweeps left across the view and comes back in
+  // ONE motion. Same envelope shape as the reload dip, deliberately DISJOINT
+  // channels: the dip owns position.y, recoil owns position.z + rotation.x,
+  // and the bash owns position.x + rotation.y + rotation.z. That is the whole
+  // reason all three can run at once without fighting — and they DO overlap in
+  // practice, because the fire cooldown (150 ms on the pistol) is shorter than
+  // this animation, so firing and immediately bashing is a normal input.
+  // Adding a channel here means checking the other two first.
+  if (swingT < CONFIG.MELEE.SWING_MS) {
+    swingT += dtMs;
+    const k = Math.min(1, swingT / CONFIG.MELEE.SWING_MS);
+    const amp = Math.sin(k * Math.PI);
+    root.position.x = CONFIG.GUN.OFFSET_X - CONFIG.MELEE.SWING_X * amp;
+    root.rotation.y = ((CONFIG.MELEE.SWING_YAW_DEG * Math.PI) / 180) * amp;
+    root.rotation.z = ((CONFIG.MELEE.SWING_ROLL_DEG * Math.PI) / 180) * amp;
+    if (k >= 1) {
+      // Land EXACTLY on base: `Math.sin(Math.PI)` is 1.2246e-16, not 0, so the
+      // envelope alone leaves the gun a hair off-axis after every swing. These
+      // are assignments and not accumulations, so nothing drifts — but the
+      // ROTATIONS are what you'd see: their base is 0, where a 6.8e-17 residue
+      // survives, while position.x's residue lands below half an ULP of 0.28
+      // and rounds away on its own. Land all three anyway; the two that need it
+      // are not the one you'd guess, and the next person to tune SWING_X should
+      // not have to know which is which. Same discipline recoil keeps above.
+      root.position.x = CONFIG.GUN.OFFSET_X;
+      root.rotation.y = 0;
+      root.rotation.z = 0;
     }
   }
 

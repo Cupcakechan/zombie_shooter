@@ -84,7 +84,7 @@ const EXCLUDE = new Set([join('src', 'main.js')]);
 // added projectiles.js and never raised the floor, so for two passes the
 // guard would have shrugged at that module disappearing entirely. A floor
 // that lags the truth is not a floor. 30 = 31 files under src/ minus main.js.
-const MIN_EXPECTED_MODULES = 31;
+const MIN_EXPECTED_MODULES = 32; // 31 + game/melee.js (17a)
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -3377,6 +3377,340 @@ try {
 } catch (err) {
   failures.push({ file: 'section24', err });
   console.log(`  FAIL   section 24 threw: ${err.message}`);
+}
+
+// Section 25 — melee, the bash (pass 17a).
+//
+// The claims worth pinning are not "the code runs". They are the four design
+// statements the pass is MADE of, each of which a later tune could silently
+// retire:
+//   • the bash never outreaches the claw, so it always costs risk;
+//   • the one-shot era is waves 1..RAMP_START and it ENDS — that curve is the
+//     whole conservation lesson, and it is inherited from pass 12 rather than
+//     coded, which means a pass-12 retune could delete it from a distance;
+//   • a bash reads NO part — not for damage, not for legs, not for the bounty;
+//   • and damageEnemy WITHOUT the new argument is the pass-17 function.
+// The last one is the one that would hurt: every existing shot in the game
+// goes through that path.
+
+console.log('');
+console.log('— Section 25: melee, the bash (pass 17a) —');
+try {
+  const THREE25 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const { swingReady, meleeSwing } =
+    await import(pathToFileURL(join('src', 'game', 'melee.js')).href);
+  const {
+    initEnemies: init25, spawnEnemy: spawn25, resetEnemies: reset25,
+    getEnemyHittables: hittables25, damageEnemy: damage25, partDamage: partDmg25,
+  } = await import(pathToFileURL(join('src', 'render', 'enemies.js')).href);
+  const { ENEMY_TYPES: T25 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { CONFIG: CFG25 } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const { hpMultAt: hpMult25 } =
+    await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const { WAVES: WV25 } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { createGuns: guns25, updateGun: updGun25, swingGun: swing25 } =
+    await import(pathToFileURL(join('src', 'render', 'gun.js')).href);
+  const { WEAPON_TYPES: WT25 } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
+
+  const M25 = CFG25.MELEE;
+
+  // — (a) the block exists and nothing in it is NaN —
+  // Number.isFinite and never assertNear: a NaN slips through a tolerance
+  // silently, and every one of these feeds either a raycast leash or a
+  // division. Same rule §23 landed on.
+  for (const k of ['DAMAGE', 'REACH', 'COOLDOWN_MS', 'SWING_MS',
+    'SWING_X', 'SWING_YAW_DEG', 'SWING_ROLL_DEG']) {
+    assertTrue('section25', `MELEE.${k} exists and is finite`, Number.isFinite(M25?.[k]));
+  }
+
+  // — (b) the design window: the inequalities that make a bash a DECISION —
+  {
+    // The gate is DERIVED, never typed — and note the two halves live at
+    // different depths: STOP_DISTANCE is a top-level field on the type while
+    // RANGE_SLACK sits inside ATTACK. Writing this pin from memory produced a
+    // NaN that read as a real failure (LESSONS #21: suspect the new pin first).
+    // Number.isFinite guards it, because `NaN <= 2` is quietly FALSE — a
+    // mis-derived gate would otherwise fail loudly, which is the good case; a
+    // mis-derived gate the other way round would PASS silently.
+    const p25 = T25.proto_zombie;
+    const gate = p25.STOP_DISTANCE + p25.ATTACK.RANGE_SLACK; // 2.5
+    assertTrue('section25', 'the claw gate derives to a real number', Number.isFinite(gate));
+    assertTrue('section25',
+      `REACH ${M25.REACH} never outreaches the standing claw (${gate}) — the risk IS the price`,
+      M25.REACH <= gate);
+    assertTrue('section25', 'REACH is a real, positive distance', M25.REACH > 0);
+    assertTrue('section25',
+      `the swing (${M25.SWING_MS} ms) finishes before the next one may start (${M25.COOLDOWN_MS} ms)`,
+      M25.SWING_MS < M25.COOLDOWN_MS);
+    assertTrue('section25', 'a bash costs real time (no free spam, no /0)',
+      M25.COOLDOWN_MS > 0);
+    assertTrue('section25', 'a bash does real damage', M25.DAMAGE > 0);
+    // The bash must not become a better SHOTGUN. Smallest MAX_RANGE across the
+    // roster (Infinity for an uncapped gun, hence the `??` — the pistol has no
+    // field at all). If a bash ever outreached a gun, the roster would have
+    // collapsed into one button.
+    const shortestGun = Math.min(
+      ...Object.values(WT25).map((w) => w.MAX_RANGE ?? Infinity),
+    );
+    assertTrue('section25',
+      `every weapon still outreaches the bash (shortest is ${shortestGun} m)`,
+      M25.REACH < shortestGun);
+  }
+
+  // — (c) THE one-shot era, derived from the registry and pass 12's ramp —
+  // This is the conservation curve as a test. It is inherited, not coded:
+  // nothing in 17a scales melee, so a pass-12 retune (RAMP_START/STEP/CAP) or
+  // a MELEE.DAMAGE tune could move or delete this era from a distance and
+  // leave no other trace. That is exactly what a pin is for.
+  {
+    const ramp = WV25.HP.RAMP_START;
+    const baseHp = T25.proto_zombie.HP;
+    assertNear('section25',
+      `hpMult is still 1.0 through wave ${ramp} (the era's floor)`, hpMult25(ramp), 1);
+    assertTrue('section25',
+      `ONE bash kills a base proto (hp ${baseHp}) through wave ${ramp}`,
+      M25.DAMAGE >= baseHp * hpMult25(ramp));
+    // And it ENDS — the half that makes it a curve rather than a freebie.
+    assertTrue('section25',
+      `...and NO LONGER one-shots at wave ${ramp + 1} (hp ${(baseHp * hpMult25(ramp + 1)).toFixed(2)})`,
+      M25.DAMAGE < baseHp * hpMult25(ramp + 1));
+    assertNear('section25',
+      `two bashes still clear a proto at the HP cap (hp ${baseHp * WV25.HP.CAP})`,
+      Math.ceil((baseHp * WV25.HP.CAP) / M25.DAMAGE), 2);
+  }
+
+  // — (d) swingReady: the cooldown as a pure predicate —
+  {
+    const cd = M25.COOLDOWN_MS;
+    assertTrue('section25', 'a fresh round may swing immediately',
+      swingReady(0, -Infinity, cd));
+    assertTrue('section25', 'blocked one ms inside the cooldown',
+      !swingReady(1000 + cd - 1, 1000, cd));
+    assertTrue('section25', 'allowed EXACTLY on the boundary (>=, not >)',
+      swingReady(1000 + cd, 1000, cd));
+    assertTrue('section25', 'allowed past it', swingReady(1000 + cd + 1, 1000, cd));
+  }
+
+  // — (e) meleeSwing driven for real: a real camera, real meshes, real reach —
+  {
+    const cam = new THREE25.PerspectiveCamera(75, 16 / 9, 0.1, 100);
+    cam.position.set(0, 0, 0);
+    cam.lookAt(0, 0, -1);
+    cam.updateMatrixWorld(true);
+
+    const plane = (z) => {
+      const m = new THREE25.Mesh(
+        new THREE25.PlaneGeometry(4, 4), new THREE25.MeshBasicMaterial(),
+      );
+      m.position.set(0, 0, z);
+      m.updateMatrixWorld(true);
+      return m;
+    };
+
+    const near = plane(-(M25.REACH * 0.5));
+    assertTrue('section25', 'a body inside reach is found',
+      meleeSwing(cam, M25.REACH, [near])?.mesh === near);
+
+    // THE boundary, and the reason REACH exists at all: a hair past it, the
+    // bash finds nothing. Without this the "bash costs risk" claim is unproven
+    // — an unbounded swing would let you clear a horde from outside the claw.
+    const far = plane(-(M25.REACH + 0.01));
+    assertTrue('section25', 'a body a hair PAST reach is not found',
+      meleeSwing(cam, M25.REACH, [far]) === null);
+    assertTrue('section25', '...and the same body IS found with reach raised past it',
+      meleeSwing(cam, M25.REACH + 0.02, [far])?.mesh === far);
+
+    assertTrue('section25', 'nearest-first when two bodies are in range',
+      meleeSwing(cam, M25.REACH, [plane(-(M25.REACH * 0.9)), near])?.mesh === near);
+    assertTrue('section25', 'an empty world returns null, never throws',
+      meleeSwing(cam, M25.REACH, []) === null);
+  }
+
+  // — (f) THE bash contract in damageEnemy —
+  {
+    init25(new THREE25.Scene(), {});
+    const partMesh = (p) => hittables25().find((m) => m.userData.part === p);
+    // hpMult as a HARNESS, not a nerf (the §20 idiom): a proto must survive
+    // long enough to be measured, or every probe below reads "killed" and
+    // proves nothing.
+    const fresh = (hpMult = 6) => {
+      reset25();
+      spawn25('proto_zombie', { x: 0, z: -6 }, { yaw: 0, hpMult });
+    };
+
+    // The part substitution — the single line the whole pass rests on.
+    fresh();
+    const bashHead = damage25(partMesh('head'), M25.DAMAGE);
+    assertTrue('section25', "a bash on the HEAD reports part 'melee', not 'head'",
+      bashHead.part === 'melee');
+    fresh();
+    assertTrue('section25', "...and on the TORSO it reports 'melee' too",
+      damage25(partMesh('torso'), M25.DAMAGE).part === 'melee');
+    // Control: the SAME mesh through the shot path still reports 'head', so
+    // the pin above is a difference and not a mesh that never had a tag.
+    fresh();
+    assertTrue('section25', "control: a SHOT on the same head still reports 'head'",
+      damage25(partMesh('head')).part === 'head');
+
+    // Flat damage: the hitbox tier is not read. Measured as a control
+    // DIFFERENCE against the shot path on the same part, because "3 damage"
+    // is unobservable from outside — only the kill count is.
+    // TORSO is the discriminating part: HITBOX.TORSO is 1, MELEE.DAMAGE is 3.
+    // (The HEAD would prove nothing — HITBOX.HEAD 3 happens to equal it.)
+    {
+      const hp = T25.proto_zombie.HP * 6;
+      const bashes = Math.ceil(hp / M25.DAMAGE);
+      const shots = Math.ceil(hp / partDmg25(T25.proto_zombie, 'torso'));
+      assertTrue('section25',
+        `the torso pin can fire at all (bash ${bashes} vs shot ${shots} to kill)`,
+        bashes < shots);
+
+      fresh();
+      let killedAt = 0;
+      for (let i = 1; i <= bashes; i += 1) {
+        const r = damage25(partMesh('torso'), M25.DAMAGE);
+        if (r?.killed) { killedAt = i; break; }
+      }
+      assertNear('section25',
+        `a bash deals MELEE.DAMAGE flat — ${bashes} torso bashes kill, not ${shots}`,
+        killedAt, bashes);
+
+      fresh();
+      let stillUp = true;
+      for (let i = 0; i < bashes; i += 1) {
+        if (damage25(partMesh('torso'))?.killed) stillUp = false;
+      }
+      assertTrue('section25',
+        'control: the same number of SHOTS to the torso leaves it standing',
+        stillUp);
+    }
+
+    // A bash cannot cripple. Under a naive override — one that fed the flat
+    // number into legDmg — ONE leg bash (3) would clear CRAWL.LEG_HP (1.5) and
+    // hand the player a free instant crawler. It can't, because part is
+    // 'melee' and the leg branch tests for 'leg'.
+    {
+      fresh();
+      let everCrawled = false;
+      for (let i = 0; i < 5; i += 1) {
+        if (damage25(partMesh('leg'), M25.DAMAGE)?.legsOut) everCrawled = true;
+      }
+      assertTrue('section25',
+        `5 leg bashes never cripple, though each (${M25.DAMAGE}) exceeds LEG_HP (${T25.proto_zombie.CRAWL.LEG_HP})`,
+        !everCrawled);
+
+      // Control: the shot path DOES cripple, so the pin above is a difference.
+      fresh();
+      const legShots = Math.ceil(
+        T25.proto_zombie.CRAWL.LEG_HP / partDmg25(T25.proto_zombie, 'leg'),
+      );
+      let crawled = false;
+      for (let i = 0; i < legShots; i += 1) {
+        if (damage25(partMesh('leg'))?.legsOut) crawled = true;
+      }
+      assertTrue('section25',
+        `control: ${legShots} leg SHOTS do cripple (so the pin above is a real difference)`,
+        crawled);
+    }
+
+    // A bash kill still pays the registry bounty, scaled by the wave (pass 12).
+    {
+      const hm = 2;
+      fresh(hm);
+      let val = 0;
+      for (let i = 0; i < 40; i += 1) {
+        const r = damage25(partMesh('torso'), M25.DAMAGE);
+        if (r?.killed) { val = r.value; break; }
+      }
+      assertNear('section25', 'a bash kill pays the registry bounty x hpMult',
+        val, Math.round(T25.proto_zombie.SCORE.KILL * hm));
+    }
+
+    // — The pass-17 path is UNTOUCHED. Every shot in the game goes here.
+    // Both absent forms, because a bare default substitutes on `undefined`
+    // ONLY — damageEnemy(mesh, null) must fall back too, and that exact
+    // asymmetry has already cost this project a session (LESSONS #21).
+    {
+      fresh();
+      const r1 = damage25(partMesh('torso'));
+      assertTrue('section25', 'no 2nd arg: still the pass-17 tiered hit',
+        r1.part === 'torso');
+      fresh();
+      const r2 = damage25(partMesh('torso'), null);
+      assertTrue('section25', 'an explicit null falls back too (not just undefined)',
+        r2.part === 'torso');
+      fresh();
+      const r3 = damage25(partMesh('torso'), undefined);
+      assertTrue('section25', '...and so does an explicit undefined',
+        r3.part === 'torso');
+      assertTrue('section25', 'a dead/unknown mesh is still null, never a throw',
+        damage25(new THREE25.Mesh(), M25.DAMAGE) === null);
+    }
+  }
+
+  // — (g) the swing animation lands EXACTLY on base —
+  {
+    const root25 = guns25();
+    const baseX = CFG25.GUN.OFFSET_X;
+    const baseY = CFG25.GUN.OFFSET_Y;
+    const baseZ = CFG25.GUN.OFFSET_Z;
+
+    swing25();
+    // Drive to the midpoint and prove the bash actually MOVES the gun. Without
+    // this, a swingGun() that did nothing would sail through the landing pin
+    // below — a green with three causes, and "the bite didn't bite" is one of
+    // them (17).
+    updGun25(M25.SWING_MS / 2);
+    assertTrue('section25', 'mid-swing the gun is actually deflected',
+      Math.abs(root25.position.x - baseX) > 1e-6 && Math.abs(root25.rotation.y) > 1e-6);
+
+    // DISJOINT CHANNELS: the bash owns position.x + rotation.y/z, the reload
+    // dip owns position.y, recoil owns position.z + rotation.x. They overlap in
+    // real play (the pistol's 150 ms trigger is shorter than a 220 ms swing),
+    // so a bash reaching into another channel would fight it on screen.
+    assertNear('section25', 'a swing never touches the dip\'s channel (position.y)',
+      root25.position.y, baseY);
+    assertNear('section25', "a swing never touches recoil's channel (position.z)",
+      root25.position.z, baseZ);
+    assertNear('section25', "...nor recoil's rotation.x", root25.rotation.x, 0);
+
+    // Ragged frames, then past the end: browser frames land where they land
+    // and a 16.67 ms step jumps 210 -> 227 without ever sampling 220. The
+    // explicit landing is what makes the close frame-rate-INDEPENDENT — the
+    // same reason §23 drives the blast ring on ragged steps.
+    for (let i = 0; i < 40; i += 1) updGun25(16.67);
+
+    // === and not a tolerance, because the envelope does NOT close on its own:
+    // Math.sin(Math.PI) is 1.2246e-16, not 0.
+    //
+    // But which channel proves that is not the obvious one, and the bite
+    // harness is what said so. Removing the explicit landing leaves position.x
+    // === baseX ANYWAY: the residue there is 0.22 * 1.2246e-16 = 2.69e-17,
+    // which is below half an ULP near 0.28 (5.55e-17), so it rounds away and
+    // the pin passes by float granularity rather than by the code. ROTATION.Y
+    // is the channel that bites — its base is 0, where nothing rounds away, so
+    // its 6.84e-17 residue survives.
+    //
+    // Keep all three: x still catches a landing that lands on the WRONG base
+    // (the regression that would actually ship), and y/z catch a landing that
+    // isn't there at all. But do not mistake x's green for proof of the close.
+    assertTrue('section25', 'the swing closes on position.x EXACTLY (===, not near)',
+      root25.position.x === baseX);
+    assertTrue('section25',
+      '...and on rotation.y exactly — THE channel that proves it (base 0 keeps its epsilon)',
+      root25.rotation.y === 0);
+    assertTrue('section25', '...and on rotation.z exactly', root25.rotation.z === 0);
+
+    // An idle gun stays closed: updateGun must not re-open a finished swing.
+    for (let i = 0; i < 10; i += 1) updGun25(16.67);
+    assertTrue('section25', 'an idle gun stays exactly on base',
+      root25.position.x === baseX && root25.rotation.y === 0 && root25.rotation.z === 0);
+  }
+} catch (err) {
+  failures.push({ file: 'section25', err });
+  console.log(`  FAIL   section 25 threw: ${err.message}`);
 }
 
 // ————— Report —————

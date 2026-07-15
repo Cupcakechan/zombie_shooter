@@ -550,12 +550,37 @@ export function blastDamage(type, dist) {
 
 // Returns null on a dead/unknown mesh; on a landed hit returns
 // { part, killed } — truthy, so old boolean-style callers keep working.
-export function damageEnemy(mesh) {
+//
+// `bashDamage` (17a, OPTIONAL) turns this into a melee hit: a FLAT number that
+// ignores the hitbox tier entirely, because a gun butt has no precision. Same
+// optional contract as MAX_RANGE/EXPLODE/CRAWL — absent, every line below is
+// byte-for-byte the pass-17 function. Guarded with `??` and compared against
+// null rather than leaning on the bare default, because a default parameter
+// substitutes on `undefined` ONLY: `damageEnemy(mesh, null)` must fall back
+// too, and that exact asymmetry has already cost this project a session
+// (LESSONS #21).
+//
+// THE MOVE, and it is why melee needed no new scoring, blood or leg code: a
+// bash reports `part: 'melee'`, and FOUR part-derived behaviours switch
+// themselves off from that one substitution —
+//   • the hitbox tier      (partDamage is not consulted at all);
+//   • the leg transform    (`part === 'leg'` can no longer be true, so a
+//                           bash cannot cripple — which also means the
+//                           "shoot the legs, then melee" farm the genre
+//                           report documents COD patching out cannot be
+//                           built here in the first place);
+//   • the headshot bounty  (scoreKill multiplies on `part === 'head'`);
+//   • the double spray     (main.js reads the same 'head'/legsOut test).
+// By construction, in enemies.js where the suite can drive it — main.js is
+// DOM-coupled and suite-invisible, so a rule that lived up there would be a
+// rule nothing could prove.
+export function damageEnemy(mesh, bashDamage = null) {
   const rec = byMesh.get(mesh);
   if (!rec || rec.dying) return null;
 
-  const part = mesh.userData.part || 'torso';
-  rec.hp -= partDamage(rec.type, part);
+  const bash = bashDamage ?? null;
+  const part = bash === null ? (mesh.userData.part || 'torso') : 'melee';
+  rec.hp -= bash === null ? partDamage(rec.type, part) : bash;
   rec.flashT = rec.type.COMBAT.FLINCH_MS;
   rec.staggerT = rec.type.COMBAT.STAGGER_MS;
   rec.squash.kick(rec.type.COMBAT.SQUASH_KICK ?? 0); // the physical flinch

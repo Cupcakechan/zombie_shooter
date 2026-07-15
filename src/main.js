@@ -27,7 +27,7 @@ import {
 } from './game/mapGrid.js';
 import { buildFlowField } from './game/flowField.js';
 import {
-  createGuns, setActiveGun, kick, updateGun, setReloadProgressSource,
+  createGuns, setActiveGun, kick, swingGun, updateGun, setReloadProgressSource,
 } from './render/gun.js';
 import {
   initTargets, resetTargets, clearTargets,
@@ -54,6 +54,7 @@ import {
   computeMove, clampToArena, resolveCircleObstacles, resolveCircleAABBs,
 } from './game/movement.js';
 import { initShooting, resetShooting } from './game/shooting.js';
+import { initMelee, resetMelee } from './game/melee.js';
 import {
   registerHit, registerMiss, resetScoring,
   getScore, getMultiplier, getAccuracy, getBestStreak,
@@ -462,6 +463,54 @@ initShooting({
   },
 });
 
+// — Melee: the bash (17a). Thin wiring, like the blast: melee.js owns the
+// cooldown and the ray, enemies.js owns what a flat hit MEANS, and this
+// handler only spends the results. Compare it to onShot's enemy branch above —
+// it is deliberately the same shape, and the differences are all things that
+// switch themselves off rather than things this code remembers to skip.
+initMelee({
+  camera,
+  // Enemies only. Not targets (Range has no melee at all — see canSwing), and
+  // not walls: a bash that "hit" architecture would swing, spend the cooldown
+  // and report a hit on a mesh damageEnemy can't find, which is a null result
+  // and a silently swallowed swing. Leaving walls out of the list makes a bash
+  // near a wall a clean MISS instead.
+  getHittables: () => getEnemyHittables(),
+  // Daniel's call: no melee in Range. That is cleaner than letting it swing at
+  // targets and then special-casing the accuracy sample — a bash is not a shot,
+  // and the pass-17 lesson is that the cheapest way to never miscount a sample
+  // is to have no path that could. Range keeps exactly the inputs it had.
+  canSwing: () => getState() === States.PLAYING && mode === 'waves',
+  onSwing: (hit) => {
+    // Every accepted swing moves the gun, hit or miss — the whiff has to read,
+    // or a bash into empty air is indistinguishable from a dropped keypress.
+    swingGun();
+    if (!hit) return;
+
+    const res = damageEnemy(hit.mesh, CONFIG.MELEE.DAMAGE);
+    if (!res) return; // already dying, or a mesh with no record: never throw
+
+    // Single spray, always. Not a decision made here — res.part is 'melee' for
+    // a bash, so the head/legsOut double-spray test above simply cannot be true.
+    // rayDir null lets the burst pick its own directions (the pass-8.3 default).
+    if (hit.point) spawnBurst(hit.point, null, CONFIG.BLOOD.HIT_PARTICLES);
+
+    if (res.killed) {
+      // scoreKill multiplies on part === 'head'. A bash reports 'melee', so it
+      // takes the flat registry bounty BY CONSTRUCTION — no melee bonus, ever.
+      // That is not squeamishness about a nice-to-have: the genre report has
+      // COD going flat per-kill specifically to kill "farm by shooting legs and
+      // meleeing", and once pass 19's wallet lands, a melee bonus would make
+      // bashing the dominant INCOME strategy and quietly retire the shotgun.
+      // Melee is an ammo decision. It must never become a points decision.
+      scoreKill(res);
+      setWavesScore(getWavesScore());
+      // No praise popup: showPraise is the headshot's payoff (pass 10) and a
+      // bash has no head to hit.
+    }
+  },
+});
+
 // — Round clock —
 initRound({
   onCountdownTick: (n) => setCountdown(n),
@@ -517,6 +566,7 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetProjectiles(); // a glob in flight must not outlive its round
     resetAmmo();
     resetShooting(); // a new round must not inherit the last one's trigger timing
+    resetMelee();    // ...nor the last one's swing timing
     setActiveGun(getActiveWeaponId());
     setAmmo(getActiveWeapon(), getMag(), false);
     // Fresh rounds start from the spot the arena was designed around.
