@@ -1,20 +1,18 @@
 # PROJECT_HANDOFF — Zombie Shooter
 
-Repo: https://github.com/Cupcakechan/zombie_shooter.git
-Local: C:\Users\danie\Documents\HTML Projects\zombie_shooter
-Updated: 2026-07-15 — session-7 END. **Pass 14** (exploder) and **pass 15**
-(spitter) shipped, completing the archetype expansion (report #3). Suite
-413 → **492**, 28 → **29 modules**. Tip at wrap: `1b4fe7c`.
-**Read §6's first item before touching pass 15 code** — it arrived with
-unexplained provenance and was adopted only after a full 16-pin bite-test.
-History notes (unchanged): 4.3b.2's code rides inside docs commit
-`2ce0803`; `e280d47` (pass 12) doesn't certify — the paste-in landed in
-`62ac91f`.
+Session-8 END (2026-07-15). Self-contained: a cold session should parse
+this without the chat it came from. Repo:
+`https://github.com/Cupcakechan/zombie_shooter.git`. Local:
+`C:\Users\danie\Documents\HTML Projects\zombie_shooter` (Windows, Node,
+**no Python** — every command must be Windows/Node).
+
+Tip at write time: **`b93af54`** — "Pass 17: weaponTypes.js registry +
+switching…". Suite on that tree: **SUITE PASS, 31 modules, 594 asserts.**
 
 ## 0. ROADMAP (adopted 2026-07-13; ordering PROVISIONAL, Daniel
 reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 
-**Next session opens with: Pass 16 options round (special reward round).**
+**Next session opens with: Pass 17b — the real ammo reserve.**
 
 **Phase 1 — scoring & economy keystone: DONE**
 - ~~Pass 10~~ DONE: kill scoring + praise popup.
@@ -27,25 +25,34 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 - ~~Pass 12~~ DONE: wave HP scaling (`hpMultAt`, ramp from wave 8,
   +0.15/wave, cap 2.0; LEG_HP deliberately unscaled).
 - ~~Pass 13~~ DONE: **sprinter + brute** — stat/scale registry variants
-  via `scaleBody`, `NO_CLIMB` routes brutes onto the ground field
-  (perimeter-only), conscious §18 pin move exempting HEAVY types from
-  the one-shot guarantee. Sprinter debuts wave 5, brute wave 6.
-- ~~Pass 13b~~ DONE: **arm-derived crawler strike ring** — the ring is
+  via `scaleBody`, `NO_CLIMB` routes brutes onto the ground field,
+  conscious §18 pin move exempting HEAVY types from the one-shot
+  guarantee. Sprinter debuts wave 5, brute wave 6.
+- ~~Pass 13b~~ DONE: **arm-derived crawler strike ring** —
   `proneChainExtents(type).arm × RING_FRACTION` (0.85). Conscious §15
   pin move (the old "crawl ring ≤ standing ring" invariant retired).
 - ~~Pass 13c~~ **DROPPED, not deferred** — see §6. Do not re-open
   without new evidence.
 - ~~Pass 14~~ DONE: **exploder** — on-death two-band AoE, pulsing-eye
-  tell, wave 7. See §3.
+  tell, wave 7.
+- ~~Pass 14c~~ DONE: **exploder blast FX** — see §3.
 - ~~Pass 15~~ DONE: **spitter** — pooled ballistic globs on an arc, the
-  game's first ranged threat, wave 8. See §3 and §6's provenance note.
+  game's first ranged threat, wave 8. See §6's provenance note.
 - **Pass 16 — special reward round** [report #2]: hound round + Max
-  Ammo pulse every N rounds.
+  Ammo pulse every N rounds. **Do not build 16 before 17b.** Its reward
+  half was hollow because reserve ammo did not exist — a "Max Ammo" pulse
+  granted nothing. 17b gives it a consumer, and 16's reward is the
+  natural SOURCE 17b needs. They are each other's missing half.
 
 **Phase 3 — weapon variety** [priority: Daniel's explicit ask]
-- **Pass 17 — weaponTypes.js registry + switching** (second weapon
-  proves it). Prereq for all below.
-- **Pass 18 — weapon roster expansion** (shotgun spread, SMG…).
+- ~~Pass 17~~ DONE: **`weaponTypes.js` registry + switching + shotgun**.
+  See §3. The keystone: 18/19/20 were all gated on it.
+- **Pass 17b — the real ammo reserve** [Daniel's ask, queued not banked].
+  See §4.
+- **Pass 18 — weapon roster expansion** (SMG, etc). **Now data-only** —
+  a new gun should be an entry in `weaponTypes.js` and nothing else.
+  Verify that claim by building one and touching no other file; if you
+  can't, 17 was wrong somewhere.
 - **Pass 19 — wall-buys + THE WALLET** [report #5 + absorbed pass 11].
 - **Pass 20 — upgrade station** [report #6].
 
@@ -57,43 +64,33 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 **Named, banked, out of phase order (Daniel's, opened on request):**
 - **Pass 14b — friendly-fire exploders.** Deferred from 14 BY DESIGN: an
   AoE that killed other zombies would bump `notifyKill()` while
-  `scoreKill()` stayed back in `onHit` with the part context, so kills
-  and score would visibly disagree. Needs its own scoring round.
-- **Pass 14c — exploder blast FX.** Daniel picked this option and then
-  re-queued it to follow the roadmap first. Agreed scope: reshape the
-  burst (radial throw + acid colour + per-particle materials) PLUS a new
-  pooled `blastFX.js` — a full-bright additive flash (~120 ms) and a
-  ground shockwave ring expanding to exactly `EXPLODE.RADIUS` (~300 ms),
-  unlit + `fog:false` like the eyes. The ring TEACHES the 3.5 m radius;
-  that's why it beat the burst-only option. A pulsed `PointLight` (created
-  at init with intensity 0 so lit materials compile once and never hitch)
-  was considered and left for its own pass. See §7 for the mechanism.
+  `scoreKill()` stayed back in the shot handler with the part context, so
+  kills and score would visibly disagree. Needs its own scoring round.
 - **Pass 15b — the spitter's acid pool** (ground denial, report #3C's
   actual intent). The hook is marked in `projectiles.js` at the ground
   retire (`if (y <= g.radius)`). Reuses `spawnPool`'s visual — pools
-  already carry a material EACH, so the colour lever is free, and
-  `poolPhase` owns the lifetime. The delicate number is the DoT tick rate
-  against `PLAYER.MAX_HITS` 5.
+  carry a material EACH, so the colour lever is free, and `poolPhase`
+  owns the lifetime. The delicate number is the DoT tick rate against
+  `PLAYER.MAX_HITS` 5.
 
 **Long tail (unscheduled, gated):** traps [#7], perks [#9], buyable
 doors [#12], mutators [#11], roguelite meta [#13], mystery box [#14 —
 gate: ≥4–5 weapons], downed/second-wind [#15].
 **Docs debt: DESIGN.md v3.1** (owes Stage 4 + 4.3 + windows + 7c + 7d +
-10 + 12 + 13 + 13b + 14 + 15) — the standing docs-session candidate.
+10 + 12 + 13 + 13b + 14 + 14c + 15 + 17) — the standing docs candidate.
 
 ## 1. What this project is
 
-A browser FPS in **three.js r185**, code-built everything (no
-downloaded assets), built pass-by-pass. Two modes from START:
-- **Range** — 60 s score attack (targets, streaks, accuracy,
-  localStorage PB). Reload applies. NO map/nav/zombies: 4.3/7c/waves
+A browser FPS in **three.js r185**, code-built everything (no downloaded
+assets), built pass-by-pass. Two modes from START:
+- **Range** — 60 s score attack (targets, streaks, accuracy, localStorage
+  PB). Reload and weapon swap apply. NO map/nav/zombies: 4.3/7c/waves
   systems provably inert.
-- **Waves** — untimed last-stand in the village. Zombies navigate a
-  flow field, climb windows (queued, congestion-priced), spawn from the
-  fog ring + window entries in per-wave TYPE mixes (7d), scale in HP
-  past wave 8 (12), come in **six archetypes** (13/14/15), transform (3
-  leg hits → prone Crawler), pay registry bounties with headshot praise
-  (10).
+- **Waves** — untimed last-stand in the village. Zombies navigate a flow
+  field, climb windows (queued, congestion-priced), spawn from the fog
+  ring + window entries in per-wave TYPE mixes (7d), scale in HP past
+  wave 8 (12), come in **six archetypes** (13/14/15), transform (3 leg
+  hits → prone Crawler), pay registry bounties with headshot praise (10).
 
 The six archetypes and the question each asks:
 
@@ -106,10 +103,20 @@ The six archetypes and the question each asks:
 | exploder | 7 | WHERE you kill it |
 | spitter | 8 | are you MOVING? |
 
+**Two weapons (17)** and the question each asks:
+
+| weapon | slot | question |
+|---|---|---|
+| pistol | 1 | can you aim? unlimited reach, one precise ray |
+| shotgun | 2 | will you commit? lethal ≤3 m, dead past 13 m |
+
 Doc index: `RESEARCH_GENRE.md` (genre survey + candidate passes — the
 roadmap source; §0 owns the adopted ordering and pass numbers).
-`RESEARCH_PRIOR_ART.md` (session ≤3). `DESIGN.md` v3.0 (v3.1 queued).
-`LESSONS.md` (29 entries). No DevLog.
+`RESEARCH_PRIOR_ART.md` (sessions ≤3, **+ Source 6 added session 8** —
+Zombie Slayer, the first prior art that shares our no-assets rule; the
+only true like-for-like comparison in the file, and its roadmap rows are
+live evidence for Phase 3 and Pass 19). `DESIGN.md` v3.0 (v3.1 queued).
+`LESSONS.md` (38 entries, **17 unharvested**). No DevLog.
 
 ## 2. Method & session rules (the short list)
 
@@ -118,301 +125,427 @@ roadmap source; §0 owns the adopted ordering and pass numbers).
   enemyTypes.js / waveTable.js / maps.js: registry additions as
   quote-the-anchor INSERTIONS, full-replace needs a "tuned anything?"
   caveat.
-- **A paste-in's failure mode is landing in the WRONG BLOCK** — it
+- **A paste-in's ANCHOR gets pasted if it looks like a payload** (14c,
+  new): the config.js paste-in showed "find this" and "paste this" as two
+  adjacent code blocks with nothing distinguishing them, and Daniel
+  pasted both — his committed config.js carried two comment lines twice,
+  and `FX_COLOR` landed at column 27 instead of 5. Neither broke
+  anything; the suite passed on his tree; only a diff against origin
+  found them. **Label an anchor `FIND — do not paste`, or make the
+  paste-in a single "replace these lines with this" block with no
+  separate anchor.** Almost certainly the origin of the nine-pass-old
+  duplicate RECOIL keys (§5).
+- **A paste-in's other failure mode is landing in the WRONG BLOCK** — it
   parses, imports, greps clean, and shows up in `git status` exactly as
   expected (2026-07-14). When a registry paste is the fix for a bug
   CAUSED by a paste, deliver the full file instead.
+- **Breaking the paste-in rule is allowed, deliberately, with the
+  assumption stated** (17): config.js's change was deletions in three
+  places, which is exactly what the paste-in format had just got wrong.
+  Delivered as a download built on the verified origin tree, flagging
+  inline "if you've tuned config.js locally since the last push, say so
+  and I'll merge instead". Do this only from a tree diffed against
+  origin, never from an older copy.
 - **When a registry block is too long to paste inline, ship it as a file
   named so it CANNOT be mistaken for the target** (`PASTE_INTO_<file>.js`,
   15). Confirm it never reaches the repo: `git ls-tree origin/main -r |
   grep -i PASTE_INTO` must return nothing.
 - **RUN THE SUITE IN THE TREE YOU ARE COMMITTING.** Pass 13b was
-  committed on the delivery message's expected count ("suite 401") and
-  pushed RED. The gate worked; it was never run.
+  committed on the delivery message's expected count and pushed RED. The
+  gate worked; it was never run.
 - **Multi-part deliveries state the changed-file count, and checkpoint
-  blocks list the expected files as a comment** (LESSONS #20 — a
-  skipped paste-in leaves nothing in `git status` to notice). Pass 15
-  shipped as "7 files: 4 downloads + 3 paste-ins".
+  blocks list the expected files as a comment** (LESSONS #20). Pass 17
+  shipped as "9 files change — all downloads, no paste-ins".
 - **The `git status` READ catches ARRIVALS, not just deletions** (15) —
-  see §6's provenance note. `git add .` is blind; the READ is what makes
-  it safe.
-- Feel reports: mechanism → single lever → surgical value. Bugs:
-  reproduce/measure before naming the mechanism.
+  see §6's provenance note. `git add .` is blind; the READ makes it safe.
+- Feel reports: mechanism → single lever → surgical value. **But name the
+  mechanism from a MEASUREMENT, and be willing to tell Daniel his lever
+  can't do the job** (17): he diagnosed the cross-map shotgun kill as
+  spread, and he was right about the choke — but the mechanism was an
+  infinite-range full-damage hitscan against a head that one-shots
+  everything. Measured, spread alone could not fix it at any value that
+  left the weapon alive. He picked the combined option on the numbers.
 - Pose/rig constants are PROBE-MEASURED (LESSONS #19); handoff numbers
   are pointers — MEASURED-at-HEAD wins.
+- **A probe must not use accessors that MUTATE what they read** (17,
+  new): `getWorldPosition` calls `updateWorldMatrix` internally, so a
+  probe that queried only the head left every other hitbox stale at the
+  origin — and the diagnostic written to catch that couldn't, because
+  asking each mesh where it was FIXED each mesh. `scene.updateMatrixWorld(true)`
+  after spawn. **When a diagnostic CONFIRMS a suspect probe, suspect the
+  diagnostic** — agreement between two instruments sharing a side effect
+  is one instrument.
 - Multi-edit plans get the end-state grep walk: WRITE and READ of every
   planned change (LESSONS #18). **When a brand-new suite pin fails,
-  suspect the PIN first** (LESSONS #21). **And a new pin isn't done
-  until you've broken the thing it guards and watched it go red**
-  (2026-07-14) — this has now caught, across two sessions: three
-  false-green pins, a NaN-passes-`>`-tolerance probe, a suite HANG on a
-  zero divisor, and a registry comment that was simply false.
-- **A bite harness is code**: unique anchors (sibling sections share
-  pin wording — §19/§21/§22 all say "reachable through the real wave
-  table"), a landing report per mutation, and a per-run `timeout`
-  (a probe that derives its loop bound from the value under test will
-  hang when the bite feeds it zero) — all 2026-07-15.
-- **A counterfactual must be RUN, not computed** (2026-07-14): a
-  behaviour change alters trajectories, so data sampled under build A
-  cannot score build B.
+  suspect the PIN first** (LESSONS #21). **And a new pin isn't done until
+  you've broken the thing it guards and watched it go red** (2026-07-14).
+- **A bite harness is code, and it has now been wrong in four distinct
+  ways** — all recorded, all plugged:
+  1. **Gate on a GREEN baseline before the first mutation** (14c). A
+     leaked `MAX: 0` from a hand-run bite — whose restore died on a dash
+     "Bad substitution", so never use bashisms in sandbox one-liners —
+     left the tree red, and 22 bites reported confident REDs that would
+     have fired at anything. A bite's verdict is a DIFFERENCE; prove the
+     control.
+  2. **Detect on what the suite PRINTS** (14c). The suite emits
+     `FAIL   <assert label>`; the section name never leaves the failures
+     array. A detector grepping for `section23` reported 23/23 false
+     GREEN. Uniform verdicts across a whole set are evidence about the
+     instrument, not the code.
+  3. **Unique anchors, COPIED from the file** (17). A retyped anchor
+     missed on `~1.8x` vs the file's `~1.8×`.
+  4. **A GREEN bite has three causes** (17) — a false pin, a bite that
+     didn't bite (a "shared magazine" bite that appended an unused key
+     and shared nothing), and a mutation that genuinely changes nothing
+     (`if (spreadRad > 0)` → `if (true)` is neutral because
+     `spreadOffset(0,…)` returns exact zero — a NON-bite, documented as
+     such, not papered over). Print the caught labels so a red for the
+     wrong REASON is visible too.
+  Per-run `timeout` still applies (a probe deriving its loop bound from
+  the value under test hangs when a bite feeds it zero).
+- **Edit scripts use the file-creation tool, never a shell heredoc**
+  (17, new). LESSONS already said "script files, not inline heredocs"; I
+  followed the letter (I WAS writing a file) and broke the spirit — a JS
+  file full of backticks and `${}`, inside a bash heredoc, inside
+  tool-call XML, is three quote levels and it malformed, leaking raw
+  script into the chat and leaving `main.js` half-converted (an
+  identifier used but not imported, and two modules on incompatible
+  callback APIs — `node --check` passed it cheerfully). **Every edit
+  script is all-or-nothing: exit before writing if any anchor misses.**
+  That design then caught an ambiguous anchor and left the tree clean.
+- **A counterfactual must be RUN, not computed** (2026-07-14).
 - Claude sync: `git fetch origin && git reset --hard origin/main`;
   verify tip + key docs; **reconcile my tree against ORIGIN before
-  theorising about a bug in Daniel's build** — the 13b wall bug was
-  diagnosed backwards for a long stretch because my sandbox held a
-  CORRECT 13b while origin held the botched one. Reading
-  `git show origin/main:<file>` ended it in one command.
-- Run `node test_suite.mjs` before every delivery; `node --check` has
-  no binding analysis; ES modules also get an import-run; main.js is
-  DOM-coupled — grep its new identifiers' imports. Render-path changes
-  are SUITE-INVISIBLE — browser-first testing steps.
+  theorising about a bug in Daniel's build**.
+- Run `node test_suite.mjs` before every delivery; `node --check` has no
+  binding analysis; ES modules also get an import-run; main.js is
+  DOM-coupled — grep its new identifiers' imports (this caught
+  `getActiveWeaponId` in 17). Render-path changes are SUITE-INVISIBLE —
+  browser-first testing steps.
 
 ## 3. Current state (deltas this session; earlier systems unchanged)
 
-- **Exploder (14)** — stat-only registry entry, no `scaleBody`, no probe
-  cycle. `EXPLODE` is an OPTIONAL block on the CRAWL contract: no block,
-  no blast. `blastDamage(type, dist)` is a PURE export from
-  `enemies.js` (NOT at the call site — main.js is DOM-coupled and
-  suite-invisible, so a model written there is certified by nothing).
-  Two BANDS, not falloff: `damagePlayer()` takes integer hearts against
-  `MAX_HITS` 5 and does no rounding, so a curve would render fractions or
-  quantise invisibly. Fires on ANY death — no headshot defuse, because
-  `HITBOX.HEAD` 3 one-shots `HP` 2 through the whole pre-ramp era, so a
-  defuse rule hands every exploder to the skill the game already trains.
-  Player-only (see 14b). Tell = **eye pulse**: `enemyBody.js` now returns
-  `eyeMat` BY NAME (never by array index or by sniffing for the only
-  material without `.emissive`); the pulse sits ABOVE every branch in
-  `updateEnemies`, so it ticks while walking, vaulting, collapsing, and
-  crawling. Raised cosine off ACCUMULATED `rec.t` (the 7a.7 integral
-  rule). Two freebies fall out of existing code: a crippled exploder
-  detonates at its CORPSE (0.393 m) not standing height (1.163 m) because
-  pass 12's eruption anchor rides the LIVE waist; and a climber shot off
-  a sill detonates OUTSIDE the wall, because `startDeath` teleports it
-  back before the kill callback runs.
-- **Spitter (15)** — the first thing in this game that REACHES you; every
-  other threat is melee, so distance had always meant safety. New pooled
-  module `src/render/projectiles.js` (the 29th suite module). `RANGED` is
-  an OPTIONAL block on the same contract. The strike hook reuses the
-  attack phase machine WHOLESALE — a RANGED type releases a glob at the
-  same beat a clawing type lands damage, so the windup tell, the LOS
-  gate, and the range gate are all inherited untouched (a spitter can no
-  more lob through a wall corner than a shambler can swipe through one).
-  `enemies.js` does NOT import `projectiles.js` — it fires
-  `onRangedAttack(typeId, from)` up to main, same as its player damage and
-  kills; main owns the camera, so main owns the aim.
-  **Gated on `!crawling` deliberately**: prone, `AT` is already
-  `CRAWL.ATTACK` (verified — `enemies.js` line ~842 `AT = crawling ?
-  CR.ATTACK : type.ATTACK`, line ~846 `stopDist` switches to the crawl
-  ring), so legging a spitter genuinely DISARMS the artillery and the
-  crawl ring drags it into shotgun range. Contrast the exploder, whose
-  threat is its TYPE and so survives the collapse.
-- **`arcVelocity(from, to, flightMs, gravity)`** solves for a flight TIME,
-  not a launch speed. Speed-based has two solutions and NO real solution
-  when out of range — a spitter would silently decline to fire and you'd
-  find that in a play session. Time-based always has exactly one answer,
-  and it's the lever the player reads.
-- **Registry-first held all session.** Both archetypes are data entries;
-  the only structural code is the pure `blastDamage`, the pure
-  `arcVelocity`/`flightMsFor`, one `eyeMat` return field, one strike-hook
-  branch, and one new pooled module.
+- **Blast FX (14c)** — new pooled module `src/render/blastFX.js`. An
+  additive FLASH at the body's anchor sized to `EXPLODE.CORE_RADIUS`, and
+  a ground shockwave RING whose OUTER EDGE lands exactly on
+  `EXPLODE.RADIUS`. Together they are `blastDamage()` drawn in the world:
+  bright core = 2 hearts, ring edge = 1 heart, outside = safe. **Every
+  radius is READ from the registry**, so the picture cannot drift from
+  the damage — §23 pins the RENDERED `mesh.scale` against `blastDamage()`
+  itself, not against a shared constant.
+  - The ease curve is load-bearing, not taste: `1 - (1-u)²` returns 1 in
+    EXACT float arithmetic at u=1, so `radius * eased` gives back 3.5
+    bit-for-bit. A sine ease looks identical and doesn't carry that. §23
+    pins it with `===`, never a tolerance.
+  - The ring **HOLDS at full extent then fades**. Not aesthetic: browser
+    frames land where they land and a 16.7 ms step jumps 296 → 312
+    without ever sampling 300. The clamp is what makes the exact arrival
+    frame-rate-INDEPENDENT. §23 drives ragged 16.67 ms frames to prove it.
+  - `bloodFX.spawnBurst` gained an optional `opts` ({color, speed,
+    radial}), all `??`-guarded to the pass-8.3 constants so the three
+    existing call sites are unchanged BY CONSTRUCTION. Burst particles
+    now carry a material EACH — with one shared, a blast would repaint
+    every red droplet still in the air, mid-flight.
+  - `EXPLODE.FX_COLOR` (0x9dff30) lives on the registry, not
+    `CONFIG.BLAST`, for the same reason `RANGED.COLOR` does.
+- **Weapons (17)** — new registry `src/data/weaponTypes.js` +
+  `WEAPON_ORDER`. Pistol (slot 1) reproduces the pass-4 gun exactly;
+  shotgun (slot 2) proves the registry. 1 / 2 pick a slot, Q cycles.
+  - **THE architectural move: SHOT vs PELLET.** `shooting.js` now calls
+    `onShot(hits, weapon)` **exactly once per trigger pull** and hands
+    the pellet results over as data. The old `onHit`-per-ray shape would
+    have charged eight rounds for one shell, kicked eight times, and
+    logged eight Range accuracy samples per pull — seven of them misses
+    when all eight pellets hit one sphere (`hitTarget` refuses an
+    already-popping target). main.js's per-shot bookkeeping is correct BY
+    CONSTRUCTION: there is no loop up there to get wrong.
+  - **Damage stays enemy-side.** A weapon has no damage number; power is
+    `PELLETS`. That falls out beautifully — `SPREAD_DEG` means fewer
+    pellets connect with distance, so **the scatter IS the falloff**,
+    with no falloff code anywhere.
+  - **Magazines are per-weapon and PERSIST across swaps**; a swap
+    CANCELS an in-progress reload. That makes the swap the real answer to
+    an empty shotgun in melee — faster than 2.2 s, at the cost of the
+    progress already paid for. Without the cancel you could start the
+    shotgun's reload, fight with the pistol, and collect a free tube.
+  - **The trigger cooldown is ONE shared timer**, not per-weapon:
+    otherwise you could swap-fire to out-rate both cooldowns by hand. The
+    cooldown belongs to the player's finger, not to the gun.
+  - **Every viewmodel is built AT INIT**; swapping toggles visibility.
+    Building on swap compiles a `MeshStandardMaterial` mid-round — a
+    hitch landing the first time you press 2 with a horde on you.
+  - `MAX_RANGE` is an OPTIONAL field (`?? Infinity`), same contract as
+    CRAWL/EXPLODE/RANGED — the pistol simply has none. Consumer is one
+    line: `raycaster.far = weapon.MAX_RANGE ?? Infinity`, written on
+    EVERY shot because the raycaster is module-scope and `setFromCamera`
+    does not reset `.far`. See §7 for why 13.
+  - **Constants moved OFF config.js onto the registry**:
+    `FIRE_COOLDOWN_MS`, `RECOIL_MS`, `RECOIL_KICK_DEG`, `RECOIL_KICK_BACK`,
+    and the whole `AMMO` block. Every one was a fact about the pistol
+    wearing a global name, and the moment a second gun existed they were
+    actively wrong about it. `GUN.RELOAD_DIP` stays — the dip is how the
+    PLAYER's hands move, not the gun.
+- **Registry-first held all session.** 14c's only structural code is one
+  pooled module; 17's is the SHOT/PELLET split and a parameterised gun
+  builder. Pass 18's roster is meant to be data only — prove it.
 
-## 4. NEXT BUILD PASS: **Pass 16 — special reward round (OPTIONS ROUND)**
+## 4. NEXT BUILD PASS: **Pass 17b — the real ammo reserve (OPTIONS ROUND)**
 
-Report #2: a hound round + Max Ammo pulse every N rounds. Real questions
-for the round: what the special round IS (a distinct enemy? a modified
-wave? both?); the reward's shape (Max Ammo pulse is named, but nothing
-consumes a "pickup" concept yet — check whether this needs machinery
-without a consumer, and if so, cut it); cadence (every N rounds — a
-`waveTable` field or a config constant?); and whether the hound is a new
-registry archetype (cheap, given six exist) or a wave-composition trick.
-Probe any body change (LESSONS #19); bite-test every new pin.
+Daniel's explicit ask, deferred from 17 by design because reserve is
+per-weapon by nature and could not be modelled honestly before
+`weaponTypes.js` existed.
 
-**Alternatively, Daniel has 14c queued and pre-scoped** (§0) — it's the
-smaller pass and the ring teaches a radius the game currently doesn't
-explain. His call.
+**Read this first: there is no reserve at all.** `ammo.js`'s
+`updateAmmo()` sets `mag = MAG_SIZE` out of thin air on reload
+completion. "Unlimited reserve" was never a value — the concept does not
+exist. 17b invents it.
 
-## 5. The suite — 29 modules, **492 asserts**, run before EVERYTHING
+**The hard dependency, and it IS the options round:** finite reserve
+without an ammo SOURCE is a softlock, not a difficulty. A zombie shooter
+where you are empty and cannot act is a dead end. Candidate sources,
+cheapest first:
+- **wave refill** (top up at each wave start — limited WITHIN a wave, no
+  new machinery, cannot softlock);
+- **Pass 16's Max Ammo pulse** (the two are each other's missing half —
+  16's reward is hollow precisely because ammo is infinite);
+- **kill drops** (classic, real risk/reward, needs a pickup system — new
+  machinery, so it needs its own justification);
+- **Pass 19 wall-buys** (needs the wallet, so it can't be first).
+
+Other real questions: per-weapon reserve amounts; what the HUD says
+(`setAmmo(weapon, mag, reloading)` currently has no reserve slot); what
+EMPTY feels like (auto-swap? dry click? both?); and whether reserve is a
+registry field (`RESERVE_MAX`) or config. Bite-test every new pin; §10 is
+where the ammo model is pinned and already covers per-weapon mags,
+swap-cancel, reload clocks and slot resolution.
+
+## 5. The suite — 31 modules, **594 asserts**, run before EVERYTHING
 
 New this session:
-- **§21 — the Exploder (~40 asserts)**: band math exact and INCLUSIVE at
-  both boundaries; 0 for a type with no EXPLODE block and for `undefined`;
-  a monotonic-non-rising sweep; the design window (`RADIUS` 3.5 > the
-  standing attack gate 2.5, AND ≤ `NAV.BEELINE_DIST` 4 — that PAIR is the
-  whole archetype); `CORE_DAMAGE` < `MAX_HITS`; the particle budget fits
-  the pool; `PULSE_HZ > 0`; the debut is reachable through the real wave
-  table and the LAST row carries it (EXTEND). Tell + freebie are driven
-  through the LIVE update loop: eye throb by identity (widest-channel
-  parametric), a non-exploder control proving the guard, a genuinely prone
-  crippled exploder that still ticks and still detonates as an exploder.
-- **§22 — the Spitter (~39 asserts)**: ballistics (XZ lands within one
-  tick's travel; Y arrives within Euler's own drift; a dead-on shot lands
-  inside the hit cylinder); both /0 guards; the design window (never
-  beelines, outranges every melee type, visible inside `FOG.WAVES.FAR`,
-  `LIFE_MS` outlasts the flight, a moving player clears the glob); the
-  debut share PRODUCES a spitter through the real rounding; and the
-  behavioural set — a stationary player is hit, one who stepped aside is
-  not, a type with no RANGED block can't throw, a spitter at its post
-  fires, a shambler never fires the hook **and still claws normally**
-  (the harness proof), and a LEGGED spitter never spits again **but still
-  drags into claw range and bites** (proving the 0 isn't inertness).
-- **§5**: extended with the `EXPLODE` and `RANGED` optional-block schemas,
-  each mirroring the CRAWL contract with a negative test that must NAME a
-  deleted key.
+- **§23 — the blast FX (~32 asserts)**: curve exactness with `===` not a
+  tolerance (the ease-out-quad was CHOSEN for bit-exact arrival); the
+  ring HOLDS past `RING_GROW_MS`; both opacities reach exactly 0; three
+  /0 guards via `Number.isFinite` (never `assertNear` — NaN slips a
+  tolerance silently); the shape window (`FLASH_LIFE_MS` < `RING_GROW_MS`,
+  `0 < RING_THICKNESS < 1`, `RING_Y` clears the blood pools).
+  **THE pin**: the RENDERED ring, driven through the live pool on ragged
+  16.67 ms frames, reaches exactly `EXPLODE.RADIUS`, and `blastDamage()`
+  at that drawn edge > 0 while a hair outside === 0.
+- **§24 — weapons (~47 asserts)**: the registry contract (a REQUIRED list
+  naming fields that must EXIST — §5's sweep only validates fields that
+  do; every id matches its key; every PARTS box is a real 3-vector); the
+  design window (the shotgun pays for pellets with rate, capacity AND
+  reload; every weapon's `LOW_AT` can be both on and off; no zero
+  cooldowns or /0 reloads); the spread maths (`spreadOffset(0,…)` is
+  EXACTLY {0,0} across the whole random range — that is what makes the
+  pistol's ray bit-identical to pre-17; the rim lands on `tan(spread)`;
+  sqrt-sampling proven at u2=0.25 → half the rim, where linear sampling
+  would put a quarter); `fireShot` driven at a real mesh with a real
+  camera (ONE pull returns 8 pellet results, they SCATTER, and the pistol
+  is dead centre across 12 pulls); MAX_RANGE's boundary; and **the `.far`
+  leak pin** — fire the capped weapon FIRST, then check the uncapped one
+  still reaches 30 m. That ORDER is the test.
+- **§5 — the duplicate-key scan (new)**: TEXT-level, block-scoped (same
+  leaf name under two blocks is legal — `BLOOD.COLOR`/`CASINGS.COLOR`,
+  `PROJECTILES.MAX`/`BLAST.MAX`), with a guard-the-guard on the parse.
+  `config.js` had declared `RECOIL_MS` and `RECOIL_KICK_DEG` **twice each
+  since pass 9** with a full schema watching. **A runtime guard
+  physically cannot see this** — JS collapses the duplicate (last wins)
+  before any assertion runs, so the evidence is destroyed before §5 gets
+  to look. Text is the only level where it still exists. It caught both
+  on the day it landed. Also: §5 now sweeps `WEAPON_TYPES`.
+- **§10 — rewritten for per-weapon magazines**: independence, persistence
+  across swaps, the reload running on the ACTIVE weapon's clock, swap
+  cancelling and banking nothing, slot resolution returning null (never
+  undefined-indexing), and cycle wrapping.
+- **Module floor repaired twice**: 28 → 30 (14c) → 31 (17). It had sat at
+  28 while the walker found 29 since pass 15 — guarding nothing, because
+  `>=` makes a stale floor permanently satisfiable.
 
-**Every new pin in both sections is BITE-TESTED** — 9 for §21, 16 for §22,
-all fire. Two §21 pins were false greens caught this way (see LESSONS
-2026-07-15), and the §22 bites are what surfaced the float-noise tie-break
-and the two wrong tunable comments in §6.
+**Every new pin is BITE-TESTED** — 23 for 14c (after two harness repairs
+and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
 
 ## 6. Open / outstanding / banked
 
 - **Pass 15's provenance is UNEXPLAINED — read this before touching it.**
-  Mid-session, after the sandbox was synced clean to `0a4e37f` and only
-  read from, `git status` showed a complete uncommitted pass 15
-  implementation (6 modified files + untracked `projectiles.js` + suite
-  §22), passing at 29 modules. It was in neither HEAD nor origin nor the
-  session transcript. Neither Claude nor Daniel can account for it.
-  **It was NOT trusted on its green suite.** On Daniel's explicit call it
-  was adopted only after the full gate set: line-by-line read, end-state
-  grep walk, ES-module import gate, and a bite-test of all 16 new pins.
-  That review found and fixed three wrong comments (below). The code is
-  verified; the mystery is not solved. If anything about pass 15 ever
-  behaves oddly, start here.
-- **Three comment errors found by that review and FIXED** (code was always
-  correct; the comments lied): (a) `spitter.ATTACK.COOLDOWN_MS` was
-  annotated "~3.3 s between shots" — `enemies.js` sets `cooldownT` at the
-  WINDUP, so it's start-to-start and the true period is **2.6 s flat**;
-  3.3 was `2600 + WINDUP_MS` double-counted. (b) `config.js`'s
-  `PROJECTILES.MAX` rationale inherited the same wrong figure. (c) the
-  wave-8 row claimed "a 0.05 share would have been 0.4 and quietly floored
-  to none" — false; it wins the remainder tie on float noise. See §7.
-- **Pass 13c — DROPPED ON THE EVIDENCE, do not re-open blind.** The
-  proposal was to gate the crawl attack on the ARM extent (2.171)
-  instead of the stop ring (1.845), on a claim that crowds park crawlers
-  outside the gate "clawing at nothing". That claim was a measurement
-  error (LESSONS 2026-07-14 #3). Measured properly by control-difference:
-  **every crawler deals damage under the current gate** (11/10/11 hits vs
-  14/14/15 under the arm gate) — 13c was a ~34% difficulty increase
-  wearing a bug-fix costume. If crawler difficulty is ever wanted,
-  **`CRAWL.ATTACK.RANGE_SLACK` is the honest lever**, with its own round.
+  Mid-session-7, after the sandbox was synced clean and only read from,
+  `git status` showed a complete uncommitted pass 15 implementation. It
+  was in neither HEAD nor origin nor the transcript. Neither Claude nor
+  Daniel can account for it. **It was NOT trusted on its green suite** —
+  adopted only after a line-by-line read, an end-state grep walk, an
+  import gate, and a bite-test of all 16 new pins, which found three
+  wrong comments. The code is verified; the mystery is not solved. If
+  anything about pass 15 behaves oddly, start here. (Session 8 found a
+  FOURTH thing it left behind: the stale module floor. That review
+  audited claims and code, not constants.)
+- **Pass 13c — DROPPED ON THE EVIDENCE, do not re-open blind.** Measured
+  by control-difference: every crawler deals damage under the current
+  gate (11/10/11 hits vs 14/14/15 under the proposed arm gate) — 13c was
+  a ~34% difficulty increase wearing a bug-fix costume. If crawler
+  difficulty is ever wanted, **`CRAWL.ATTACK.RANGE_SLACK` is the honest
+  lever**, with its own round.
 - **Known limitation (15, not a bug today):** globs don't collide with
-  walls. In practice they can't pass through one — the spitter only fires
-  with LOS and the glob travels the same XZ line — but a glob arcing OVER
-  an obstacle isn't modelled. Colliders are 2D AABBs with no height, so
-  there is nothing to arc over yet. This becomes a real bug the day walls
-  gain height.
+  walls. The spitter only fires with LOS and the glob travels the same XZ
+  line, but a glob arcing OVER an obstacle isn't modelled. Colliders are
+  2D AABBs with no height, so there is nothing to arc over yet. Real the
+  day walls gain height.
+- **Known and CORRECT (14c):** the shockwave ring passes through walls,
+  because `blastDamage()` has no LOS or wall test — a blast genuinely
+  reaches through a wall today. The ring is a picture of the model, not
+  of the light. The day the blast learns about walls, the ring learns
+  with it.
 - **Watch items (feel — levers named, Daniel's call):** brute crawl
-  strike slam scales −0.235 → ~−0.29 (lever `CRAWL.ATTACK.THRUST_RAD`);
-  attack-start pop at `REACH_AMP` 0.5 (fix = blend windup start from
+  strike slam −0.235 → ~−0.29 (lever `CRAWL.ATTACK.THRUST_RAD`);
+  attack-start pop at `REACH_AMP` 0.5 (fix = blend windup start from the
   current arm pose, its own round); yaw spring escalation; sprinter gait
-  read at 2.4 m/s (levers `ANIM.LEAN` / `LIMP` / `BOB_AMP`); brute vs
-  door jambs (longer arms now).
+  read at 2.4 m/s; brute vs door jambs. **New (17):** the shotgun at 5 m
+  is 59.5% — if that reads too punishing, `SPREAD_DEG` 9 is the single
+  lever back (4.5 was a rifle; anything between is available).
 - **Untested risk:** the prone standoff is 2.25 but a grid cell is 1.6,
   so 1-cell gaps (doors, alleys) are marginal for prone bodies — a
   possible indoor failure, never exercised.
-- **Cosmetic, pre-existing, deliberately not fixed** (flagged twice, kept
-  out of scope): `enemyTypes.js` carries a **duplicate `SPAWN` key** in
-  the `crawler` entry (~lines 160/164) — identical values, second wins,
-  harmless. Free cleanup for a docs pass.
-- Balance to watch as Daniel plays: the six-way type mix at waves 7–8+,
-  HP, bounties and debut waves (registry, his); HP ramp feel at 9–15;
-  whether ONE spitter reads as a rhythm and THREE as a crossfire.
+- **Cosmetic, pre-existing:** `enemyTypes.js` carries a **duplicate
+  `SPAWN` key** in the `crawler` entry (~lines 160/164) — identical
+  values, second wins, harmless. **§5's new dup scan only covers
+  config.js**; extending it to the registries is nearly free and would
+  catch this. Good docs-pass work.
+- Balance to watch as Daniel plays: the six-way type mix at waves 7–8+;
+  HP ramp feel at 9–15; whether the shotgun changes which archetypes feel
+  dangerous — the exploder especially, since the shotgun's 100% zone is
+  INSIDE `EXPLODE.RADIUS` deliberately ("players will need to adapt — if
+  an exploder is too close they'll need to react fast").
 - Reload scope (both modes) — still provisional. Other stale hand-file
-  comments (enemyTypes `SQUASH_KICK` "~9%", LIMP comment, config
-  duplicate RECOIL pair; config's WAVES_SCORE block sits flush-left).
-- **Banked:** pass 8 audio (oscillator cues arrive piecemeal with
-  Phase 2/3 passes — fold into pass 8 when opened); Stage 4b basement;
-  Stage 5 environment rotation; itch.io deploy (SHIP gate).
-- **LESSONS.md: 29 entries — 21 harvested (`307946e`), 8 NEW and
-  unharvested** (3 from 2026-07-14, 5 from 2026-07-15). All route to the
-  dev-method. The 07-15 five: the NaN-passes-tolerance probe; the suite
-  HANG on a zero divisor; the bite harness that tested the wrong pin; the
-  registry comment falsified by float noise; and the unaccounted-for code
-  in the tree. **A harvest session is overdue** — it closes with the
-  marking hand-off (`[HARVESTED — <date>]` on each promoted heading) plus
-  a ready commit block.
+  comments (enemyTypes `SQUASH_KICK` "~9%", LIMP comment; config's
+  WAVES_SCORE block sits flush-left). **The config duplicate RECOIL pair
+  is FIXED** (17 moved it to the registry) and the class is now guarded.
+- **Banked:** pass 8 audio (oscillator cues arrive piecemeal with Phase
+  2/3 passes — fold into pass 8 when opened); Stage 4b basement; Stage 5
+  environment rotation; itch.io deploy (SHIP gate).
+  **From RESEARCH_PRIOR_ART Source 6:** a keyed geometry cache
+  (`AssetManager.getGeometry(key, factory)`) — pooling already covers the
+  ground; the keyed form is better the day two modules want the same
+  primitive. No second asker yet. **Do not build it.**
+- **LESSONS.md: 38 entries — 21 harvested (`307946e`), 17 NEW and
+  unharvested** (3 from 2026-07-14, 5 from session 7, **9 from session
+  8**). All route to the dev-method. **A harvest session is badly
+  overdue** — it closes with the marking hand-off (`[HARVESTED — <date>]`
+  on each promoted heading) plus a ready commit block; Daniel's job is
+  drop-and-push, and the push stays his by design.
 
 ## 7. MEASURED facts (MEASURED-at-HEAD wins over this file)
 
+**Blast FX (14c):**
+- Shape/timing only in `CONFIG.BLAST` — **nothing there is a distance**.
+  `MAX` 6, `FLASH_LIFE_MS` 120 (named `_LIFE_` because a top-level
+  `CONFIG.FLASH_MS` already exists for the MUZZLE flash, and two
+  FLASH_MS in one file is a grep away from an expensive mistake),
+  `FLASH_RADIUS_MULT` 1.0, `RING_GROW_MS` 300, `RING_FADE_MS` 150,
+  `RING_THICKNESS` 0.08 (fraction of the current radius, so the band
+  thickens as it grows), `RING_SEGMENTS` 48, `RING_Y` 0.03 (above floor
+  0, grid 0.01, blood pools 0.02), `BURST_SPEED` 5.0.
+- Blast life = `max(FLASH_LIFE_MS, RING_GROW_MS + RING_FADE_MS)` = 450 ms.
+- `spawnBlast` reclaims the OLDEST when the pool is full — the OPPOSITE
+  of `spawnGlob`, which declines. A glob is a live hit the player is
+  physically dodging; a blast is a picture of damage ALREADY dealt, so
+  the oldest one is nearly faded and nobody is reading it.
+
+**Weapons (17):**
+- Pistol: MAG 12 / RELOAD 1200 / LOW_AT 3 / COOLDOWN 150 / PELLETS 1 /
+  SPREAD 0 / RECOIL 60 ms, 1°, 0.06 / 3 boxes / **no MAX_RANGE**.
+- Shotgun: MAG 6 / RELOAD 2200 / LOW_AT 2 / COOLDOWN 700 / PELLETS 8 /
+  **SPREAD 9°** / **MAX_RANGE 13** / RECOIL 110 ms, 3.2°, 0.14 / 6 boxes
+  (3 wood: pump, grip, stock — two materials on one gun is what makes a
+  code-built shotgun read AS a shotgun; the silhouette alone is just a
+  long pistol).
+- **Measured kill curve** (proto_zombie, aimed at the head, 400 shells
+  per range, driven through the real hitboxes and the real damage path):
+  1 m 100% · 2 m 100% · 3 m 98.8% · 4 m 83.8% · 5 m 59.5% · 6 m 46.5% ·
+  8 m 29% · 10 m 16.8% · 13 m 12% · **14 m+ 0.0%**.
+  Pistol control, fired right after the capped shotgun: 100% at
+  3 / 13 / 30 / 40 m.
+- **Why the cross-map kill existed** (the shipped 4.5° gun killed 5% per
+  shell at 40 m, free, forever): a pellet is a full-damage hitscan of
+  infinite length, `HITBOX.HEAD` 3 one-shots EVERY type (all HP ≤ 3), and
+  the eyes are `fog: false` — so you could see and snipe glowing eyes
+  across a 36×42 m arena. The shotgun at range wasn't dealing damage; it
+  was buying eight lottery tickets per pull. **Spread alone could not fix
+  it**: at 12° the 40 m shot was still 0.5% while the 3 m gun fell to
+  87% — the exploit survives and the weapon dies. A cap makes it
+  IMPOSSIBLE rather than rare, which is the only thing that stops it
+  reading as absurd.
+- **Why MAX_RANGE is 13**: it is `FOG.WAVES.FAR`. Past 13 m the BODY is
+  invisible, so the cliff hides behind the fog that already hides the
+  target — **the gun reaches exactly as far as you can see something to
+  shoot at**. §24 pins the two edges as INEQUALITIES, not equality:
+  `MAX_RANGE ≤ FOG.WAVES.FAR` (never outrange your eyes — if the fog ever
+  shrinks, this fires) and `MAX_RANGE > spitter STOP_DISTANCE 9` (never a
+  dead pick against the archetype built to punish distance).
+- Per-pellet blood is `max(2, round(HIT_PARTICLES / PELLETS))` — at
+  PELLETS 1 that is `HIT_PARTICLES` exactly (pistol untouched); at 8 it
+  is 2, so a shot's TOTAL spray stays ~constant. Undivided, a point-blank
+  shotgun asks for 80 from a 64-slot pool and starves the kill eruption
+  firing two lines later — a missing payoff, never a crash.
+
 **Exploder (14):**
 - Bands: `RADIUS` 3.5 / `CORE_RADIUS` 1.8 / `DAMAGE` 1 / `CORE_DAMAGE` 2.
-  Both boundaries INCLUSIVE (`dist === CORE_RADIUS` is core; `dist ===
-  RADIUS` still bites) — pinned exactly, so a tune can't drift them
-  silently.
+  Both boundaries INCLUSIVE — pinned exactly, so a tune can't drift them.
 - The design window IS the archetype: `RADIUS` 3.5 > standing attack gate
-  2.5 (if it can claw you it can blast you) AND ≤ `NAV.BEELINE_DIST` 4
-  (a safe kill range always exists). Break either half and it's a
-  non-event or unfair.
+  2.5 (if it can claw you it can blast you) AND ≤ `NAV.BEELINE_DIST` 4 (a
+  safe kill range always exists).
 - Blast anchor measured: prone **0.393 m** vs standing **1.163 m** — the
   crippled-exploder freebie, free from pass 12's live-waist anchor.
 - Particle budget: `MAX_PARTICLES` 64 − `KILL_PARTICLES` 22 = 42 of
   headroom; `EXPLODE.PARTICLES` 30 fits with room for a hit spray.
-- The eyes are the ONLY fog-free material on a body (`MeshBasicMaterial`,
-  `fog: false`) — body emissive is swallowed by `FOG.WAVES.FAR` 13, and
-  `group.scale` belongs to the squash spring (3 write sites). That is why
-  the tell is the eyes and nothing else. Hues now all taken: amber
-  (proto/crawler/brute), orange (sprinter), acid green (exploder), violet
-  (spitter). **A 7th archetype needs a new tell axis, not a new hue.**
+- The eyes are the ONLY fog-free material on a body — body emissive is
+  swallowed by `FOG.WAVES.FAR` 13, and `group.scale` belongs to the
+  squash spring. Hues all taken: amber (proto/crawler/brute), orange
+  (sprinter), acid green (exploder), violet (spitter). **A 7th archetype
+  needs a new tell axis, not a new hue.**
 
 **Spitter (15):**
 - `STOP_DISTANCE` **9** — outside every melee ring (max 2) and outside
   `NAV.BEELINE_DIST` 4, so it never beelines and never closes; inside
   `FOG.WAVES.FAR` 13, so it's visible at its post.
-- `GLOB_SPEED` 8 is the design as a number: flight = 9/8 = **1.125 s**,
-  and `PLAYER.MOVE_SPEED` 4.5 covers **5.06 m** in that window against a
-  **0.43 m** hit radius (`GLOB_RADIUS` 0.13 + `BODY_RADIUS` 0.3). **It
+- `GLOB_SPEED` 8: flight = 9/8 = **1.125 s**, and `PLAYER.MOVE_SPEED` 4.5
+  covers **5.06 m** in that window against a **0.43 m** hit radius. **It
   cannot hit a moving player.** It hits you reloading, cornered, or
   camping. That is the archetype, stated as a number — retune with care.
 - Fire period = `ATTACK.COOLDOWN_MS` **2600 ms flat** (start-to-start;
-  `cooldownT` is set at the WINDUP, so the 700 ms windup is INSIDE it,
-  not added). Phases 700 + 150 + 500 = 1350 < 2600. At most **one glob
-  airborne per spitter** (1.13 s flight / 2.6 s period).
-- Hit model: XZ distance ≤ `GLOB_RADIUS + PLAYER.BODY_RADIUS`, with the
-  column from `y = 0` to `y = playerPos.y` — the CAMERA's own height, not
-  a `PLAYER.HEIGHT` constant, because there isn't one and inventing a
-  tunable that must silently agree with the camera is how two sources of
-  truth start disagreeing. No tunnelling at these speeds (~0.13 m/frame
-  horizontal vs a 0.43 m radius).
+  `cooldownT` is set at the WINDUP, so the 700 ms windup is INSIDE it).
+  At most **one glob airborne per spitter**.
 
 **Wave-table rounding — a real trap:**
-- Largest-remainder resolves exact ties **on float noise**. At the wave-8
-  shares, `0.05 × 8 − 0 = 0.40000000000000002220` BEATS `0.425 × 8 − 3 =
-  0.39999999999999991118`. So a sub-`1/count` share survives or vanishes
-  by luck.
-- **`share × count ≥ 1.0` wins a FLOOR slot and never touches the
-  tie-break.** That is why spitter is 0.125 at count 8 (= exactly 1.0).
-  **Do not tune a debut share below `1/count`** without re-checking §22's
-  rounding pin — and note that pin only fires when the share loses EVERY
-  tie (it passes at 0.05, fails at 0.01).
+- Largest-remainder resolves exact ties **on float noise**. `share ×
+  count ≥ 1.0` wins a FLOOR slot and never touches the tie-break — which
+  is why spitter is 0.125 at count 8 (= exactly 1.0). **Do not tune a
+  debut share below `1/count`** without re-checking §22's rounding pin,
+  and note that pin only fires when the share loses EVERY tie.
 
 **Carried forward (unchanged):**
 - **Prone chain extents (probe-measured, 13b):** proto/crawler/sprinter
-  `{head 1.8419, arm 2.1709}`; brute `{head 2.3399, arm 2.7250}`.
-  Brute standing extent measured **1.156** vs a naively-expected 1.264 —
-  absolute overlap constants don't scale (LESSONS #19 confirmed).
-- **Crawl rings (13b):** `arm × RING_FRACTION 0.85` → proto/crawler/
-  sprinter **1.845**, brute **2.316**. Attack gate = ring +
-  `RANGE_SLACK` 0.4 → **2.245** / **2.716**.
-- **The wall geometry (why §19/§20 exist):** the anti-clip prone probe
-  MUST hold a crawler's origin ≥ its arm extent off any faced wall
-  (standoff = `WALL.REACH + WALL.RADIUS` = 2.25 proto / 2.81 brute);
-  the player stands `PLAYER.BODY_RADIUS` 0.3 off it. So a wall-backed
-  player is held at **1.95** / **2.51** — necessarily greater than the
-  stop ring. **A crawler can never reach its stop ring against a wall —
-  only RANGE_SLACK bridges the gap.** Margins: 0.30 / 0.21.
-- **Attack range is ABSTRACT in this project, not geometric:** a
-  STANDING zombie's body reaches **0.916 m** forward from its origin
-  but attacks from up to 2.5 m — hands 1.08–1.58 m short. Do not "fix" a
-  gate by deriving it from where the claw lands.
-- The enemy update path has **no RNG** — sims are deterministic, which
-  is what makes control-difference measurement valid.
-- CRAWL_POSE at HEAD (probe-measured): PITCH 1.35, WAIST −0.8, Y 0.02,
-  ARM_REST 1.125, ELBOW 0.5, REACH_AMP 0.5, STRIDE_FREQ 5.2, ROLL 0.08,
-  HIP_TRAIL 0.15, KNEE_TRAIL 0.25, DRAG_WIGGLE 0.06, HEAD_UP −0.1,
-  WINDUP_COCK 2.2, TURN_MULT 0.125.
-- Sphinx measurements: belly +0.047; toes −0.011…0.037; head clearance
-  +0.125 min; rest hands +0.045; gait floor = rest plant BY
-  CONSTRUCTION (one-sided lift, reach peak 0.44–0.62); strike −0.235
-  (watch); windup arm +0.365.
+  `{head 1.8419, arm 2.1709}`; brute `{head 2.3399, arm 2.7250}`. Brute
+  standing extent **1.156** vs a naively-expected 1.264 — absolute
+  overlap constants don't scale (LESSONS #19 confirmed).
+- **Crawl rings (13b):** `arm × RING_FRACTION 0.85` → **1.845** /
+  **2.316**. Attack gate = ring + `RANGE_SLACK` 0.4 → **2.245** / **2.716**.
+- **The wall geometry (why §19/§20 exist):** standoff = `WALL.REACH +
+  WALL.RADIUS` = 2.25 proto / 2.81 brute; the player stands
+  `PLAYER.BODY_RADIUS` 0.3 off it, so a wall-backed player is held at
+  **1.95** / **2.51**. **A crawler can never reach its stop ring against
+  a wall — only RANGE_SLACK bridges the gap.** Margins 0.30 / 0.21.
+- **Attack range is ABSTRACT in this project, not geometric:** a standing
+  zombie's body reaches **0.916 m** forward from its origin but attacks
+  from up to 2.5 m — hands 1.08–1.58 m short. Do not "fix" a gate by
+  deriving it from where the claw lands.
+- The enemy update path has **no RNG** — sims are deterministic, which is
+  what makes control-difference measurement valid.
+- CRAWL_POSE at HEAD: PITCH 1.35, WAIST −0.8, Y 0.02, ARM_REST 1.125,
+  ELBOW 0.5, REACH_AMP 0.5, STRIDE_FREQ 5.2, ROLL 0.08, HIP_TRAIL 0.15,
+  KNEE_TRAIL 0.25, DRAG_WIGGLE 0.06, HEAD_UP −0.1, WINDUP_COCK 2.2,
+  TURN_MULT 0.125.
+- Sphinx: belly +0.047; toes −0.011…0.037; head clearance +0.125 min;
+  rest hands +0.045; gait floor = rest plant BY CONSTRUCTION (one-sided
+  lift, reach peak 0.44–0.62); strike −0.235 (watch); windup arm +0.365.
 - Face angle rule: PITCH + WAIST + TILT + HEAD_UP = 0.30 rad.
 - Waist pivot: bellyTop − 0.04 = 1.02; suite §15 mirrors the formula.
 - Prone turn rule: match END-POINT sweep (~1.25 m/s), not angular rate.
@@ -421,29 +554,31 @@ and the two wrong tunable comments in §6.
   top (applied in scoreKill, not in the bounty).
 - Wave math: `hpMultAt` = min(CAP, 1 + STEP·max(0, n − RAMP_START));
   JSON key order is NOT canonical — sort before comparing (LESSONS #21).
-- Facing/prone transform/window/village/spring/render-diagnostic facts:
+- Facing/prone transform/window/village/spring/render-diagnostic facts
   unchanged (rotation.y = atan2(dx,dz); world_y = y·cosθ − z·sinθ; head
-  jut buries past upper-trunk ~0.8; window cost WINDOW_COST + 1;
-  village 11 windows / exterior 318 / ring 65 / walkable 387; spring f5
-  ζ0.4 kick ×0.022 settle ~350 ms; two-pass render nulls background
-  after first; black scene + live HUD + visible gun = paint-over).
+  jut buries past upper-trunk ~0.8; window cost WINDOW_COST + 1; village
+  11 windows / exterior 318 / ring 65 / walkable 387; spring f5 ζ0.4 kick
+  ×0.022 settle ~350 ms; two-pass render nulls background after the
+  first; black scene + live HUD + visible gun = paint-over).
 
 ## 8. Session hygiene for next session
 
-Attach this file. **Open on Pass 16 (options round — special reward
-round)**; read RESEARCH_GENRE.md PART 2 #2 and §4 above first. Daniel may
-prefer **14c** (pre-scoped in §0) — ask, don't assume. Clone, fetch+reset,
-state the tip inline (`1b4fe7c`), run the suite — expect **SUITE PASS, 29
-modules, 492 asserts**.
+Attach this file. **Open on Pass 17b (options round — the real ammo
+reserve)**; read §4 above first, and note that Pass 16 must NOT be built
+before it. Clone, fetch+reset, state the tip inline (**`b93af54`**), run
+the suite — expect **SUITE PASS, 31 modules, 594 asserts**.
 
-Do not re-open pass 13c (§6 says why). **Read §6's pass-15 provenance note
-before touching `projectiles.js`, `enemies.js`'s strike hook, or §22.**
-Probe any body change (LESSONS #19); suspect new pins before code
-(LESSONS #21); bite-test every new pin before delivering it, with unique
-anchors, landing reports, and a per-run timeout (2026-07-15); multi-part
+Do not re-open pass 13c (§6 says why). **Read §6's pass-15 provenance
+note before touching `projectiles.js`, `enemies.js`'s strike hook, or
+§22.** Probe any body change (LESSONS #19) and never with an accessor
+that mutates what it reads; suspect new pins before code (LESSONS #21);
+bite-test every new pin, gating on a green baseline first (§2); write
+edit scripts with the file-creation tool, all-or-nothing; multi-part
 deliveries state the file count and checkpoints list expected files
 (LESSONS #20); run the suite in the tree being committed; verify no
-`PASTE_INTO_*` file reached the repo. Docs checkpoints use SCOPED adds.
-Rewrite this handoff at session end. **DESIGN.md v3.1 and a LESSONS
-harvest (8 entries waiting) are both overdue** — either is a good docs
-session.
+`PASTE_INTO_*` reached the repo. Docs checkpoints use SCOPED adds.
+Rewrite this handoff at session end.
+
+**DESIGN.md v3.1 and a LESSONS harvest (17 entries waiting) are both
+badly overdue** — either is a good docs session, and the harvest is the
+bigger debt.

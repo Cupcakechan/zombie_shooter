@@ -684,3 +684,256 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   the `git status` READ is what makes it safe, and it catches arrivals as well
   as deletions"; and "code you did not write yourself is adoptable only through
   the same gates you would apply to your own — green tests are not a review."
+
+## 2026-07-15 — the bite harness ran its whole set against an ALREADY-RED tree: 22 confident false reds
+
+- What broke / what happened: bite-testing pass 14c's §23, the harness reported
+  22 of 23 pins RED and one MISS. Every one of those reds was worthless. Earlier
+  I had hand-run a single bite (`sed` config's `MAX: 6` to `MAX: 0`) and
+  restored it with a one-liner ending `cp /tmp/config.bak src/config.js && echo
+  "restored"`. The word "restored" never printed and I did not notice: the
+  command before it used `${PIPESTATUS[0]}`, a bashism, and the sandbox shell is
+  dash — "Bad substitution" killed the rest of the line and took the restore
+  with it. `MAX: 0` sat in the tree for the whole harness run, so the suite was
+  red before any bite landed and would have gone red at literally anything.
+- Root cause: a bite's verdict is a DIFFERENCE — "red with the mutation, green
+  without it" — and I only ever measured the treatment. There was no control.
+  The MISS is what exposed it: the anchor `MAX: 6` wasn't found because the file
+  already said `MAX: 0`, and chasing that one word is the only reason the other
+  22 didn't ship as certified.
+- Verification gap it exposed: a false RED is not the harmless direction. It
+  reads as "the pin works", so the pin never gets looked at again — and the two
+  genuinely false-green pins hiding in that same run (next entry) would have
+  gone out under a green suite with a clean bill of health.
+- Plug shipped: the harness now runs the suite FIRST and ABORTS if it isn't
+  green, printing "a red measured against a red tree is meaningless". Re-run
+  honestly: 21 red, 2 real false greens surfaced. Both harnesses since (17 and
+  the Option-3 tune) carry the gate as their first act.
+- Route: general instructions candidate — "a bite harness measures a DIFFERENCE,
+  so it must prove its control: gate on a green baseline before the first
+  mutation, and treat a MISS as evidence about the tree, not just the anchor."
+  Also: "never use bash-only syntax in sandbox one-liners — /bin/sh is dash, and
+  a Bad substitution silently eats every command after it on the line."
+
+## 2026-07-15 — the harness detector grepped for a string the suite has never printed: 23/23 false GREEN
+
+- What broke / what happened: the first run of 14c's bite harness reported ALL
+  23 bites GREEN — "the pin does not bite" — which would mean §23 was 30 asserts
+  of pure decoration. It wasn't. The detector tested
+  `out.includes(\`FAIL   ${expect}\`)` where `expect` was `'section23'`. But the
+  suite's assert helpers print `  FAIL   <assert label>`; the section string
+  goes into the `failures` array and never reaches stdout at all. The condition
+  could not be true for any input.
+- Root cause: I wrote the detector from my model of the suite instead of from
+  its output. One manual run showed the real shape (`SUITE FAIL — 2 failure(s)`)
+  in seconds.
+- Verification gap it exposed: 23/23 identical verdicts is the signature of a
+  broken instrument, not 23 broken pins — the same shape as #601's ambiguous
+  grep, one level worse. And the failure direction was luckier than it deserved:
+  a detector that always says GREEN wastes an hour; the same class of bug
+  inverted says RED and certifies nothing.
+- Plug shipped: detection now keys on `SUITE FAIL` — the line the suite actually
+  emits — then confirms the red landed in the right section by slicing from that
+  section's header. The manual run that exposed it also found a REAL bug the
+  harness had been reaching for: `spawnBlast` called `blasts.reduce()` on an
+  empty pool, which THROWS rather than returning undefined, so a mistuned
+  `BLAST.MAX: 0` took out the entire kill callback instead of quietly skipping
+  the decoration. Guarded with `if (!blasts.length) return null`.
+- Route: general instructions candidate — "a harness that reads another
+  program's output must be written against a REAL sample of that output, never
+  against your model of it; and uniform verdicts across a whole set are
+  evidence about the instrument."
+
+## 2026-07-15 — two false-green pins sampled the exact instant their mutation cannot reach
+
+- What broke / what happened: with an honest baseline, two of 14c's §23 pins
+  stayed green under a mutation that genuinely broke the thing they guarded.
+  (a) "the ring is still FULL BRIGHT the moment it lands" asserted
+  `ringOpacity(growMs, growMs, fadeMs) === 1`. The mutation made the ring fade
+  across the whole expansion — but the growth branch is `if (t < growMs)`, and
+  at `t === growMs` that is false, so the pin sampled the ONE instant the
+  mutation doesn't own. A ring fading the entire way down passed it.
+  (b) "ringOpacity survives a zero fade time" sampled `t = growMs + 1`, which
+  divides to `Infinity`; `Infinity >= 1` is true, so the fade branch returns a
+  clean 0 and an unguarded function passes. The NaN only exists at
+  `t === growMs` exactly, where the division is 0/0 and `NaN >= 1` is false.
+- Root cause: both pins tested a POINT while their label claimed an INTERVAL,
+  and in both cases the point I picked was the boundary — the one place a
+  branch-based mutation is invisible. For (b) I reached for a "safely past the
+  edge" sample when the guard exists for the edge itself.
+- Verification gap it exposed: sibling of #436 ("assert the assert") but sharper
+  — these pins were not wrong about the system, they were wrong about WHERE to
+  look. Both would have certified a broken shockwave.
+- Plug shipped: (a) now sweeps `[0, growMs)` and keeps the landing instant as a
+  separate assert; (b) samples `0/0` at the boundary AND `x/0` past it. Both
+  re-bitten red.
+- Route: general instructions candidate — "a pin whose label says 'always' or
+  'the whole time' must sweep the interval, not sample it; and a /0 guard is
+  tested at the divisor's zero, not near it — the boundary is where the branch
+  that hides the bug lives."
+
+## 2026-07-15 — config.js declared two keys TWICE for nine passes, and a runtime schema physically cannot see it
+
+- What broke / what happened: opening pass 17 I found `RECOIL_MS` and
+  `RECOIL_KICK_DEG` each declared twice in `config.js`, adjacent, identical
+  values. Harmless by luck — JS keeps the last and drops the rest — but tuning
+  the FIRST copy of either would have done nothing, silently, and the §5 config
+  contract with its full schema, usage scan and finite-leaf sweep had been
+  watching them since pass 9 without a word.
+- Root cause: not the duplicate, but the class. §5 validates the CONFIG OBJECT,
+  and by the time the object exists the duplicate has already been collapsed by
+  the language. No runtime guard can ever see this — the evidence is destroyed
+  before any assertion runs. The origin is almost certainly a paste-in landing
+  one block low, which is exactly what happened again in 14c (next entry).
+- Verification gap it exposed: an entire bug class invisible to every layer §5
+  had. And the delivery mode that creates it — config.js is paste-in-only by
+  design, precisely because Daniel hand-tunes it — is the one we use most.
+- Plug shipped: §5 gained a TEXT-level duplicate-key scan, block-scoped (same
+  leaf name under two blocks is legal — `BLOOD.COLOR`/`CASINGS.COLOR`,
+  `PROJECTILES.MAX`/`BLAST.MAX`), with a guard-the-guard on the parse (14 blocks
+  seen). It caught both live duplicates on the day it landed. Pass 17 deleted
+  them anyway by moving recoil onto the weapon registry.
+- Route: general instructions candidate — "when a bug class is destroyed by the
+  runtime before any assertion can run, the guard has to live at the level where
+  the evidence still exists — for source-shaped bugs that is a text scan, not a
+  schema."
+
+## 2026-07-15 — the paste-in's ANCHOR got pasted: two comment lines doubled in a file Daniel hand-edits
+
+- What broke / what happened: 14c's config.js paste-in showed a "find this"
+  block and a "paste this" block as two adjacent fenced code blocks with nothing
+  distinguishing them. Daniel pasted both. His committed config.js carried the
+  PROJECTILES block's last two comment lines twice. Same shape in
+  `enemyTypes.js`: `FX_COLOR` landed at column 27 instead of 5. Neither broke
+  anything — the suite passed on his committed tree — but both are permanent
+  noise in files he reads and hand-tunes, and I only found them because I diffed
+  my sandbox against the remote before building on it.
+- Root cause: a delivery format that renders an anchor and a payload
+  identically. The anchor LOOKS like content to paste, because it is content,
+  formatted as content. Nothing in the message says which is which.
+- Verification gap it exposed: nothing on either side catches it. `git status`
+  shows the file as modified, which is expected; the suite passes, because
+  comments and indentation are invisible to it; and the duplicate-key scan
+  above only exists as of this session — it would have caught the config half.
+  The near-certain origin of the nine-pass-old RECOIL duplicates is this exact
+  mechanism from an earlier session.
+- Plug shipped: both files tidied and committed. Delivery rule going forward: an
+  anchor block is labelled **FIND — do not paste**, or the paste-in becomes a
+  single "replace these lines with this" block with no separate anchor at all.
+  For 17's config.js — deletions in three places — I broke the paste-in-only
+  rule deliberately and shipped a download instead, flagging the assumption that
+  Daniel had not tuned it locally since the last push.
+- Route: general instructions candidate — "a paste-in delivery must make the
+  anchor typographically un-pasteable, or not have one: two adjacent code blocks
+  are an instruction to paste both." Sibling of #417 (partial multi-part
+  delivery).
+
+## 2026-07-15 — the module floor sat at 28 while the walker found 29: a guard-the-guard that lags guards nothing
+
+- What broke / what happened: `MIN_EXPECTED_MODULES` in §0 carried the comment
+  "exactly this many modules exist today. Raise it when a module is added; a
+  drop below means a module silently went missing" — and the value 28, while the
+  walker found 29. Pass 15 added `projectiles.js` and never raised the floor. So
+  for two passes, `projectiles.js` could have vanished entirely and Section 0's
+  count assert would have shrugged.
+- Root cause: a floor is only a floor while it touches the ground. Nothing
+  enforced the comment's own instruction, and pass 15's review (which was
+  unusually thorough — it audited every comment and pin after the provenance
+  incident) audited claims and code, not constants.
+- Verification gap it exposed: the guard-the-guard class needs a guard. `>=`
+  makes the assert permanently satisfiable by construction, so it degrades
+  silently rather than failing.
+- Plug shipped: 28 → 30 in 14c, → 31 in 17, with the drift recorded in the
+  comment so the next reader sees that it HAS happened. Bite-tested both times
+  by deleting a module.
+- Route: general instructions candidate — "a floor set with `>=` decays into a
+  no-op the moment the truth moves past it; any guard whose comment says
+  'exactly N today' must be raised in the same pass that changes N, and the
+  pass's checklist should name it."
+
+## 2026-07-15 — my probe repaired the thing it was measuring: getWorldPosition updates the matrix it reads
+
+- What broke / what happened: measuring the shotgun's kill rate vs range, my
+  probe reported that EVERY landed pellet hit the head and none the torso, at
+  every range — impossible at 20 m where the whole body sits inside the cone. I
+  wrote a diagnostic that walked every hitbox printing its world position to
+  find the stale ones. Every position came back correct. The probe looked
+  vindicated. It wasn't: `getWorldPosition` calls `updateWorldMatrix`
+  internally, so the act of asking each mesh where it was FIXED each mesh. The
+  probe itself only ever asked the HEAD — every other hitbox kept a stale matrix
+  at the origin, invisible to the raycaster — and the diagnostic could not
+  reproduce that because looking repaired it.
+- Root cause: no `scene.updateMatrixWorld(true)` in the probe, and a diagnostic
+  whose measurement had a side effect on the thing measured. The true curve was
+  ~4x worse than the fiction (0.83 pellets/shot at 20 m, not 0.18).
+- Verification gap it exposed: a probe with a side effect is not an
+  observation. And the shape is nastier than a plain wrong probe, because the
+  confirming diagnostic AGREED — I nearly shipped a tuning decision on numbers
+  that only existed inside the measurement.
+- Plug shipped: the corrected probe calls `scene.updateMatrixWorld(true)` after
+  spawn; the histogram that exposed it (where do pellets actually land?) is now
+  the first thing I run, because it asks a question the fiction couldn't answer.
+  Option 3's values came from the corrected run.
+- Route: general instructions candidate — "a probe must not use accessors that
+  mutate what they read; when a diagnostic CONFIRMS a suspect probe, suspect the
+  diagnostic — agreement between two instruments that share a side effect is one
+  instrument." Sibling of #296 ("the probe mimicked the defect") and #548 (the
+  probe held a Material).
+
+## 2026-07-15 — Claude-side: my edit script nested three quoting levels and the tool call leaked into the chat
+
+- What broke / what happened: mid-pass-17 I sent an edit script as
+  `cat > /tmp/edit_main2.cjs <<'ENDOFSCRIPT'` containing JS template literals.
+  The tool call malformed on the way out — the opening bracket was eaten and the
+  backticks mangled — so it never executed and instead printed to Daniel as a
+  wall of broken script. He had to ask what it was. Worse: the PREVIOUS edit had
+  run, so `main.js` sat half-converted — `getActiveWeaponId` used but never
+  imported, and `initShooting` still on `onHit`/`onMiss` while `shooting.js` had
+  already moved to `onShot`. Nothing would have worked.
+- Root cause: LESSONS already says multi-line edit scripts run as script files,
+  never as inline heredocs — and I followed the letter (I WAS creating a script
+  file) while breaking the spirit. The rule exists because nesting quote levels
+  is fragile, and a JS file full of backticks and `${}`, inside a bash heredoc,
+  inside tool-call XML, is three levels deep. It broke at the outermost.
+- Verification gap it exposed: none on the tooling side — the failure was
+  visible and loud. The real exposure is that a multi-step edit has an
+  intermediate state that is worse than either end, and a script that dies
+  between steps leaves it there. `node --check` passed the half-converted file
+  cheerfully.
+- Plug shipped: edit scripts are written with `create_file` — no bash quoting
+  layer at all — and every one exits before `writeFileSync` if any anchor misses
+  (all-or-nothing, so a MISS leaves the file untouched rather than half-edited).
+  That design caught an ambiguous anchor later the same pass and the tree stayed
+  clean.
+- Route: general instructions candidate — "use the file-creation tool for edit
+  scripts, never a shell heredoc: the rule is about QUOTE NESTING, not about
+  whether a file ends up on disk"; and "a multi-edit script must be
+  all-or-nothing — exit before writing if any anchor misses, because the
+  half-applied state passes every cheap gate."
+
+## 2026-07-15 — a bad bite is indistinguishable from a false-green pin, and a neutral mutation is neither
+
+- What broke / what happened: pass 17's bite run came back 23 red, 3 problems.
+  All three were the harness, not the suite. (a) "magazines SHARED across
+  weapons" reported GREEN — but the mutation appended an unused key
+  (`mags.__shared = 0`) and shared nothing; re-aimed to make every weapon spend
+  the pistol's counter, it went red on exactly the right three pins. (b) "a
+  required field goes missing" MISSED on `~1.8x` versus the file's `~1.8×` — I
+  retyped the anchor instead of copying it. (c) "the PISTOL gets perturbed too"
+  (`if (spreadRad > 0)` → `if (true)`) reported GREEN and was CORRECT to:
+  `spreadOffset(0,…)` returns exact `{0,0}`, so the mutation is semantically
+  neutral — the branch is an optimisation, not a guard.
+- Root cause: a bite's verdict is only as good as the bite. A mutation that
+  doesn't mutate, an anchor that doesn't match, and a mutation that is genuinely
+  a no-op all print the same word, and that word looks like an accusation
+  against the pin.
+- Verification gap it exposed: the harness reports on the SUITE, and nothing
+  reports on the harness. The MISS is self-announcing; the other two are not.
+- Plug shipped: bites now print WHICH assert labels went red, so a red for the
+  wrong reason is visible; anchors are copied from the file, never retyped; and
+  a neutral mutation is documented as a NON-bite in the delivery rather than
+  quietly dropped or papered over.
+- Route: general instructions candidate — "a GREEN bite has three causes — a
+  false pin, a bite that didn't bite, and a mutation that changed nothing —
+  and only the first is about the code; print the caught labels so a red for the
+  wrong reason is visible too."
