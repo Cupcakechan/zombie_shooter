@@ -427,10 +427,24 @@ and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
   primitive. No second asker yet. **Do not build it.**
 - **LESSONS.md: 38 entries — 21 harvested (`307946e`), 17 NEW and
   unharvested** (3 from 2026-07-14, 5 from session 7, **9 from session
-  8**). All route to the dev-method. **A harvest session is badly
-  overdue** — it closes with the marking hand-off (`[HARVESTED — <date>]`
-  on each promoted heading) plus a ready commit block; Daniel's job is
-  drop-and-push, and the push stays his by design.
+  8**). Route fields: 16 say "general instructions candidate", 10 say
+  "skill".
+  **The harvest is NOT a zombie_shooter job — it is a dev-method SKILL
+  PROJECT session**, and this file exists so a cold session here does not
+  try to do it. Neither destination (the skill files, Daniel's General
+  Instructions) lives in this repo; there is nothing here to promote INTO.
+  The division:
+    - **record** a lesson — HERE, at the moment it lands. That is this
+      project's whole responsibility, and it is discharged.
+    - **harvest** it — the skill project, sweeping ACROSS projects (the GI
+      says "the fully-marked LESSONS.md file(s)" — plural, deliberately).
+    - **receive** the marking hand-off — back HERE, last: drop in the
+      returned `LESSONS.md` with `[HARVESTED — <date>]` on each promoted
+      heading, run the commit block. Daniel never hand-edits markings or
+      tracks the debt, and the push stays his by design.
+  So: 17 entries is a large and growing debt, and **the place to spend it
+  is a skill-project session, not a docs session here.** Do not open it
+  from this handoff.
 
 ## 7. MEASURED facts (MEASURED-at-HEAD wins over this file)
 
@@ -579,6 +593,12 @@ deliveries state the file count and checkpoints list expected files
 `PASTE_INTO_*` reached the repo. Docs checkpoints use SCOPED adds.
 Rewrite this handoff at session end.
 
-**DESIGN.md v3.1 and a LESSONS harvest (17 entries waiting) are both
-badly overdue** — either is a good docs session, and the harvest is the
-bigger debt.
+**DESIGN.md v3.1 is badly overdue** and is the docs session available HERE
+(it owes eleven passes — see §0).
+
+**The LESSONS harvest — 17 entries waiting — is NOT available here.** It is
+a dev-method SKILL PROJECT session; see §6 for the division. This project
+records lessons and later receives the marking hand-off; it cannot do the
+promotion, because the skill files and the General Instructions are not in
+this repo. If Daniel asks for the harvest, it opens in the skill project,
+and this repo's only part is the final drop-and-push of the marked file.
