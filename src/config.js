@@ -132,8 +132,6 @@ FOG: {
                           //   DECLINING the shot, never by stealing a glob
                           //   already in flight: recycling the oldest would
                           //   delete a hit the player had already dodged.
-                          //   already in flight: recycling the oldest would
-                          //   delete a hit the player had already dodged.
   },
   // — Blast FX (pass 14c): the Exploder's blast, drawn so the player can
   //   READ it. SHAPE AND TIMING ONLY — every radius comes from the type's

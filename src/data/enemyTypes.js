@@ -302,7 +302,7 @@ ENEMY_TYPES.exploder = {
                           //   belongs to the squash spring.
     PULSE_COLOR: 0xeaffc0, // the throb peak — pale acid. A SWELL, not a
                           //   strobe: it lerps from COLORS.EYES and back.
-                          FX_COLOR: 0x9dff30,   // the blast itself (14c): saturated acid, one hue
+    FX_COLOR: 0x9dff30,   // the blast itself (14c): saturated acid, one hue
                           //   for the flash, the shockwave ring AND the gore
                           //   throw, so the whole event reads as one thing.
                           //   Lives HERE and not in CONFIG.BLAST for the same
