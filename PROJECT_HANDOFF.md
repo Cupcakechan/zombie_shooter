@@ -1,18 +1,21 @@
 # PROJECT_HANDOFF — Zombie Shooter
 
-Session-8 END (2026-07-15). Self-contained: a cold session should parse
+Session-9 END (2026-07-15). Self-contained: a cold session should parse
 this without the chat it came from. Repo:
 `https://github.com/Cupcakechan/zombie_shooter.git`. Local:
 `C:\Users\danie\Documents\HTML Projects\zombie_shooter` (Windows, Node,
 **no Python** — every command must be Windows/Node).
 
-Tip at write time: **`b93af54`** — "Pass 17: weaponTypes.js registry +
-switching…". Suite on that tree: **SUITE PASS, 31 modules, 594 asserts.**
+Tip at write time: **`92bdbcf`** — "Pass 17a-fix: no firing mid-bash,
+melee cancels reload, ammo pill repaints on cancel". Suite on that tree:
+**SUITE PASS, 32 modules, 655 asserts.**
 
 ## 0. ROADMAP (adopted 2026-07-13; ordering PROVISIONAL, Daniel
 reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 
-**Next session opens with: Pass 17b — the real ammo reserve.**
+**Next session opens with: Pass 17b — ammo reserve + pickups.** Its
+source and its floor are both DECIDED (§4); the open question is the
+pickup, not whether ammo goes finite.
 
 **Phase 1 — scoring & economy keystone: DONE**
 - ~~Pass 10~~ DONE: kill scoring + praise popup.
@@ -35,7 +38,19 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
   without new evidence.
 - ~~Pass 14~~ DONE: **exploder** — on-death two-band AoE, pulsing-eye
   tell, wave 7.
-- ~~Pass 14c~~ DONE: **exploder blast FX** — see §3.
+- ~~Pass 14c~~ DONE: **exploder blast FX** — pooled `blastFX.js`.
+  An additive FLASH sized to `EXPLODE.CORE_RADIUS` and a ground RING whose
+  OUTER EDGE lands exactly on `EXPLODE.RADIUS`: together they are
+  `blastDamage()` drawn in the world (bright core = 2 hearts, ring edge =
+  1 heart, outside = safe). **Every radius is READ from the registry**, so
+  the picture cannot drift from the damage — §23 pins the RENDERED
+  `mesh.scale` against `blastDamage()` itself. Two things there are
+  load-bearing rather than taste: the ease `1 - (1-u)²` returns 1 in EXACT
+  float arithmetic at u=1 (a sine ease looks identical and does NOT), and
+  the ring HOLDS at full extent before fading, which is what makes the
+  exact arrival frame-rate-independent — a 16.7 ms step jumps 296 → 312
+  without ever sampling 300. Burst particles carry a material EACH; with
+  one shared, a blast would repaint every red droplet still in the air.
 - ~~Pass 15~~ DONE: **spitter** — pooled ballistic globs on an arc, the
   game's first ranged threat, wave 8. See §6's provenance note.
 - **Pass 16 — special reward round** [report #2]: hound round + Max
@@ -46,9 +61,53 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 
 **Phase 3 — weapon variety** [priority: Daniel's explicit ask]
 - ~~Pass 17~~ DONE: **`weaponTypes.js` registry + switching + shotgun**.
-  See §3. The keystone: 18/19/20 were all gated on it.
-- **Pass 17b — the real ammo reserve** [Daniel's ask, queued not banked].
-  See §4.
+  The keystone: 18/19/20 were all gated on it. Its load-bearing move,
+  because 17b inherits it: **`shooting.js` reports a SHOT, and pellets
+  are an implementation detail underneath it** — so ONE round leaves per
+  trigger pull no matter how many pellets fly, and 17b's reserve
+  accounting is correct by construction with no loop to get wrong.
+  Damage stays enemy-side; a weapon's power is `PELLETS`, and because
+  `SPREAD_DEG` means fewer pellets connect with distance, **the scatter
+  IS the falloff** with no falloff code anywhere. Magazines are
+  per-weapon and PERSIST across swaps; a swap CANCELS a reload. The
+  trigger cooldown is ONE shared timer — it belongs to the player's
+  finger, not the gun. Every viewmodel is built AT INIT (building on
+  swap compiles a material mid-round).
+- ~~Pass 17a~~ DONE: **melee — the bash.** See §3. **The decision that
+  reordered this phase, and it is load-bearing for 16/17b/19 — this is
+  the ADR** (the full argument lives in `src/game/melee.js`'s header,
+  which is deliberately the canonical statement rather than this file):
+  - Daniel rejected the infinite pistol as 17b's floor. Correct, and for
+    a sharper reason than "not challenging": an infinite pistol is a
+    **free** floor, so it lets the shotgun's "will you commit?" question
+    be declined for free, and it deletes the pressure 17b exists to make.
+  - **Melee had to come first, and not merely for safety.** Without a
+    floor, 17b's drop rate is HOSTAGE to the softlock — it must be
+    generous enough that you never dry out, which means it can never be
+    scarce, which kills the pass's whole point. A bash costs RISK
+    (REACH 2.0 is inside the standing claw at 2.5) instead of resource.
+    **Melee is what buys the drop rate its freedom to be cruel.** The
+    failure mode becomes "you are bashing wave 9 and it is terrifying"
+    rather than "you have no verb and `waves.js:230` will not end the
+    wave".
+  - **Order matters for what the feature READS as.** Scarcity first
+    teaches "ammo is scarce and I am helpless", and melee then arrives as
+    a patch. Melee first means scarcity arrives and *retroactively gives
+    it a job* — same missing-half structure as 16/17b, one layer down.
+  - **Melee is an ACTION, not a weapon** (`CONFIG.MELEE`, no registry
+    entry, no hotbar slot). A knife in `WEAPON_ORDER` would Q-cycle — you
+    would cycle INTO your panic button and back out — and would need a
+    `MAG_SIZE`/`RELOAD_MS` that mean nothing, which §24's registry
+    contract pins against. When a gun eventually wants its own bash,
+    `weapon.MELEE ?? CONFIG.MELEE` is the same widening MAX_RANGE /
+    EXPLODE / CRAWL already prove, and it costs one `??`. Not built now:
+    both guns would carry identical blocks — machinery with no consumer.
+  - Melee was a **roadmap gap**: surveyed in RESEARCH_GENRE.md PART 1
+    (Category D, line 217) but never given a numbered candidate in PART 2,
+    and not in "Explicitly NOT Recommended" either. It fell through.
+- ~~Pass 17a-fix~~ DONE: **mutual exclusion.** See §3.
+- **Pass 17b — ammo reserve + pickups** [Daniel's ask; the GOAL].
+  See §4. **Its floor now exists.**
 - **Pass 18 — weapon roster expansion** (SMG, etc). **Now data-only** —
   a new gun should be an entry in `weaponTypes.js` and nothing else.
   Verify that claim by building one and touching no other file; if you
@@ -62,6 +121,17 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 - **Pass 23 — window-boarding repair economy** [report #8].
 
 **Named, banked, out of phase order (Daniel's, opened on request):**
+- **Pass 17c — the knife viewmodel.** Daniel's ask at 17a: "an actual
+  knife that switches when melee is applied". Today `swingGun()` sweeps
+  the HELD gun; a knife means hiding `active.group` and showing a knife
+  for the SWING_MS window, then restoring. Build it at init like the guns
+  — never compile a material mid-horde. **It is not cosmetic-only**, and
+  that is the whole reason it is a pass rather than a tweak: a knife is a
+  SECOND HAND, so it makes both of 17a-fix's exclusions legal again.
+  17c must decide, deliberately, whether firing mid-bash and bashing
+  mid-reload come back (COD allows both, and the knife is exactly why).
+  The pressure point is that the pistol's 150 ms trigger is shorter than
+  the 220 ms swing, so "fire while holstered" is a real input.
 - **Pass 14b — friendly-fire exploders.** Deferred from 14 BY DESIGN: an
   AoE that killed other zombies would bump `notifyKill()` while
   `scoreKill()` stayed back in the shot handler with the part context, so
@@ -76,8 +146,7 @@ reorders by pass name; report refs = RESEARCH_GENRE.md PART 2)
 **Long tail (unscheduled, gated):** traps [#7], perks [#9], buyable
 doors [#12], mutators [#11], roguelite meta [#13], mystery box [#14 —
 gate: ≥4–5 weapons], downed/second-wind [#15].
-**Docs debt: DESIGN.md v3.1** (owes Stage 4 + 4.3 + windows + 7c + 7d +
-10 + 12 + 13 + 13b + 14 + 14c + 15 + 17) — the standing docs candidate.
+**Docs debt: DESIGN.md v3.1** — see §6 for the current list.
 
 ## 1. What this project is
 
@@ -116,7 +185,7 @@ roadmap source; §0 owns the adopted ordering and pass numbers).
 Zombie Slayer, the first prior art that shares our no-assets rule; the
 only true like-for-like comparison in the file, and its roadmap rows are
 live evidence for Phase 3 and Pass 19). `DESIGN.md` v3.0 (v3.1 queued).
-`LESSONS.md` (38 entries, **17 unharvested**). No DevLog.
+`LESSONS.md` (42 entries, **21 unharvested**). No DevLog.
 
 ## 2. Method & session rules (the short list)
 
@@ -223,105 +292,185 @@ live evidence for Phase 3 and Pass 19). `DESIGN.md` v3.0 (v3.1 queued).
   `getActiveWeaponId` in 17). Render-path changes are SUITE-INVISIBLE —
   browser-first testing steps.
 
-## 3. Current state (deltas this session; earlier systems unchanged)
+## 3. Current state (deltas THIS session; earlier passes'
+notes now live in §0's roadmap entries and in the code comments)
 
-- **Blast FX (14c)** — new pooled module `src/render/blastFX.js`. An
-  additive FLASH at the body's anchor sized to `EXPLODE.CORE_RADIUS`, and
-  a ground shockwave RING whose OUTER EDGE lands exactly on
-  `EXPLODE.RADIUS`. Together they are `blastDamage()` drawn in the world:
-  bright core = 2 hearts, ring edge = 1 heart, outside = safe. **Every
-  radius is READ from the registry**, so the picture cannot drift from
-  the damage — §23 pins the RENDERED `mesh.scale` against `blastDamage()`
-  itself, not against a shared constant.
-  - The ease curve is load-bearing, not taste: `1 - (1-u)²` returns 1 in
-    EXACT float arithmetic at u=1, so `radius * eased` gives back 3.5
-    bit-for-bit. A sine ease looks identical and doesn't carry that. §23
-    pins it with `===`, never a tolerance.
-  - The ring **HOLDS at full extent then fades**. Not aesthetic: browser
-    frames land where they land and a 16.7 ms step jumps 296 → 312
-    without ever sampling 300. The clamp is what makes the exact arrival
-    frame-rate-INDEPENDENT. §23 drives ragged 16.67 ms frames to prove it.
-  - `bloodFX.spawnBurst` gained an optional `opts` ({color, speed,
-    radial}), all `??`-guarded to the pass-8.3 constants so the three
-    existing call sites are unchanged BY CONSTRUCTION. Burst particles
-    now carry a material EACH — with one shared, a blast would repaint
-    every red droplet still in the air, mid-flight.
-  - `EXPLODE.FX_COLOR` (0x9dff30) lives on the registry, not
-    `CONFIG.BLAST`, for the same reason `RANGED.COLOR` does.
-- **Weapons (17)** — new registry `src/data/weaponTypes.js` +
-  `WEAPON_ORDER`. Pistol (slot 1) reproduces the pass-4 gun exactly;
-  shotgun (slot 2) proves the registry. 1 / 2 pick a slot, Q cycles.
-  - **THE architectural move: SHOT vs PELLET.** `shooting.js` now calls
-    `onShot(hits, weapon)` **exactly once per trigger pull** and hands
-    the pellet results over as data. The old `onHit`-per-ray shape would
-    have charged eight rounds for one shell, kicked eight times, and
-    logged eight Range accuracy samples per pull — seven of them misses
-    when all eight pellets hit one sphere (`hitTarget` refuses an
-    already-popping target). main.js's per-shot bookkeeping is correct BY
-    CONSTRUCTION: there is no loop up there to get wrong.
-  - **Damage stays enemy-side.** A weapon has no damage number; power is
-    `PELLETS`. That falls out beautifully — `SPREAD_DEG` means fewer
-    pellets connect with distance, so **the scatter IS the falloff**,
-    with no falloff code anywhere.
-  - **Magazines are per-weapon and PERSIST across swaps**; a swap
-    CANCELS an in-progress reload. That makes the swap the real answer to
-    an empty shotgun in melee — faster than 2.2 s, at the cost of the
-    progress already paid for. Without the cancel you could start the
-    shotgun's reload, fight with the pistol, and collect a free tube.
-  - **The trigger cooldown is ONE shared timer**, not per-weapon:
-    otherwise you could swap-fire to out-rate both cooldowns by hand. The
-    cooldown belongs to the player's finger, not to the gun.
-  - **Every viewmodel is built AT INIT**; swapping toggles visibility.
-    Building on swap compiles a `MeshStandardMaterial` mid-round — a
-    hitch landing the first time you press 2 with a horde on you.
-  - `MAX_RANGE` is an OPTIONAL field (`?? Infinity`), same contract as
-    CRAWL/EXPLODE/RANGED — the pistol simply has none. Consumer is one
-    line: `raycaster.far = weapon.MAX_RANGE ?? Infinity`, written on
-    EVERY shot because the raycaster is module-scope and `setFromCamera`
-    does not reset `.far`. See §7 for why 13.
-  - **Constants moved OFF config.js onto the registry**:
-    `FIRE_COOLDOWN_MS`, `RECOIL_MS`, `RECOIL_KICK_DEG`, `RECOIL_KICK_BACK`,
-    and the whole `AMMO` block. Every one was a fact about the pistol
-    wearing a global name, and the moment a second gun existed they were
-    actively wrong about it. `GUN.RELOAD_DIP` stays — the dip is how the
-    PLAYER's hands move, not the gun.
-- **Registry-first held all session.** 14c's only structural code is one
-  pooled module; 17's is the SHOT/PELLET split and a parameterised gun
-  builder. Pass 18's roster is meant to be data only — prove it.
+- **Melee — the bash (17a).** `V` swings the held gun. Flat **3** damage,
+  **2.0 m** reach, **600 ms** cooldown, **220 ms** swing. Costs no ammo.
+  New module `src/game/melee.js`; new `CONFIG.MELEE` block; new
+  `onMelee` hook in `input.js`. **No melee in Range mode at all** —
+  Daniel's call, and cleaner than letting it swing at targets and then
+  special-casing the accuracy sample: the cheapest way to never miscount
+  a sample is to have no path that could.
+  - **THE move, and it is why melee needed no new scoring, blood or leg
+    code:** `damageEnemy(mesh, bashDamage)` reports **`part: 'melee'`**,
+    and FOUR part-derived behaviours switch themselves off from that one
+    substitution — the hitbox tier (`partDamage` is never consulted), the
+    leg transform (`part === 'leg'` can no longer be true), the headshot
+    bounty (`scoreKill` multiplies on `'head'`), and the double blood
+    spray. main.js's melee handler is a near-copy of `onShot`'s with no
+    new discipline to remember. It lives in **enemies.js because the suite
+    can drive it** — main.js is DOM-coupled and suite-invisible, so a rule
+    up there would be a rule nothing could prove.
+  - Absent the argument, `damageEnemy` is byte-for-byte the pass-17
+    function. Guarded with `??` against **null AND undefined** — a bare
+    default substitutes on `undefined` only (LESSONS #21), and §25 pins
+    all three call shapes.
+  - **The one-shot era is INHERITED, not coded.** `waveTable.js:60` already
+    named it: `HP.RAMP_START: 8`, through which `hpMult` is 1.0. A flat
+    knife at 3 one-shots a base proto (HP 3) through wave 8 and needs two
+    from wave 9 (HP 3.45) — COD's knife curve exactly, with **zero
+    melee-specific scaling code**. Because it is inherited, a pass-12
+    retune (RAMP_START/STEP/CAP) could delete the whole conservation
+    curve from a distance and leave no other trace; §25 pins both halves
+    (it starts AND it ends).
+  - **No melee scoring bonus, by construction.** RESEARCH_GENRE.md:88
+    documents COD going flat per-kill precisely to kill the "shoot the
+    legs, then melee" farm. The per-hit half does not exist here (pass 10
+    scores on kill only), but the other half would: once pass 19's wallet
+    lands, a melee bonus would make bashing the dominant INCOME strategy
+    and quietly retire the shotgun. **Melee is an ammo decision and must
+    never become a points decision.**
+  - Free interactions, no code: bashing an **exploder** puts you inside
+    `EXPLODE.RADIUS` so it always costs a heart; a **spitter** posts at
+    9 m so bashing it is a real trek; and a landed bash CANCELS an
+    in-progress attack including mid-windup (enemies.js already did that).
+- **Mutual exclusion (17a-fix).** One gun, one job at a time.
+  - **No firing mid-bash** — `canFire: … && !isSwinging()`.
+    **The bullet was never wrong**: `fireShot` raycasts
+    `setFromCamera(CENTER, camera)` and the gun root is a CHILD of the
+    camera, so a swung child cannot steer its parent's ray — measured
+    bit-identical impact points at rest and mid-swing. What WAS wrong is
+    that the muzzle flash and its point light hang off the gun GROUP, so
+    a shot fired mid-swing lit up 32° off-axis while the blood landed
+    dead ahead. **The flash was lying about where the shot went.** Fixed
+    by removing the moment, not by hiding the flash.
+  - The block runs **SWING_MS (220), not COOLDOWN_MS (600)** — the gun is
+    back on base long before you may swing again, so the trigger frees at
+    the animation's end.
+  - **A bash CANCELS an in-progress reload** (Daniel's call, reversing his
+    earlier "doesn't cancel" once he saw it). New `cancelReload()` in
+    ammo.js. The alternative — blocking the bash during a reload — builds
+    a 1200 ms hole with no answer exactly where 17b is about to put the
+    most pressure, which is the "helpless empty gun" spiral melee exists
+    to prevent. Progress is forfeit, not banked. Cancels on a whiff too.
+  - `cancelReload` deliberately does **not** refactor `setActiveWeapon` to
+    use it, though they now write the same two fields: setActiveWeapon
+    clears them UNCONDITIONALLY, and routing it through a guarded cancel
+    would make it depend on "reloadT is always 0 whenever !reloading" —
+    an invariant nothing states and nothing pins.
+  - **The ammo pill is event-driven** (it paints from the flag it is
+    HANDED, not from live state), so **every transition of `reloading`
+    owes it a `setAmmo` call**. There are now six such sites. Shipping
+    the cancel without its repaint left the pill stuck on RELOADING… while
+    the gun was visibly bashing — see LESSONS #24.
 
-## 4. NEXT BUILD PASS: **Pass 17b — the real ammo reserve (OPTIONS ROUND)**
+## 4. NEXT BUILD PASS: **Pass 17b — ammo reserve + pickups (OPTIONS ROUND)**
 
-Daniel's explicit ask, deferred from 17 by design because reserve is
-per-weapon by nature and could not be modelled honestly before
-`weaponTypes.js` existed.
+Daniel's explicit ask and **the goal this whole phase has been walking
+toward**. Deferred from 17 by design (reserve is per-weapon by nature and
+could not be modelled honestly before `weaponTypes.js` existed), then
+gated behind 17a's floor.
 
 **Read this first: there is no reserve at all.** `ammo.js`'s
 `updateAmmo()` sets `mag = MAG_SIZE` out of thin air on reload
 completion. "Unlimited reserve" was never a value — the concept does not
 exist. 17b invents it.
 
-**The hard dependency, and it IS the options round:** finite reserve
-without an ammo SOURCE is a softlock, not a difficulty. A zombie shooter
-where you are empty and cannot act is a dead end. Candidate sources,
-cheapest first:
-- **wave refill** (top up at each wave start — limited WITHIN a wave, no
-  new machinery, cannot softlock);
-- **Pass 16's Max Ammo pulse** (the two are each other's missing half —
-  16's reward is hollow precisely because ammo is infinite);
-- **kill drops** (classic, real risk/reward, needs a pickup system — new
-  machinery, so it needs its own justification);
-- **Pass 19 wall-buys** (needs the wallet, so it can't be first).
+**DECIDED in session 9, do not re-litigate:**
+- **The source is kill drops + a Max Ammo special** (COD's model:
+  rare-ish drops from kills, plus a rare special that fills ALL weapons).
+  Daniel picked this over wave-refill explicitly. The point of the pass
+  is **learning to conserve**.
+- **The floor is melee, not an infinite pistol.** Shipped in 17a. This is
+  what makes the drop rate free to be genuinely scarce — see §0's ADR.
+  Without it the rate is hostage to the softlock; with it, running dry
+  means "bash wave 9 and be terrified", which is a game.
+- **Pass 16's Max Ammo pulse is 17b's sibling, not its prerequisite.** 16
+  is still hollow until a reserve exists. Build 17b first; 16's reward
+  then has a consumer and is the natural rarer source. Do not build 16
+  before 17b.
 
-Other real questions: per-weapon reserve amounts; what the HUD says
-(`setAmmo(weapon, mag, reloading)` currently has no reserve slot); what
-EMPTY feels like (auto-swap? dry click? both?); and whether reserve is a
-registry field (`RESERVE_MAX`) or config. Bite-test every new pin; §10 is
-where the ammo model is pinned and already covers per-weapon mags,
-swap-cancel, reload clocks and slot resolution.
+**Still open — this is the options round:**
+- **Is a drop a world PICKUP or an instant grant?** A pickup (a thing
+  that spawns at the corpse and must be walked over) is new machinery
+  but it is the classic, and it makes the drop a *risk* — you must go to
+  where the zombie died. An instant grant needs no machinery and is
+  strictly worse for it. This is the pass's real question.
+- **Reserve amounts, and where they live** — registry field
+  (`RESERVE_MAX` on `weaponTypes.js`, `??`-guarded like MAX_RANGE) or
+  config? Registry is almost certainly right: reserve is a fact about a
+  gun, and pass 17 moved every gun-fact off config for exactly this
+  reason. A new field means guarding every read with `?? fallback` AND
+  pairing it with a presence assert (LESSONS #22 — the graceful fallback
+  will otherwise quietly absorb a misplaced paste).
+- **Drop rate.** Now tunable honestly. Burn-rate measured in session 9:
+  a 60 s Range run spends ~240 pistol rounds / ~58 shotgun shells — that
+  is the ceiling, not the expectation, but it bounds the arithmetic.
+- **What the HUD says.** `setAmmo(weapon, mag, reloading)` has no reserve
+  slot. Adding one touches hud.js. **Remember the pill is event-driven:
+  every transition owes it a repaint** (§3, LESSONS #24) — a reserve that
+  changes on pickup is a SEVENTH transition site.
+- **What EMPTY feels like** — auto-swap? dry click? both? Melee now
+  answers the "and then what" that made this question unanswerable
+  before.
+- `consumeRound()` is called **once per SHOT, never per pellet** — 17's
+  SHOT/PELLET split means reserve accounting is correct by construction.
+  Do not add a loop.
 
-## 5. The suite — 31 modules, **594 asserts**, run before EVERYTHING
+§10 pins the ammo model (per-weapon mags, swap-cancel, reload clocks,
+slot resolution); §25 now pins the reload CANCEL and the melee contract.
+Bite-test every new pin.
+
+## 5. The suite — 32 modules, **655 asserts**, run before EVERYTHING
 
 New this session:
+- **§25 — melee (~61 asserts)**: the design window as INEQUALITIES
+  (`REACH ≤ STOP_DISTANCE + RANGE_SLACK` — note the two halves live at
+  DIFFERENT depths, `STOP_DISTANCE` top-level on the type and
+  `RANGE_SLACK` inside `ATTACK`; writing that pin from memory produced a
+  NaN that read as a real failure, and `Number.isFinite` now guards it
+  because `NaN <= 2` is quietly FALSE); the **one-shot era derived from
+  `hpMultAt` + the registry**, both halves (it starts AND it ends at
+  RAMP_START+1); `swingReady` at its exact boundary; `meleeSwing` driven
+  at real meshes with a real camera, including the reach boundary a hair
+  either side; and the **bash contract** in `damageEnemy` proven as
+  CONTROL DIFFERENCES against the shot path on the same mesh (torso is
+  the discriminating part — HITBOX.HEAD 3 happens to equal MELEE.DAMAGE 3
+  and would prove nothing; a bash cannot cripple where 3 leg SHOTS do).
+- **§25 (17a-fix)**: the reload cancel end-to-end (ammo.js IS
+  suite-visible), including that progress is forfeit not banked.
+- **Module floor 31 → 32** for `game/melee.js`.
+
+**Every new pin is BITE-TESTED** — 13 for 17a, 4 for 17a-fix (one of
+which found a real redundancy, below). All fire for the right reason.
+
+**Two findings the bite sweep produced that the suite alone would not
+have:**
+- **An exact-landing pin near a NON-ZERO base can be unfalsifiable.**
+  §25 pins the swing closing on base with `===`, and the comment claimed
+  the sine envelope could not land it (`Math.sin(Math.PI)` is 1.2246e-16,
+  not 0). True for the ROTATIONS — base 0, where the residue survives.
+  **False for `position.x`**: its residue is 0.22 × 1.2246e-16 = 2.69e-17,
+  which is below half an ULP near 0.28 (5.55e-17), so it rounds away and
+  the pin passes by float granularity rather than by the code. All three
+  landings kept (x still catches a landing on the WRONG base) but the
+  claim is corrected in both gun.js and the suite. See LESSONS #23.
+- **A pin can wear a true label over false coverage.** An early draft
+  "proved" the fire block reads SWING_MS with
+  `!swingReady(SWING_MS - 1, 0, SWING_MS)` — which passes whatever
+  `isSwinging` actually reads, because it only re-tests swingReady's
+  arithmetic against a number typed into the pin. Relabelled; the real
+  gap is now stated in the file (see below).
+
+**Stated limits — what §25 CANNOT prove, said out loud rather than
+papered over:** `isSwinging()` reads module-scope `lastSwingAt`, which
+only a real keydown writes, and the gate itself is
+`canFire: … && !isSwinging()` in DOM-coupled main.js. So neither the
+wiring NOR "isSwinging reads SWING_MS rather than COOLDOWN_MS" is
+assertable from Node — **both are browser-verified only**. Same for the
+ammo pill's repaint: `setAmmo` is DOM-coupled by construction.
+**From earlier sessions — still pinned, still load-bearing:**
 - **§23 — the blast FX (~32 asserts)**: curve exactness with `===` not a
   tolerance (the ease-out-quad was CHOSEN for bit-exact arrival); the
   ring HOLDS past `RING_GROW_MS`; both opacities reach exactly 0; three
@@ -358,15 +507,26 @@ New this session:
   across swaps, the reload running on the ACTIVE weapon's clock, swap
   cancelling and banking nothing, slot resolution returning null (never
   undefined-indexing), and cycle wrapping.
-- **Module floor repaired twice**: 28 → 30 (14c) → 31 (17). It had sat at
-  28 while the walker found 29 since pass 15 — guarding nothing, because
-  `>=` makes a stale floor permanently satisfiable.
+- **Module floor repaired twice before this session**: 28 → 30 (14c) →
+  31 (17). It had sat at 28 while the walker found 29 since pass 15 —
+  guarding nothing, because `>=` makes a stale floor permanently
+  satisfiable. Raise it whenever a module is added; 17a raised it to 32.
 
-**Every new pin is BITE-TESTED** — 23 for 14c (after two harness repairs
-and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
+Earlier bite tallies: 23 for 14c (after two harness repairs and two real
+false greens), 25 for 17, 5 for the Option-3 tune.
 
 ## 6. Open / outstanding / banked
 
+- **Docs debt: DESIGN.md v3.1** is now the ONLY docs debt and it is
+  growing — it owes Stage 4 + 4.3 + windows + 7c + 7d + 10 + 12 + 13 +
+  13b + 14 + 14c + 15 + 17 + **17a + 17a-fix** (15 passes). This handoff
+  and LESSONS.md are current as of `92bdbcf`. DESIGN.md is the standing
+  docs candidate whenever a session wants a non-code pass.
+- **17a's ADR is written and lives in TWO places, deliberately**: the
+  full argument is `src/game/melee.js`'s header (canonical — it is next
+  to the code it justifies and cannot drift from it), and §0's Pass 17a
+  entry summarises it for a cold read. There is no ADR file and no ADR
+  convention in this repo; do not invent one for a single decision.
 - **Pass 15's provenance is UNEXPLAINED — read this before touching it.**
   Mid-session-7, after the sandbox was synced clean and only read from,
   `git status` showed a complete uncommitted pass 15 implementation. It
@@ -425,10 +585,16 @@ and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
   (`AssetManager.getGeometry(key, factory)`) — pooling already covers the
   ground; the keyed form is better the day two modules want the same
   primitive. No second asker yet. **Do not build it.**
-- **LESSONS.md: 38 entries — 21 harvested (`307946e`), 17 NEW and
-  unharvested** (3 from 2026-07-14, 5 from session 7, **9 from session
-  8**). Route fields: 16 say "general instructions candidate", 10 say
-  "skill".
+- **LESSONS.md: 42 entries — 21 harvested (`307946e`), 21 NEW and
+  unharvested** (3 from 2026-07-14, 5 from session 7, 9 from session 8,
+  **4 from session 9**). Route fields on the unharvested 21, counted from
+  the file at write time: **18 general instructions, 3 skill**.
+  (The previous handoff said "16 / 10" — that split does not survive a
+  recount; the route strings are a loose taxonomy with ~16 variants
+  (`GI candidate`, `dev-method / html-game.md`, `skill reference
+  (html-game.md)`, …), so any tally here depends on how they're bucketed.
+  Recount at harvest time; do not trust this number to be more precise
+  than "most of them are general-instruction shaped".)
   **The harvest is NOT a zombie_shooter job — it is a dev-method SKILL
   PROJECT session**, and this file exists so a cold session here does not
   try to do it. Neither destination (the skill files, Daniel's General
@@ -447,6 +613,44 @@ and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
   from this handoff.
 
 ## 7. MEASURED facts (MEASURED-at-HEAD wins over this file)
+
+**Melee (17a) — all read from the tree, none hand-derived:**
+- `CONFIG.MELEE`: `DAMAGE` 3, `REACH` 2.0, `COOLDOWN_MS` 600,
+  `SWING_MS` 220, `SWING_X` 0.22, `SWING_YAW_DEG` 32, `SWING_ROLL_DEG` 18.
+- **The standing claw gate is 2.5** = `proto.STOP_DISTANCE` (2, TOP-LEVEL
+  on the type) + `proto.ATTACK.RANGE_SLACK` (0.5, inside `ATTACK`). The
+  two live at different depths — assuming they shared a parent cost a
+  suite failure that read like a real one. Reach 2.0 sits inside it.
+- **Bash kill curve at DAMAGE 3**, driven through the shipped `hpMultAt`
+  and `ENEMY_TYPES`:
+
+  | wave | hpMult | proto | crawler/sprinter/exploder/spitter | brute |
+  |---|---|---|---|---|
+  | 1–8 | 1.00 | **1** | **1** | 3 |
+  | 9–10 | 1.15–1.30 | 2 | 1 | 4 |
+  | 12 | 1.60 | 2 | 2 | 5 |
+  | 15+ | 2.00 (cap) | 2 | 2 | 6 |
+
+- **Brute HP is 8**, not ≤3 — the §18 pin consciously exempts HEAVY types
+  from the one-shot guarantee. Melee is no exception: 3 bashes at wave 6.
+  (A line further down this file used to say "all HP ≤ 3"; corrected.)
+- **The swing's channels are DISJOINT and that is load-bearing**: the
+  reload dip owns `position.y`, recoil owns `position.z` + `rotation.x`,
+  the bash owns `position.x` + `rotation.y` + `rotation.z`. They DO
+  overlap in play — the pistol's 150 ms trigger is shorter than the
+  220 ms swing — so adding a channel means checking the other two first.
+- **Float granularity, measured**: `Math.sin(Math.PI)` = 1.2246e-16. On
+  `rotation.y` (base 0) the residue is 6.84e-17 and SURVIVES. On
+  `position.x` (base 0.28) it is 2.69e-17, below half an ULP there
+  (5.55e-17), and **rounds away on its own**. An exact-landing pin near a
+  non-zero base can therefore be unfalsifiable — check the zero-based
+  channel. See LESSONS #23.
+- **A mid-swing shot is bit-identical to a resting one** (measured: same
+  impact point). The gun root is a CHILD of the camera and `fireShot`
+  raycasts from the camera, so a swung child cannot steer its parent's
+  ray. Only the muzzle flash and light — children of the gun GROUP — move.
+- **Burn rate** (60 s Range run, for 17b's arithmetic): ~240 pistol
+  rounds, ~58 shotgun shells. A ceiling, not an expectation.
 
 **Blast FX (14c):**
 - Shape/timing only in `CONFIG.BLAST` — **nothing there is a distance**.
@@ -479,7 +683,10 @@ and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
   3 / 13 / 30 / 40 m.
 - **Why the cross-map kill existed** (the shipped 4.5° gun killed 5% per
   shell at 40 m, free, forever): a pellet is a full-damage hitscan of
-  infinite length, `HITBOX.HEAD` 3 one-shots EVERY type (all HP ≤ 3), and
+  infinite length, `HITBOX.HEAD` 3 one-shots every type EXCEPT the brute
+  (base HP: proto 3, crawler/sprinter/exploder/spitter 2, **brute 8** —
+  this line used to read "all HP ≤ 3", which the §18 pin has consciously
+  exempted HEAVY types from since pass 13), and
   the eyes are `fog: false` — so you could see and snipe glowing eyes
   across a 36×42 m arena. The shotgun at range wasn't dealing damage; it
   was buying eight lottery tickets per pull. **Spread alone could not fix
@@ -577,10 +784,12 @@ and two real false greens), 25 for 17, 5 for the Option-3 tune. All fire.
 
 ## 8. Session hygiene for next session
 
-Attach this file. **Open on Pass 17b (options round — the real ammo
-reserve)**; read §4 above first, and note that Pass 16 must NOT be built
-before it. Clone, fetch+reset, state the tip inline (**`b93af54`**), run
-the suite — expect **SUITE PASS, 31 modules, 594 asserts**.
+Attach this file. **Open on Pass 17b (options round — ammo reserve +
+pickups)**; read §4 above first, and note that its SOURCE (kill drops +
+Max Ammo) and its FLOOR (melee, shipped) are both decided — the open
+question is the pickup. Pass 16 must NOT be built before it. Clone,
+fetch+reset, state the tip inline (**`92bdbcf`**), run the suite —
+expect **SUITE PASS, 32 modules, 655 asserts**.
 
 Do not re-open pass 13c (§6 says why). **Read §6's pass-15 provenance
 note before touching `projectiles.js`, `enemies.js`'s strike hook, or

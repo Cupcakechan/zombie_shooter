@@ -937,3 +937,120 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   false pin, a bite that didn't bite, and a mutation that changed nothing —
   and only the first is about the code; print the caught labels so a red for the
   wrong reason is visible too."
+
+## 2026-07-15 — the one lesson that reached Daniel: I built a return value FOR a repaint, then called the function bare
+
+- What broke / what happened: 17a-fix added `cancelReload()` so a melee bash
+  could abandon a reload. I gave it a return value and wrote, in its own comment,
+  that it returns "whether one was actually running, so a caller can tell a real
+  cancel from a no-op" — then wired it in main.js as a bare `cancelReload();`.
+  The ammo pill paints from the flag it is HANDED (`setAmmo(weapon, mag,
+  reloading)`), not from live state, so it stayed stuck on RELOADING… while the
+  gun was visibly bashing. Daniel found it in the browser.
+- Root cause: I added the SEVENTH call site of a `reloading` transition without
+  reading what the other six do. Every one of them pairs itself with a
+  `setAmmo` repaint, and `startReload` — the closest sibling, same shape, same
+  file — has exactly one caller reading `if (startReload()) setAmmo(…, true)`.
+  The fix was `if (cancelReload()) setAmmo(…, false)`: the codebase already
+  contained the answer, in the mirror position, and I wrote the new call from
+  scratch instead of from the pattern.
+- Verification gap it exposed: my end-state grep walk asks "is every new
+  identifier imported?" — which is exactly why `isSwinging`/`cancelReload` got
+  caught one round earlier. It does not ask "does every new call do what its
+  siblings do at their call sites?" And nothing else could: `setAmmo` is
+  DOM-coupled, so the pairing is unpinnable by construction — a state change
+  with no view update leaves no failing anchor, no orphaned identifier, and a
+  `git status` that looks exactly as expected.
+- Plug shipped: the pairing is now stated in main.js at the call site and in the
+  handoff §3 ("the ammo pill is event-driven, so every transition of
+  `reloading` owes it a `setAmmo` call — there are now six such sites"), so
+  17b's reserve — a seventh transition — inherits the warning.
+- Route: general instructions candidate — "before calling an existing
+  state-mutating function for the first time, grep its SIBLINGS' call sites and
+  copy what they pair with. A state change with no view update is the mirror of
+  a record field with no consumer: same stop signal, and neither a suite nor a
+  `git status` can see it."
+
+## 2026-07-15 — an exact-landing pin near a NON-ZERO base is unfalsifiable: the residue rounds away beneath it
+
+- What broke / what happened: §25 pins the melee swing closing exactly on base
+  with `===` rather than a tolerance, and I wrote — in both gun.js and the
+  suite — that the sine envelope alone cannot land it, since
+  `Math.sin(Math.PI)` is 1.2246e-16 rather than 0. The bite that removed the
+  explicit landing came back RED for the WRONG REASON: it caught
+  `rotation.y`/`rotation.z` and never `position.x`. Measured: x's residue is
+  `0.22 × 1.2246e-16` = 2.69e-17, which is below half an ULP near 0.28
+  (5.55e-17), so it rounds away and `x === baseX` holds with the landing code
+  DELETED. The rotations' base is 0, where nothing rounds away, so their
+  6.84e-17 survives.
+- Root cause: I reasoned about the float residue and not about the float
+  GRANULARITY AT THE BASE. The same epsilon is invisible at 0.28 and fatal at 0.
+  My comment was a true statement about the envelope and a false statement about
+  the channel it was attached to.
+- Verification gap it exposed: only the bite found it. The pin was green, its
+  label was accurate-sounding, and it certified a property it could not test —
+  reading exactly like the other two landings beside it.
+- Plug shipped: all three landings kept (x still catches a landing on the WRONG
+  base, which is the regression that would actually ship), but the claim is
+  corrected at both sites and the suite now names `rotation.y` as THE channel
+  that proves the close. Measured numbers recorded in handoff §7.
+- Route: general instructions candidate — "an exactness pin is only falsifiable
+  where the expected value's ULP is smaller than the error you are trying to
+  catch. Near a non-zero base a small residue rounds away and the pin passes by
+  float granularity rather than by the code — pin the ZERO-based channel, and
+  bite an exactness claim before believing it."
+
+## 2026-07-15 — a pin passed the value under test as its own argument, so it re-tested arithmetic instead of the code
+
+- What broke / what happened: 17a-fix gates firing on `!isSwinging()`, where
+  `isSwinging` must read `CONFIG.MELEE.SWING_MS` (220) and NOT `COOLDOWN_MS`
+  (600) — the difference between the trigger freeing at the animation's end and
+  being dead for the whole cooldown. I "proved" it with
+  `assertTrue('the fire block runs the SWING, not the cooldown',
+  !swingReady(M25.SWING_MS - 1, 0, M25.SWING_MS))`. That passes whatever
+  `isSwinging` actually reads: every input is typed into the pin, so it only
+  re-tests `swingReady`'s subtraction.
+- Root cause: the pin asserted the MECHANISM (the predicate's arithmetic) while
+  its label claimed the EFFECT (which constant the caller supplies). Supplying
+  the value under test as an argument severs the pin from the code entirely —
+  and the label read as coverage.
+- Verification gap it exposed: the true case is genuinely unreachable from Node
+  — `isSwinging()` reads module-scope `lastSwingAt`, which only a real keydown
+  writes, and the gate itself lives in DOM-coupled main.js. Facing an
+  unreachable effect, the silent fallback is to test the mechanism and read the
+  green as coverage. That FEELS like compliance.
+- Plug shipped: relabelled to claim only what it proves; kept the two pins that
+  ARE real (`SWING_MS < COOLDOWN_MS`, and `isSwinging() === false` on a fresh
+  round, which catches an inverted sense); and the gap is stated in the suite
+  file and the handoff §5 as browser-verified-only.
+- Route: general instructions candidate — "a pin that receives the value under
+  test as an argument proves nothing about what the CODE supplies — it tests the
+  arithmetic you just typed. When the effect is unreachable in the test runtime,
+  say 'not verified: X' rather than reaching for the mechanism and calling the
+  green coverage."
+
+## 2026-07-15 — a bite read GREEN because the property was guaranteed TWICE: a fourth cause
+
+- What broke / what happened: §25 pins that a bash-cancelled reload forfeits its
+  progress rather than banking it. The bite removed `reloadT = 0` from
+  `cancelReload()` and came back GREEN. The pin was fine: `startReload()` ALSO
+  zeroes `reloadT`, so the forfeit is guaranteed by two independent lines and no
+  single-line mutation can remove it. Re-bitten with both lines removed, it went
+  red on exactly the right assert.
+- Root cause: an existing entry names three causes of a green bite (false pin /
+  bite that didn't bite / neutral mutation). This is a FOURTH and it is not the
+  same as "neutral": the mutation was semantically real, the pin was real, and
+  the property survived anyway because a second guarantee was standing behind it
+  that I had not noticed I'd written.
+- Verification gap it exposed: a redundantly-guaranteed property looks identical
+  to an untested one from the harness's side. And the redundancy is worth
+  KEEPING — `cancelReload`'s zero is unobservable today only because every
+  reader of `reloadT` happens to be `reloading`-guarded, an invariant nothing
+  states and nothing pins; delete it and the next unguarded reader inherits a
+  live stale timer.
+- Plug shipped: the redundancy and the reason for keeping it are recorded at the
+  pin. The bite for that property mutates BOTH guarantees.
+- Route: general instructions candidate — "a GREEN bite has a fourth cause: the
+  property is guaranteed redundantly, so one mutation cannot remove it. Before
+  blaming the pin, grep for a second writer — and if you find one, keep it and
+  bite them together rather than trimming the belt because the braces held."
