@@ -937,3 +937,103 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   false pin, a bite that didn't bite, and a mutation that changed nothing —
   and only the first is about the code; print the caught labels so a red for the
   wrong reason is visible too."
+
+## 2026-07-16 — a pin that covers today's roster is not a pin on the rule (three instances in one pass)
+
+- What broke / what happened: pass 18 added the SMG and falsified three
+  17b-era pins in one build. (a) `MAG_FRACTION` tied drop size to MAGAZINE
+  size and claimed to "scale to pass 18's roster for free" — a 30-round mag
+  earned 6.0 rounds/kill against a 3-round worst case, inverting the pass's
+  own "spray drains" thesis (any mag ≥ 15 does it). (b) §26's accuracy pin
+  read `dropOf('pistol')` — one gun, green while the rule broke for guns that
+  didn't exist yet. (c) §24's fog leash read `S24.MAX_RANGE` — the shotgun's,
+  hardcoded, so the SMG could have shipped with a 40 m leash, green.
+- Root cause: each pin quantified over the SHIPPED roster instead of the
+  roster variable. All three were written in the same pass (17b/18-adjacent)
+  by generalising from the case in hand; each was TRUE, and none was the rule.
+- Fix that worked: every roster-shaped pin loops `WEAPON_ORDER` and derives
+  its values from the registry (`?? fallback` included), plus a guard-the-guard
+  assert that the loop found members. Same move as §5's registry sweep.
+- Verification gap it exposed: a bite that adds a NEW roster member is the
+  only thing that catches this class before the member ships for real.
+- Route: dev-method skill candidate (suite/pin discipline) — "when a pin's
+  subject is a registry, quantify over the registry, never the instance that
+  prompted the pin; add a found-members guard so an empty loop can't go green."
+
+## 2026-07-16 — a pass can invalidate a NEIGHBOUR'S reasoning without touching its code (twice this session)
+
+- What broke / what happened: (a) pass 18's SMG shipped with `MAX_RANGE: 13`
+  justified by §7's "a cap makes it IMPOSSIBLE rather than expensive" — a rule
+  written in pass 17 when ammo was infinite and "expensive" meant nothing.
+  17b's finite reserve had quietly become the anti-sniping mechanism (44
+  rounds/kill vs 2.4 earned at range); the leash was solving a solved problem
+  and cut Range's back two target rows dead. Found by a feel report. (b) pass
+  19's pistol-start broke 12 suite harnesses that called `setActiveWeapon`
+  after a bare `resetAmmo()` — the pins were right, the WORLD changed under
+  them (ownership now gates swaps).
+- Root cause: reasoning recorded next to a value does not subscribe to the
+  systems it depends on. Code has the suite; rationale has nothing.
+- Fix that worked: (a) re-derive the value from the CURRENT system (leash 24 =
+  farthest Range slot + jitter + margin, suite-pinned); (b) harnesses state
+  their world explicitly (`allOwned: true`) instead of inheriting defaults.
+- Route: dev-method skill candidate — "when a pass changes an economy/gate
+  that other values were priced against, grep the codebase for comments citing
+  the OLD rationale (§-references, 'because', 'so that') and re-derive each."
+
+## 2026-07-16 — a comment that names a future pass and predicts its cost is a claim nothing checks
+
+- What broke / what happened: input.js:64 said "this file doesn't know the
+  roster, so it can't be the thing that has to change when pass 18 adds a
+  third gun" — directly above hardcoded `Digit1`/`Digit2`. Pass 18 changed
+  exactly this file. The comment fused a REQUIREMENT (roster-blind: true) with
+  an ACCIDENT (won't change: false), so it read as architecture while being
+  a prediction.
+- Root cause: same family as 2026-07-15's registry-comment worked example —
+  a falsifiable claim in prose, subscribed to nothing. This one was WORSE
+  because it named the exact pass that would falsify it and still sat there.
+- Fix that worked: the generic slot regex made the claim structurally true;
+  §24's data-only text scan made it a GUARD (no weapon id or slot digit in
+  code outside the registry; scan scoped to CODE in pass 19 — data-to-data
+  references are registry wiring, waveTable's enemy-naming precedent).
+- Route: general instructions candidate — "a comment predicting what a future
+  pass will/won't need to touch is a falsifiable claim: either make it
+  structural (a scan/pin) or phrase it as intent, never as fact."
+
+## 2026-07-16 — Claude-side: three harness defects in one session, each printing a healthy verdict
+
+- What broke / what happened: (a) §26's partial-reload pin PASSED BY ABSENCE —
+  RESERVE_START 48 is an exact multiple of MAG_SIZE 12, so the drain loop
+  landed on 0, the `if (stub > 0)` guard went false, and the assert never ran;
+  a bite restoring the conjured magazine came back green. Fixed by
+  CONSTRUCTING the stub (MAG−1) plus a guard-the-guard assert that the stub is
+  a genuine partial. (b) my "whole rack owned" bite prepended `owned[id]=true`
+  but left the `else delete` branch alive — the mutation deleted what it had
+  just set, a no-op wearing a mutation's clothes. (c) §27 called
+  `WV27.resetWaves()` — a name I derived from the reset-choreography
+  convention; the artifact says `startWaves()`. The suite failed loudly (the
+  good case), but the same invention inside a truthy context would not have.
+- Root cause: (a) test data collided with an arithmetic coincidence of tuned
+  values; (b) a partial anchor makes a partial mutation; (c) convention
+  recalled where the artifact should have been read.
+- Route: dev-method skill candidate — "a conditional assert (`if (x) assert`)
+  is a pin that can pass by absence: pair it with an assert that the condition
+  HOLDS, or construct the state unconditionally"; the no-op-bite and
+  read-the-artifact rules already exist (2026-07-15, GI) — these are repeat
+  instances, evidence of shape not of gap.
+
+## 2026-07-16 — defense-in-depth lines are unbiteable one at a time; bite the STACK to certify the behaviour
+
+- What broke / what happened: two pass-19 bites came back green because a
+  SECOND defense held: removing tryBuy's explicit `kind === 'full'` guard
+  changed nothing (full offers carry `affordable: false` by construction),
+  and reordering grant-before-charge was unobservable behind the
+  affordability precheck. Neither pin was false and neither line was dead —
+  the single-line mutations modelled bugs that cannot manifest alone.
+- Fix that worked: bite BOTH defenses in one mutation (full offers made
+  affordable + guard removed; precheck removed + grant reordered). Both went
+  red on the behavioural pins, certifying the behaviour is covered and the
+  redundant lines are belt-and-braces, not decoration.
+- Route: dev-method skill candidate (bite discipline) — "a green bite behind
+  a second defense is a fourth green-bite cause (after bad-bite / bad-pin /
+  neutral-mutation): verify by biting the combined stack, and record which
+  line is the belt and which the braces."
