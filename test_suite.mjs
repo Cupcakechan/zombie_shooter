@@ -398,7 +398,7 @@ try {
     // is the only layer that covers them, which is exactly the hole it was
     // built for after the 2026-07-11 NaN black screen.
     'PICKUPS.MAX': 'number', 'PICKUPS.DROP_CHANCE': 'number',
-    'PICKUPS.MAG_FRACTION': 'number', 'PICKUPS.LIFE_MS': 'number',
+    'PICKUPS.LIFE_MS': 'number',
     'PICKUPS.BLINK_MS': 'number', 'PICKUPS.BLINK_RATE_MS': 'number',
     'PICKUPS.RADIUS': 'number', 'PICKUPS.SIZE': 'number',
     'PICKUPS.Y': 'number', 'PICKUPS.BOB_AMP': 'number',
@@ -966,7 +966,7 @@ console.log('');
 console.log('— Section 10: ammo + reload —');
 try {
   const A = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
-  const { WEAPON_TYPES: WT } =
+  const { WEAPON_TYPES: WT, WEAPON_ORDER: ORDER10 } =
     await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
   // Pass 17: the magazine is a property of the WEAPON. Derived from the
   // registry, never typed in — a pin holding its own copy of MAG_SIZE would
@@ -1061,9 +1061,19 @@ try {
     assertTrue('section10', 'an empty slot resolves to null, never undefined-indexing',
       A.weaponIdForSlot(9) === null && A.weaponIdForSlot(0) === null);
     assertTrue('section10', 'cycle goes forward', A.nextWeaponId() === 'shotgun');
-    A.setActiveWeapon('shotgun');
-    assertTrue('section10', 'cycle WRAPS at the end of the roster',
-      A.nextWeaponId() === 'pistol');
+    // The wrap is asserted from the LAST weapon in the roster, derived.
+    // This read `setActiveWeapon('shotgun')` until pass 18, which was a PROXY
+    // for "the end of the roster" that held only while the shotgun happened to
+    // be last. Adding the SMG made it assert a wrap from the MIDDLE and it
+    // failed — correctly, and for the wrong reason. The probe meant "cycling
+    // past the end returns to the start"; it now says that.
+    const last10 = ORDER10[ORDER10.length - 1];
+    A.setActiveWeapon(last10);
+    assertTrue('section10', `cycle WRAPS at the end of the roster ('${last10}' -> '${ORDER10[0]}')`,
+      A.nextWeaponId() === ORDER10[0]);
+    // ...and it is a real wrap rather than a one-weapon tautology.
+    assertTrue('section10', 'the roster is long enough for a wrap to mean anything',
+      ORDER10.length >= 2 && last10 !== ORDER10[0]);
   }
 } catch (err) {
   failures.push({ file: 'section10', err });
@@ -3156,6 +3166,12 @@ try {
     // The graceful fallback and the presence assert are a pair (LESSONS #22);
     // shipping one without the other is how the guard becomes the hiding place.
     'RESERVE_START', 'RESERVE_MAX',
+    // 18. Drop size is a gun-fact like the pile it feeds. REQUIRED for the
+    // same reason: main.js reads it as `?? MAG_SIZE`, and that fallback is
+    // exactly the pass-17b behaviour this pass measured as broken — so an
+    // entry that silently omits it would inherit the bug the field exists to
+    // fix, and no other assert would notice.
+    'PICKUP_ROUNDS',
   ];
   let missing24 = [];
   for (const id of ORDER) {
@@ -3172,6 +3188,48 @@ try {
   // the wrong gun — setActiveWeapon keys off the id, gun.js keys off the map.
   assertTrue('section24', 'every entry\'s id matches its registry key',
     Object.entries(W).every(([k, w]) => w.id === k));
+
+  // — (a2) THE DATA-ONLY SCAN (pass 18) —
+  // "A new gun should be an entry in weaponTypes.js and nothing else." That
+  // sentence has sat in the registry's header since 17 as an aspiration, and
+  // pass 18 tested it by building the SMG: it was FALSE. input.js hardcoded
+  // `Digit1`/`Digit2` under a comment promising it wasn't the thing that would
+  // have to change — so a third gun was unreachable by slot key.
+  //
+  // The fix is one line. The PIN is the point: this scans SOURCE TEXT for any
+  // weapon id spelled as a literal outside the registry, and for any hardcoded
+  // slot digit. Text is the only level where this is visible — every id
+  // resolves fine at runtime, so no schema, import gate or behaviour probe can
+  // see a roster the code has memorised. The same reason §5's duplicate-key
+  // scan is textual.
+  //
+  // It grows with the roster for free (it derives its needles from ORDER), and
+  // it is what makes passes 19 and 20 pay for hardcoding 'smg' into a wall-buy
+  // instead of shipping it.
+  {
+    const REGISTRY = join('src', 'data', 'weaponTypes.js');
+    const offenders = [];
+    for (const f of allSrcFiles) {
+      if (f === REGISTRY) continue; // the registry is allowed to name its own
+      const text = readFileSync(f, 'utf8');
+      // Strip line comments first: prose ABOUT the shotgun is not a dependency
+      // ON the shotgun, and gun.js's comments discuss it at length. Only a
+      // quoted id in live code is a memorised roster.
+      const code = text.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+      for (const id of ORDER) {
+        if (new RegExp(`['"\`]${id}['"\`]`).test(code)) offenders.push(`${f} names '${id}'`);
+      }
+      for (const m of code.matchAll(/\bDigit[0-9]\b/g)) offenders.push(`${f} hardcodes ${m[0]}`);
+    }
+    assertTrue('section24',
+      `a new gun is an entry and NOTHING else — no file outside the registry names a weapon or a slot key${offenders.length ? ' — FOUND: ' + offenders.join('; ') : ''}`,
+      offenders.length === 0);
+    // Guard-the-guard: a scan that reads nothing reports a serene, permanent
+    // green. Uniform verdicts are evidence about the instrument, not the code.
+    assertTrue('section24',
+      `the data-only scan actually read the tree (${allSrcFiles.length} files, ${ORDER.length} ids)`,
+      allSrcFiles.length >= 30 && ORDER.length >= 2);
+  }
 
   // Shapes, not just presence: PARTS drives BoxGeometry directly, and a
   // two-element size builds a gun out of NaN without three.js complaining.
@@ -3357,12 +3415,82 @@ try {
   // Two edges, and the design lives between them. Inequalities, not equality:
   // the cap is 13 BECAUSE the fog is 13, but if the fog ever grows the shotgun
   // should not silently grow with it.
+  // EVERY capped weapon, not just the shotgun. This read `S24.MAX_RANGE` until
+  // pass 18 and therefore pinned ONE GUN rather than the rule — so the SMG
+  // could have shipped with a 40 m leash and sniped fog-free eyes across the
+  // arena on a 75 ms trigger, with the suite serenely green. Third instance of
+  // that shape this pass (MAG_FRACTION and §26's accuracy pin were the others):
+  // A PIN THAT COVERS TODAY'S ROSTER IS NOT A PIN ON THE RULE.
+  // CONSCIOUS PIN MOVE (18, SMG feel report): the universal bound was
+  // FOG.WAVES.FAR and that fused two different rules. "Never outrange your
+  // eyes" is universal — but the EYES see 55 m in Range mode, and pinning
+  // every leash to the WAVES fog cut Range's back two target rows dead for
+  // any capped gun. And the impossible-not-expensive rationale behind the
+  // waves number predates 17b: with a finite pile, spraying at fog-line eyes
+  // costs ~44 rounds a kill against 2.4 earned, so the ECONOMY now does what
+  // only a hard cap could do when ammo was infinite. FOG.WAVES.FAR survives
+  // below as the SHOTGUN's own archetype statement, which it always really was.
+  for (const id of ORDER) {
+    const leash = W[id].MAX_RANGE;
+    if (leash === undefined) continue; // no field, no limit — the pistol's point
+    assertTrue('section24',
+      `${id} never outranges your EYES in the clearest mode: MAX_RANGE ${leash} <= FOG.FAR ${CFG24.FOG.FAR}`,
+      leash <= CFG24.FOG.FAR);
+    assertTrue('section24',
+      `...and ${id} can still answer the spitter at its post: MAX_RANGE ${leash} > STOP_DISTANCE ${ET24.spitter.STOP_DISTANCE}`,
+      leash > ET24.spitter.STOP_DISTANCE);
+  }
+  // The shotgun's leash is the CLOSE-WEAPON statement, scoped to the gun whose
+  // statement it is: inside the waves fog, so bodies are always visible at its
+  // reach. This is an archetype choice — the cliff is the point for a gun
+  // whose 8 pellets land together up close — not exploit-proofing.
   assertTrue('section24',
-    `the shotgun never outranges your EYES: MAX_RANGE ${S24.MAX_RANGE} <= FOG.WAVES.FAR ${CFG24.FOG.WAVES.FAR}`,
-    S24.MAX_RANGE <= CFG24.FOG.WAVES.FAR);
+    `the shotgun stays the CLOSE weapon: MAX_RANGE ${W.shotgun.MAX_RANGE} <= FOG.WAVES.FAR ${CFG24.FOG.WAVES.FAR}`,
+    W.shotgun.MAX_RANGE <= CFG24.FOG.WAVES.FAR);
+  // Any AUTOMATIC weapon must cover the whole aim test — derived from the
+  // spawn table, so a retuned slot grid moves this bound with it. THE pin the
+  // SMG shipped without: at MAX_RANGE 13 the back two Range rows (16, 20 m)
+  // were visible, reachable by the pistol, and dead to the SMG — the
+  // shotgun's cliff on a gun whose spread already does falloff smoothly. A
+  // feel report found it; this would have.
+  {
+    const farthest = Math.max(...CFG24.SPAWN.SLOT_ZS.map((z) => Math.abs(z))) + CFG24.SPAWN.JITTER_Z;
+    for (const id of ORDER) {
+      if (!(W[id].AUTO ?? false)) continue;
+      const leash = W[id].MAX_RANGE ?? Infinity;
+      assertTrue('section24',
+        `${id} covers the whole aim test: MAX_RANGE ${leash} > farthest Range slot ${farthest}`,
+        leash > farthest);
+    }
+  }
+  // Guard the guard: a loop that skips every weapon is a permanent green.
   assertTrue('section24',
-    `...and it can still answer the spitter at its post: MAX_RANGE ${S24.MAX_RANGE} > STOP_DISTANCE ${ET24.spitter.STOP_DISTANCE}`,
-    S24.MAX_RANGE > ET24.spitter.STOP_DISTANCE);
+    `the leash scan found weapons to check (${ORDER.filter((i) => W[i].MAX_RANGE !== undefined).length} capped of ${ORDER.length})`,
+    ORDER.some((i) => W[i].MAX_RANGE !== undefined));
+
+  // — no gun may be STRICTLY BETTER than another (18) —
+  // Weapons with the SAME pellet count are directly comparable: nothing but
+  // rate and scatter separates their rays. Between two of those, a faster
+  // trigger MUST pay in precision, or the slower one has no job at all. The
+  // SMG at SPREAD_DEG 0 is a pistol with double the rate and 2.5x the
+  // magazine — a strict upgrade, and RESEARCH_GENRE.md:205 names exactly that
+  // as a roster's failure mode ("sidegrade guns with no clear ladder muddies
+  // decisions"). Nothing else in the suite noticed; a bite found it.
+  //
+  // The shotgun is excluded BY CONSTRUCTION rather than by exception: 8 pellets
+  // is a different currency, and it pays for them in rate, capacity and reload.
+  for (const a of ORDER) {
+    for (const b of ORDER) {
+      if (a === b || W[a].PELLETS !== W[b].PELLETS) continue;
+      if (W[a].COOLDOWN_MS >= W[b].COOLDOWN_MS) continue;
+      assertTrue('section24',
+        `${a} out-fires ${b} (${W[a].COOLDOWN_MS} < ${W[b].COOLDOWN_MS} ms), so it must pay in scatter (${W[a].SPREAD_DEG} > ${W[b].SPREAD_DEG} deg)`,
+        W[a].SPREAD_DEG > W[b].SPREAD_DEG);
+    }
+  }
+  assertTrue('section24',
+    `the dominance scan found comparable pairs to check (${ORDER.filter((a) => ORDER.some((b) => a !== b && W[a].PELLETS === W[b].PELLETS)).length} weapons share a pellet count)`,
+    ORDER.some((a) => ORDER.some((b) => a !== b && W[a].PELLETS === W[b].PELLETS)));
   // The shotgun must remain a CLOSE weapon: its leash cannot reach past the
   // point where a scatter gun stops being one. If a future tune pushes this
   // out, the archetype has quietly become a rifle.
@@ -4140,7 +4268,7 @@ try {
 
   // — (i) the design window: the pass's thesis as arithmetic —
   {
-    const dropOf = (id) => Math.round(W26[id].MAG_SIZE * P26.MAG_FRACTION);
+    const dropOf = (id) => (W26[id].PICKUP_ROUNDS ?? W26[id].MAG_SIZE);
 
     for (const id of ORDER26) {
       // Start BELOW the cap, or the early waves teach that drops are worthless
@@ -4164,23 +4292,38 @@ try {
       `a last-kill drop outlives the breather (LIFE_MS ${P26.LIFE_MS} > INTERMISSION ${WV26.INTERMISSION_MS} + SPAWN_GAP ${WV26.SPAWN_GAP_MS})`,
       P26.LIFE_MS > WV26.INTERMISSION_MS + WV26.SPAWN_GAP_MS);
 
-    // — ACCURACY IS THE DROP RATE. The whole pass, in two asserts.
-    // No code says this anywhere; it falls out of DROP_CHANCE, MAG_FRACTION,
+    // — ACCURACY IS THE DROP RATE. The whole pass, in one loop.
+    // No code says this anywhere; it falls out of DROP_CHANCE, PICKUP_ROUNDS,
     // the registry's HITBOX tiers and the base HP. That makes it exactly the
     // kind of claim that can be deleted by a tune in a different file and
     // leave no other trace — so it is pinned here, derived, nothing typed in.
+    //
+    // IT LOOPS THE ROSTER, and that is 18's scar. Until this pass it read
+    // `dropOf('pistol')` and pinned one gun, so 17b's MAG_FRACTION — which
+    // tied the drop to MAGAZINE SIZE — was green for a whole pass while being
+    // wrong for every large-magazine weapon that did not exist yet. The SMG's
+    // 30-round mag earned 6.0 rounds/kill against a 3-round worst case: the
+    // gun out-earned its own sloppiness, and the design's central claim
+    // inverted. A pin that covers today's roster is not a pin on the RULE.
+    // Pass 20's guns get checked by this on arrival, for free.
     const proto = ET26.proto_zombie;
     const headCost = Math.ceil(proto.HP / proto.HITBOX.HEAD);   // 1 round
     const torsoCost = Math.ceil(proto.HP / proto.HITBOX.TORSO); // 3 rounds
-    const perKill = P26.DROP_CHANCE * dropOf('pistol');         // 2.4 rounds
-    assertTrue('section26',
-      `a player who AIMS sustains: ${perKill} rounds/kill from drops >= ${headCost} to headshot`,
-      perKill >= headCost);
-    assertTrue('section26',
-      `a player who SPRAYS drains: ${perKill} rounds/kill from drops < ${torsoCost} to body-shot`,
-      perKill < torsoCost);
-    assertTrue('section26', 'and those are two different outcomes (the tiers must differ)',
+    assertTrue('section26', 'the skill tiers actually differ (guard the guard)',
       headCost < torsoCost);
+    for (const id of ORDER26) {
+      const perKill = P26.DROP_CHANCE * dropOf(id);
+      // The shotgun is exempt from the upper bound BY DESIGN and says so out
+      // loud rather than being quietly skipped: one shell is one kill at point
+      // blank, so its "worst case" is a range it should not be fighting at.
+      // Its own pin is below.
+      assertTrue('section26',
+        `${id}: a player who AIMS sustains — ${perKill.toFixed(2)} rounds/kill from drops >= ${headCost} to headshot`,
+        perKill >= headCost);
+      assertTrue('section26',
+        `${id}: a player who SPRAYS drains — ${perKill.toFixed(2)} rounds/kill from drops < ${torsoCost} to body-shot`,
+        perKill < torsoCost);
+    }
 
     // The shotgun's mirror: one shell is one kill at point blank (8 pellets x
     // TORSO 1 = 8, past even the HP cap of 3 x 2.0), so the drop rate makes it
@@ -4195,6 +4338,75 @@ try {
     assertTrue('section26',
       `so the shotgun is AMMO-POSITIVE up close: ${P26.DROP_CHANCE * dropOf('shotgun')} shells/kill from drops >= 1 spent`,
       P26.DROP_CHANCE * dropOf('shotgun') >= 1);
+  }
+
+  // — (j) the AUTO trigger (18): a held button IS the trigger, for guns that
+  //   say so —
+  // Driven through initShooting's injected seam (isHeld, canFire) — the same
+  // seam main.js uses, so this is the real fire path with a controllable
+  // button, not a reimplementation. The camera is a bare PerspectiveCamera
+  // and the hittables list is empty: a shot into a void is still a SHOT
+  // (onShot with zero pellets landed), which is all the auto path owes.
+  {
+    const { initShooting: initS26, updateShooting: updS26, resetShooting: resetS26 } =
+      await import(pathToFileURL(join('src', 'game', 'shooting.js')).href);
+
+    let shots = 0;
+    let held = false;
+    let gun = W26.smg;
+    initS26({
+      camera: new THREE26.PerspectiveCamera(75, 1, 0.1, 100),
+      getHittables: () => [],
+      getWeapon: () => gun,
+      onShot: () => { shots++; },
+      canFire: () => true,
+      isHeld: () => held,
+    });
+
+    resetS26();
+    updS26();
+    assertNear('section26', 'an UNHELD trigger auto-fires nothing', shots, 0);
+
+    held = true;
+    updS26();
+    assertNear('section26', 'the first held frame fires (clock starts at -Infinity)', shots, 1);
+    updS26();
+    updS26();
+    assertNear('section26', 'two more frames INSIDE the 75 ms window fire nothing — the cooldown IS the rate',
+      shots, 1);
+    // Real time, deliberately: lastShotAt is performance.now()'s clock and
+    // this waits it out rather than mocking it. COOLDOWN_MS + 60 of margin
+    // keeps it timer-jitter-proof at the cost of ~0.14 s of suite time.
+    await new Promise((r) => setTimeout(r, W26.smg.COOLDOWN_MS + 60));
+    updS26();
+    assertNear('section26', 'past the window the held trigger fires again — no click needed', shots, 2);
+
+    // The registry decides. A semi-auto gun ignores the held state entirely.
+    gun = W26.pistol;
+    await new Promise((r) => setTimeout(r, W26.pistol.COOLDOWN_MS + 60));
+    updS26();
+    updS26();
+    assertNear('section26', 'a held trigger on a SEMI-AUTO gun fires nothing (AUTO is the registry\'s call)',
+      shots, 2);
+    assertTrue('section26', '...and that is the absent-field contract again: pistol declares no AUTO at all',
+      W26.pistol.AUTO === undefined && W26.shotgun.AUTO === undefined && W26.smg.AUTO === true);
+
+    // The gate inheritance — THE reason fireOnce is shared: mid-bash,
+    // COUNTDOWN, and empty-mag all arrive through this one predicate, so
+    // refusing here proves the auto path cannot fire anywhere a click cannot.
+    gun = W26.smg;
+    initS26({
+      camera: new THREE26.PerspectiveCamera(75, 1, 0.1, 100),
+      getHittables: () => [],
+      getWeapon: () => gun,
+      onShot: () => { shots++; },
+      canFire: () => false,
+      isHeld: () => true,
+    });
+    resetS26();
+    updS26();
+    assertNear('section26', 'a held trigger respects canFire — the whole gate set, inherited, zero new wiring',
+      shots, 2);
   }
 
   // — Stated limits: what §26 CANNOT prove, said out loud rather than papered

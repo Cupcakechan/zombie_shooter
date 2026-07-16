@@ -262,13 +262,19 @@ FOG: {
                             //   ACCURACY IS THE DROP RATE, and no code says
                             //   so. Trouble arrives ~wave 10-12 for the second
                             //   player, which is where this pass wants it.
-    MAG_FRACTION: 1.0,      // a drop grants round(MAG_SIZE x this) of the
-                            //   ACTIVE weapon: pistol 12, shotgun 6. One
-                            //   lever, and it scales to pass 18's roster for
-                            //   free — a new gun's drop size falls out of its
-                            //   MAG_SIZE with no new registry field, which is
-                            //   what "a new gun is an entry and nothing else"
-                            //   has to mean here.
+// MAG_FRACTION LIVED HERE AND WAS WRONG (removed in 18). It granted
+    //   round(MAG_SIZE x 1.0) of the active weapon and claimed to scale to
+    //   pass 18's roster for free. Pass 18 built the SMG and MEASURED it: a
+    //   30-round magazine earns 6.0 rounds/kill against a 3-round worst case,
+    //   so the gun out-earns its own sloppiness and "spray drains" INVERTS.
+    //   Any magazine >= 15 does this; no global fraction fixes it either (at
+    //   0.5 the shotgun's drop falls to 3 and it stops being ammo-positive up
+    //   close, which is its whole design). The error was tying the drop to
+    //   MAGAZINE SIZE when it belongs to KILL COST: a 30-round mag does not
+    //   mean you have earned 30 rounds, it means you burn them faster.
+    //   Drop size is now PICKUP_ROUNDS on the registry — a gun-fact, exactly
+    //   like RESERVE_MAX — and §26 pins every weapon in the roster inside the
+    //   window instead of just the pistol.
     LIFE_MS: 15000,         // the tension lever, and the reason this is a pass
                             //   and not a number: short means "go NOW, into
                             //   the horde", long means "tidy up when it's

@@ -8,7 +8,7 @@ import * as THREE from '../lib/three.module.js';
 import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
 import {
-  initInput, requestLock, getLook, getMoveAxes, onFire, onReload, onSwapWeapon,
+  initInput, requestLock, getLook, getMoveAxes, isFireHeld, onFire, onReload, onSwapWeapon,
 } from './input.js';
 import {
   resetAmmo, canFire as ammoCanFire, consumeRound, startReload, cancelReload,
@@ -57,7 +57,7 @@ import {
 import {
   computeMove, clampToArena, resolveCircleObstacles, resolveCircleAABBs,
 } from './game/movement.js';
-import { initShooting, resetShooting } from './game/shooting.js';
+import { initShooting, updateShooting, resetShooting } from './game/shooting.js';
 import { initMelee, resetMelee, isSwinging } from './game/melee.js';
 import {
   registerHit, registerMiss, resetScoring,
@@ -212,7 +212,9 @@ initBlastFX(scene);
 initPickups(scene, {
   onCollect: () => {
     const w = getActiveWeapon();
-    const rounds = Math.round(w.MAG_SIZE * CONFIG.PICKUPS.MAG_FRACTION);
+    // PICKUP_ROUNDS, not a fraction of the magazine — see config.js's
+    // MAG_FRACTION gravestone for the measurement that killed that idea.
+    const rounds = w.PICKUP_ROUNDS ?? w.MAG_SIZE;
     if (addReserve(getActiveWeaponId(), rounds) <= 0) return false;
     // The SEVENTH repaint site (§3, LESSONS #24) — and it must pass the LIVE
     // reloading flag rather than `false`, because you can absolutely walk over
@@ -457,6 +459,8 @@ initShooting({
   // 17c's knife is what makes "both at once" legal, because that is a second
   // hand; until then, it isn't.
   canFire: () => getState() === States.PLAYING && ammoCanFire() && !isSwinging(),
+  isHeld: isFireHeld, // 18: the auto trigger's per-frame read — injected, see shooting.js
+
   getWeapon: getActiveWeapon,
   // ONE call per trigger pull (pass 17). `hits` is the PELLET results and is
   // empty when the whole pattern missed — there is no onMiss any more,
@@ -802,6 +806,11 @@ renderer.setAnimationLoop(() => {
     updateRound(dtMs);
     updateTargets(dtMs); // pops may finish during a resume countdown
     updateGun(dtMs);     // recoil/flash settle even if the round just ended
+    // The auto trigger (18). Safe to poll in COUNTDOWN too: canFire's state
+    // gate refuses anything outside PLAYING, so a trigger held through the
+    // resume countdown opens up on the exact frame play resumes — which is
+    // the correct reading of "the button is down".
+    updateShooting();
   }
   if (st === States.PLAYING) {
     // The WORLD only simulates while playing (7a.5 fix): during a resume

@@ -34,6 +34,9 @@ const _up = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _baseDir = new THREE.Vector3();
 
+// What initShooting was handed — kept for the per-frame auto path.
+let _refs = {};
+
 // The trigger's clock, not the gun's. ONE timer shared across every weapon on
 // purpose: if each weapon carried its own, you could fire the shotgun, swap,
 // fire the pistol instantly, swap back, and out-rate both cooldowns by hand.
@@ -115,30 +118,66 @@ export function fireShot(camera, weapon, hittables) {
   return out;
 }
 
-export function initShooting({ camera, getHittables, getWeapon, onShot, canFire } = {}) {
-  onFire(() => {
-    // State gate first: a click during COUNTDOWN/RESULTS must not fire and
-    // must not consume the cooldown — main injects the predicate so this
-    // module stays ignorant of the state machine.
-    if (canFire && !canFire()) return;
+export function initShooting({ camera, getHittables, getWeapon, onShot, canFire, isHeld } = {}) {
+  // Everything the trigger needs, kept for the per-frame auto path below.
+  // `isHeld` is INJECTED like canFire rather than imported from input.js, and
+  // for the same reason: main wires the real DOM-backed read, and the suite
+  // wires a flag it controls — the auto path is pure logic + raycasts, both of
+  // which run headless, so there is no reason to let one DOM import make it
+  // browser-only.
+  _refs = { camera, getHittables, getWeapon, onShot, canFire, isHeld };
+  onFire(fireOnce);
+}
 
-    const weapon = getWeapon();
-    if (!weapon) return; // no weapon in hand: nothing to fire, never throw
+// One trigger pull's worth of work — shared verbatim by the click path above
+// and the auto path below, so "what a shot is" exists exactly once and the two
+// paths cannot drift.
+function fireOnce() {
+  const { camera, getHittables, getWeapon, onShot, canFire } = _refs;
+  // State gate first: a click during COUNTDOWN/RESULTS must not fire and
+  // must not consume the cooldown — main injects the predicate so this
+  // module stays ignorant of the state machine. The AUTO path inherits the
+  // whole gate for free: mid-bash (17a-fix), empty mag, and non-PLAYING
+  // states all stop a held trigger exactly as they stop a click, with no
+  // second copy of the rules to keep in step.
+  if (canFire && !canFire()) return;
 
-    const now = performance.now();
-    // Inside the cooldown a click is IGNORED entirely (DESIGN.md §5): it is
-    // not a shot and not a miss — punishing spam is the streak reset's job.
-    // The window is the ACTIVE weapon's, which is the whole of "a pump action
-    // is slower than a pistol".
-    if (now - lastShotAt < weapon.COOLDOWN_MS) return;
-    lastShotAt = now;
+  const weapon = getWeapon();
+  if (!weapon) return; // no weapon in hand: nothing to fire, never throw
 
-    const hits = fireShot(camera, weapon, getHittables());
-    // Exactly one call per trigger pull, hit or miss. The empty array IS the
-    // miss — there is no separate onMiss any more, because with eight pellets
-    // "hit" and "miss" stopped being opposites.
-    if (onShot) onShot(hits, weapon);
-  });
+  const now = performance.now();
+  // Inside the cooldown a click is IGNORED entirely (DESIGN.md §5): it is
+  // not a shot and not a miss — punishing spam is the streak reset's job.
+  // The window is the ACTIVE weapon's, which is the whole of "a pump action
+  // is slower than a pistol".
+  if (now - lastShotAt < weapon.COOLDOWN_MS) return;
+  lastShotAt = now;
+
+  const hits = fireShot(camera, weapon, getHittables());
+  // Exactly one call per trigger pull, hit or miss. The empty array IS the
+  // miss — there is no separate onMiss any more, because with eight pellets
+  // "hit" and "miss" stopped being opposites.
+  if (onShot) onShot(hits, weapon);
+}
+
+// The auto trigger (18): polled once per frame by main. A held button fires
+// weapons whose REGISTRY entry says AUTO — the roster decides, so a fourth
+// gun opts in with a field and no code (§24's data-only scan is what keeps it
+// that way). Semi-auto guns ignore the held state entirely: hold-to-fire on
+// the pistol would erase the click-per-shot discipline that makes it the aim
+// gun, and on the shotgun 86 RPM makes it meaningless anyway.
+//
+// No dtMs and no clock of its own ON PURPOSE: fireOnce's cooldown IS the fire
+// rate. Polling faster than COOLDOWN_MS just gets refused — so the rate is
+// 800 RPM at any frame rate, and the first held frame after a click is
+// correctly swallowed by the same window (no double-fire on the initial
+// mousedown, which already fired via the event path).
+export function updateShooting() {
+  const { getWeapon, isHeld } = _refs;
+  if (!isHeld || !isHeld()) return;
+  const weapon = getWeapon && getWeapon();
+  if (!weapon || !(weapon.AUTO ?? false)) return;
+  fireOnce();
 }
 
 // A fresh round must not inherit the last one's trigger timing.

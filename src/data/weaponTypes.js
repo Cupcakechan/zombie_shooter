@@ -22,7 +22,7 @@ export const WEAPON_TYPES = {};
 // Slot order: index 0 is slot 1, index 1 is slot 2, and Q cycles this list.
 // Explicit rather than Object.keys(WEAPON_TYPES) so Pass 18 can reorder the
 // hotbar without moving definitions around.
-export const WEAPON_ORDER = ['pistol', 'shotgun'];
+export const WEAPON_ORDER = ['pistol', 'shotgun', 'smg'];
 
 // — The Pistol: the pass-4 gun, unchanged. Every number below was lifted
 //   from config.js (FIRE_COOLDOWN_MS, AMMO.*, RECOIL_*) and every box from
@@ -51,6 +51,13 @@ WEAPON_TYPES.pistol = {
                         //   at the cap and waves 1-3 teach that drops are
                         //   worthless, at exactly the moment the pass needs
                         //   them to teach the opposite.
+  PICKUP_ROUNDS: 12,    // rounds per drop (18). Was round(MAG_SIZE x
+                        //   PICKUPS.MAG_FRACTION) and happened to equal 12 —
+                        //   the value is unchanged, the DERIVATION is not.
+                        //   Tying a drop to magazine size rewards big
+                        //   magazines for being big; drop size belongs to KILL
+                        //   COST. A drop is one full mag here, which is what
+                        //   makes the pistol read as the sustainable gun.
   RESERVE_MAX: 84,      // 7 mags (96 rounds with one loaded). MEASURED against
                         //   the wave table: a wave-10 clear costs ~22 rounds
                         //   headshotting (HITBOX.HEAD 3 vs proto HP 3 x
@@ -115,6 +122,8 @@ WEAPON_TYPES.shotgun = {
   //   enforces that — it falls out of the drop granting the ACTIVE weapon a
   //   fraction of ITS mag. "Will you commit?" now has a number attached, and
   //   the answer pays for itself.
+  PICKUP_ROUNDS: 6,     // one full tube (18) — unchanged in value from the
+                        //   MAG_FRACTION era, now stated rather than derived.
   RESERVE_START: 18,    // 3 tubes — below the cap, same reasoning as the pistol
   RESERVE_MAX: 36,      // 6 tubes. Half the pistol's mags because a shell is
                         //   worth ~3x a round up close; parity in ROUNDS would
@@ -186,4 +195,150 @@ WEAPON_TYPES.shotgun = {
       color: 0x5a3a22, rough: 0.85, metal: 0.05 },                         // stock
   ],
   MUZZLE: [0, 0.038, -0.68],
+};
+
+// — The SMG: the pass-18 entry, and the roster's third QUESTION.
+//
+//   Pistol: can you aim? Shotgun: will you commit? SMG: CAN YOU AFFORD IT?
+//   That third question did not exist a pass ago. Before 17b's reserve, an SMG
+//   was a pistol with a bigger number — a sidegrade with no cost, which is the
+//   exact failure RESEARCH_GENRE.md:205 names ("too many sidegrade guns with
+//   no clear ladder muddies decisions"). Finite ammo is what gave it a job.
+//
+//   THE DESIGN, and it is one idea: SPREAD_DEG 2 is not a damage nerf, it is
+//   an ECONOMIC one. With PELLETS 1 a cone doesn't thin a spray with distance
+//   the way the shotgun's does — it costs you the HEAD. HITBOX.HEAD 3 one-
+//   shots a proto and HITBOX.TORSO 1 takes three, so a gun that cannot
+//   reliably find a head pays 3x per kill, forever. §26 pins drops at 2.4
+//   rounds/kill: above the headshot cost (1) and below the torso cost (3).
+//   So THE SMG PUTS YOU ON THE LOSING SIDE OF THAT PIN BY CONSTRUCTION. It is
+//   the "player who sprays" mechanised — not by choice, by barrel.
+//
+//   That is the whole triangle, and none of it is enforced by code:
+//     • aim well            -> pistol, 1 round a kill, ammo-positive
+//     • let them close      -> shotgun, 1 shell a kill, ammo-positive
+//     • panic               -> SMG, kills anything, bankrupts you
+//   A skilled player carries the SMG and hopes not to need it. That is a
+//   weapon with a role rather than a rung on a ladder.
+WEAPON_TYPES.smg = {
+  id: 'smg',
+  NAME: 'SMG',
+
+  // — Ammo —
+  MAG_SIZE: 30,         // 2.5x the pistol — and the thing that made 17b's
+                        //   MAG_FRACTION collapse. A big magazine is not a
+                        //   claim on a big drop; see PICKUP_ROUNDS below.
+  RELOAD_MS: 1600,      // a box mag like the pistol's, just longer. Sits
+                        //   between the pistol (1200) and the shotgun (2200);
+                        //   still above the zombie attack cooldown (1200), so
+                        //   reloading this in melee is a risk, not a decision.
+  LOW_AT: 8,            // ~27% of the mag, matching the pistol's 3/12 feel
+                        //   rather than a shared number — that is exactly the
+                        //   mistake pass 17 pulled LOW_AT out of config for.
+
+  PICKUP_ROUNDS: 12,    // THE number that makes this gun a decision, and the
+                        //   reason drop size had to leave config. A drop is one
+                        //   full mag for the pistol and one full tube for the
+                        //   shotgun; for the SMG it is TWO FIFTHS of a
+                        //   magazine. This is the only gun a pickup does not
+                        //   reload. Under the old MAG_FRACTION it would have
+                        //   been 30 — 6.0 rounds/kill against a 3-round worst
+                        //   case, out-earning its own sloppiness (MEASURED,
+                        //   pass 18). §26 now pins the whole roster.
+  RESERVE_START: 60,    // 2 mags. Below the cap, same reasoning as the others:
+                        //   the first drop must visibly MOVE the number.
+  RESERVE_MAX: 120,     // 4 mags — more ROUNDS than the pistol's 84 and far
+                        //   less TIME: at COOLDOWN_MS 75 a full pile is ~11
+                        //   seconds of held trigger, against the pistol's ~13
+                        //   seconds for 84. The generous-looking number is the
+                        //   joke; the trigger spends it.
+
+  // — Fire —
+  AUTO: true,           // hold to fire (18). The only gun that has this, and
+                        //   OPTIONAL rather than REQUIRED: absent means
+                        //   semi-auto, which is every other gun's correct
+                        //   behaviour and is instantly audible when wrong —
+                        //   unlike the RESERVE fields, whose fallback fails
+                        //   silently and therefore sits on §24's REQUIRED
+                        //   list. Hold-to-fire on the pistol would erase the
+                        //   click-per-shot discipline that makes it the aim
+                        //   gun; the trigger cooldown in shooting.js is what
+                        //   turns this flag into 800 RPM.
+  COOLDOWN_MS: 75,      // 800 RPM, exactly 2x the pistol. This is the whole
+                        //   gun: it pays for its accuracy problem with a rate
+                        //   nothing else has, and it pays for the rate with
+                        //   your pile.
+  PELLETS: 1,           // one ray. The scatter below is therefore a MISS
+                        //   chance, not a falloff curve — the opposite of the
+                        //   shotgun, where 8 pellets turn a cone into damage
+                        //   that thins with range.
+  SPREAD_DEG: 2,        // HALF-angle. Small enough to hit a torso at the fog
+                        //   line, wide enough to lose a head: at 8 m the ray
+                        //   lands within tan(2 deg) x 8 = 0.28 m of the aim
+                        //   point, which is most of a skull away. Body shots
+                        //   are reliable; headshots are luck. THAT is the tax.
+  MAX_RANGE: 24,        // m — finite ON PURPOSE, but past the waves fog. Was
+                        //   13 (= FOG.WAVES.FAR) and that was WRONG twice
+                        //   over, found by a feel report and then measured:
+                        //   • Range mode sees crisply to 55 and its target
+                        //     rows sit at 8-20 m, so a 13 m leash cut the back
+                        //     TWO ROWS dead while the pistol reached them —
+                        //     the shotgun's cliff, on the gun whose spread
+                        //     already does falloff smoothly;
+                        //   • the "impossible rather than expensive" rule the
+                        //     13 leaned on (§7) was written in pass 17, when
+                        //     ammo was INFINITE and expensive meant nothing.
+                        //     17b changed the landscape under the rule: at
+                        //     this leash the spread gives ~7% torso odds — 44
+                        //     rounds a kill against 2.4 earned — so the whole
+                        //     120-round pile buys fewer than three fog-line
+                        //     kills. The ECONOMY is the anti-sniping
+                        //     mechanism now; the leash just keeps "finite"
+                        //     true. Conscious pin move in §24: the universal
+                        //     bound is FOG.FAR (the clearest mode's eyes);
+                        //     FOG.WAVES.FAR stays as the SHOTGUN's own
+                        //     statement, which is an archetype choice and was
+                        //     never exploit-proofing.
+                        //   24 derived, not taste: farthest Range slot 20 +
+                        //   jitter 1 + ~3 m backpedal margin, so the whole aim
+                        //   test is in reach (§24 pins that). Unlimited reach
+                        //   stays the pistol's alone.
+
+  // — Feel —
+  RECOIL_MS: 45,        // shorter than the 75 ms trigger, so the sight fully
+                        //   settles between rounds instead of stuttering at a
+                        //   permanent partial offset. That is a FEEL choice and
+                        //   not an invariant — MEASURED in gun.js: kick() sets
+                        //   recoilT = 0, so a shot RESETS the animation rather
+                        //   than adding to it, amplitude is (1-k)^2 off a fixed
+                        //   RECOIL_BACK, and line 178 lands it exactly on base
+                        //   "so repeated shots can't accumulate drift". An
+                        //   earlier draft of this comment claimed a longer
+                        //   RECOIL_MS would make the gun "climb forever"; that
+                        //   is false, the displacement is bounded either way,
+                        //   and a bite sweep found the claim before it shipped.
+                        //   There is deliberately no pin here: nothing is
+                        //   broken by tuning it, so a pin would guard a rule
+                        //   that does not exist.
+  RECOIL_DEG: 0.8,      // less than the pistol's 1.0 per shot, ~13x a second
+  RECOIL_BACK: 0.035,
+
+  // — Design. Boxes in gun-local space, -Z is downrange.
+  COLOR: 0x2a2e31,      // gunmetal, between the pistol's and the shotgun's
+  ROUGH: 0.5,
+  METAL: 0.45,
+  PARTS: [
+    { size: [0.09, 0.15, 0.30], pos: [0, 0, 0.02] },                       // receiver
+    { size: [0.045, 0.045, 0.26], pos: [0, 0.035, -0.26] },                // barrel
+    { size: [0.055, 0.05, 0.10], pos: [0, 0.075, -0.06] },                 // top rail / charging handle
+    // The magazine is the silhouette. A code-built SMG reads as one because a
+    // long box hangs BELOW the trigger — same lesson the shotgun's wood
+    // furniture taught: the outline alone is just a short pistol.
+    { size: [0.05, 0.22, 0.07], pos: [0, -0.16, -0.02],
+      color: 0x1a1d1f, rough: 0.8, metal: 0.1 },                           // magazine
+    { size: [0.06, 0.13, 0.08], pos: [0, -0.10, 0.13], rot: [0.22, 0, 0],
+      color: 0x1a1d1f, rough: 0.8, metal: 0.1 },                           // grip
+    { size: [0.035, 0.035, 0.22], pos: [0, 0.02, 0.26] },                  // skeleton stock
+  ],
+  MUZZLE: [0, 0.035, -0.40],
 };
