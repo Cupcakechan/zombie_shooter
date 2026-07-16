@@ -310,11 +310,17 @@ FOG: {
     BOB_AMP: 0.08,          // metres of hover travel
     BOB_FREQ: 3.0,          // rad/s of the bob
     SPIN: 1.6,              // rad/s turn — motion no zombie part has
-    COLOR: 0x40e0ff,        // cyan. Every fog-free emissive thing out there is
-                            //   a pair of eyes and the hue axis is spent
-                            //   (amber/orange/acid/violet), so this reads as
-                            //   MADE rather than alive — and it hovers and
-                            //   spins, which is the second and third axes.
+    COLOR_CRATE: 0x4a4f38,  // olive drab — the crate body (17d; was one cyan
+                            //   COLOR: the placeholder cube carried "not eyes"
+                            //   on hue; the crate hands that to silhouette +
+                            //   motion and lets the palette go warm/military).
+    COLOR_BAND: 0xb08d2f,   // brass — DELIBERATELY the CASINGS brass, same
+                            //   hex: "ammo-coloured" is one colour in this
+                            //   world, and the band is what says AMMO at a
+                            //   glance. Sits near the amber eye palette, which
+                            //   is why motion now carries the separation (see
+                            //   pickups.js); the fog-distance read is the
+                            //   browser's, per the 17d test plan.
   },
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',

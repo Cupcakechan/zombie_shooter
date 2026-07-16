@@ -404,7 +404,7 @@ try {
     'PICKUPS.RADIUS': 'number', 'PICKUPS.SIZE': 'number',
     'PICKUPS.Y': 'number', 'PICKUPS.BOB_AMP': 'number',
     'PICKUPS.BOB_FREQ': 'number', 'PICKUPS.SPIN': 'number',
-    'PICKUPS.COLOR': 'number',
+    'PICKUPS.COLOR_CRATE': 'number', 'PICKUPS.COLOR_BAND': 'number',
     'GUN.RELOAD_DIP': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
@@ -4278,6 +4278,28 @@ try {
     reset26();
     assertTrue('section26', 'resetPickups sweeps the floor',
       spawn26(0, 0) !== null && (reset26(), true));
+
+    // — the crate (17d): pool discipline survived the dressing —
+    // The 17b header's warning, made checkable: a dressing that wants
+    // per-instance variation pays for two materials PER DROP, and nothing
+    // else would notice — visuals are suite-invisible, but SHARING is not.
+    // Also pins the blink's mechanism staying on the GROUP: children never
+    // toggle themselves, so inherited visibility keeps two materials enough.
+    {
+      const d5 = spawn26(2, 2);
+      const d6 = spawn26(4, 4);
+      assertTrue('section26', 'a drop is a two-part crate (body + band)',
+        d5.mesh.children.length === 2);
+      assertTrue('section26', 'the pool SHARES both materials (two total, not two per drop)',
+        d5.mesh.children[0].material === d6.mesh.children[0].material
+        && d5.mesh.children[1].material === d6.mesh.children[1].material);
+      assertTrue('section26', '...and both geometries',
+        d5.mesh.children[0].geometry === d6.mesh.children[0].geometry
+        && d5.mesh.children[1].geometry === d6.mesh.children[1].geometry);
+      assertTrue('section26', 'the blink lives on the GROUP; children stay true and inherit',
+        d5.mesh.children.every((c) => c.visible === true));
+      reset26();
+    }
   }
 
   // — (i) the design window: the pass's thesis as arithmetic —

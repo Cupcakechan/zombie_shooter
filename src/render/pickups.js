@@ -47,26 +47,43 @@ export function initPickups(scene, { onCollect } = {}) {
   if (drops.length) return; // idempotent: re-init must not double the pool
 
   const P = CONFIG.PICKUPS;
-  // ONE shared geometry AND one shared material — the opposite call to
-  // projectiles.js, and for the reason projectiles.js states rather than in
-  // spite of it. A glob carries a material each because its COLOUR is
-  // per-type registry data; there is exactly one kind of drop, so nothing
-  // varies per instance and a shared material is simply correct. The
-  // expire-blink below is deliberately built on `visible` and not on opacity
-  // for the same reason — opacity is per-instance state, and reaching for it
-  // would silently make twelve materials mandatory.
-  const geo = new THREE.BoxGeometry(P.SIZE, P.SIZE, P.SIZE);
+  // The crate (17d — Daniel's feel note on 17b: "more in theme"). Two boxes:
+  // a squat olive body and a proud brass band around its waist. The cyan cube
+  // it replaces carried the "not eyes" separation on HUE because hue was the
+  // cheap axis; the crate hands that job to SILHOUETTE (nothing else out
+  // there is squat and banded) and MOTION (nothing else bobs or spins), and
+  // lets the palette go warm — the band is the CASINGS brass, read from that
+  // block so ammo-coloured means one colour everywhere, not two hexes that
+  // agreed once. Brass-vs-amber-eyes at fog distance is the one check the
+  // suite cannot make; the testing steps hand it to the browser.
+  //
+  // Pool discipline HOLDS through the shape change, and this is the line the
+  // 17b header warned about: TWO shared geometries and TWO shared materials
+  // serve all twelve drops (suite §26 pins the sharing). The expire-blink
+  // stays on the GROUP's `visible` — children inherit it — for the same
+  // reason as before: opacity is per-instance state, and reaching for it
+  // would silently make twenty-four materials mandatory.
+  const crateGeo = new THREE.BoxGeometry(P.SIZE * 1.3, P.SIZE * 0.85, P.SIZE * 1.3);
+  const bandGeo = new THREE.BoxGeometry(P.SIZE * 1.38, P.SIZE * 0.24, P.SIZE * 1.38);
   // fog:false is load-bearing, same argument as the glob's and the eyes'.
   // FOG.WAVES.FAR is 13 and this arena is 36x42 — a fogged drop across the map
   // is a drop the player cannot see, and a drop the player cannot see cannot
   // ask them anything. The whole mechanic is the pull of a thing you can see
-  // and have not gone to get yet.
-  const mat = new THREE.MeshBasicMaterial({ color: P.COLOR, fog: false });
+  // and have not gone to get yet. Unlit (Basic) for the same reason: readable
+  // is the job; sitting politely in the lighting is not.
+  const crateMat = new THREE.MeshBasicMaterial({ color: P.COLOR_CRATE, fog: false });
+  const bandMat = new THREE.MeshBasicMaterial({ color: P.COLOR_BAND, fog: false });
   for (let i = 0; i < P.MAX; i++) {
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.visible = false;
-    scene.add(mesh);
-    drops.push({ mesh, t: 0, active: false });
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(crateGeo, crateMat));
+    group.add(new THREE.Mesh(bandGeo, bandMat));
+    group.visible = false;
+    scene.add(group);
+    // The record's field stays named `mesh` although it now holds a Group:
+    // position, rotation and visible are Object3D surface, so every consumer
+    // in this file and every §26 pin reads it unchanged — the dressing pass
+    // touched the LOOK and nothing else, and the untouched suite proves it.
+    drops.push({ mesh: group, t: 0, active: false });
   }
 }
 
@@ -110,11 +127,11 @@ export function updatePickups(dtMs, playerPos) {
     if (!d.active) continue;
     d.t += dtMs;
 
-    // Bob + spin: nothing else in this world does either, which is the point.
-    // Every fog-free emissive thing out there is a pair of EYES, and the hue
-    // axis is fully spent (amber/orange/acid/violet). A cyan cube that hovers
-    // and turns is distinguishable on three axes at once — colour, silhouette
-    // and MOTION — so it can never be misread as something looking at you.
+    // Bob + spin: nothing else in this world does either, and since 17d that
+    // is load-bearing rather than nice — the crate's brass sits NEAR the
+    // amber end of the eye palette, so hue no longer separates it. Motion and
+    // silhouette carry the whole "not something looking at you" job now: eyes
+    // never bob, never turn, and are never squat and banded.
     //
     // Safe under the elapsed-time rule: `d.t` is this drop's OWN age from 0
     // and BOB_FREQ is a constant, so this is a plain periodic signal and not a
