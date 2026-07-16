@@ -3397,8 +3397,13 @@ console.log('');
 console.log('— Section 25: melee, the bash (pass 17a) —');
 try {
   const THREE25 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
-  const { swingReady, meleeSwing } =
+  const { swingReady, meleeSwing, isSwinging: isSwinging25, resetMelee: resetMelee25 } =
     await import(pathToFileURL(join('src', 'game', 'melee.js')).href);
+  const {
+    resetAmmo: resetAmmo25, cancelReload: cancelReload25, startReload: startReload25,
+    isReloading: isReloading25, reloadProgress: reloadProgress25,
+    updateAmmo: updateAmmo25, consumeRound: consumeRound25,
+  } = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
   const {
     initEnemies: init25, spawnEnemy: spawn25, resetEnemies: reset25,
     getEnemyHittables: hittables25, damageEnemy: damage25, partDamage: partDmg25,
@@ -3491,6 +3496,78 @@ try {
     assertTrue('section25', 'allowed EXACTLY on the boundary (>=, not >)',
       swingReady(1000 + cd, 1000, cd));
     assertTrue('section25', 'allowed past it', swingReady(1000 + cd + 1, 1000, cd));
+  }
+
+  // — (d2) the fire block: mid-bash the trigger is dead (17a-fix) —
+  //
+  // WHAT IS NOT PROVABLE HERE, said out loud rather than papered over: the gate
+  // is `canFire: ... && !isSwinging()` in main.js, which is DOM-coupled and
+  // never imported by this suite; and isSwinging() reads module-scope
+  // lastSwingAt, which only a real keydown writes. So neither the wiring NOR
+  // "isSwinging reads SWING_MS rather than COOLDOWN_MS" can be asserted from
+  // Node. Both are browser-verified.
+  //
+  // An earlier draft of this block "proved" the threshold with
+  // !swingReady(SWING_MS - 1, 0, SWING_MS) — which passes whatever isSwinging
+  // actually reads, because it only re-tests swingReady's arithmetic with a
+  // number typed in the pin. That is a false green wearing a true label. What
+  // follows claims only what it proves.
+  {
+    // REAL: the two constants are ordered so the trigger frees up before the
+    // next bash is allowed. If SWING_MS ever crept past COOLDOWN_MS the fire
+    // block would outlive the swing itself.
+    assertTrue('section25',
+      `the swing (${M25.SWING_MS} ms) frees the trigger before the next bash is allowed (${M25.COOLDOWN_MS} ms)`,
+      M25.SWING_MS < M25.COOLDOWN_MS);
+    // REAL: catches an INVERTED sense. isSwinging is `!swingReady(...)`; drop
+    // the `!` and a fresh round would report mid-swing forever, killing the
+    // trigger for the whole game.
+    resetMelee25();
+    assertTrue('section25',
+      'a fresh round reports NOT mid-swing — the trigger is live (catches an inverted sense)',
+      isSwinging25() === false);
+  }
+
+  // — (d3) the reload cancel: a bash abandons a reload (17a-fix, Option 2) —
+  // ammo.js IS suite-visible, so unlike the fire block this one is provable
+  // end to end.
+  {
+    resetAmmo25();
+    assertTrue('section25', 'cancelReload on a gun that is not reloading is a no-op',
+      cancelReload25() === false);
+    assertNear('section25', '...and leaves the mag untouched', reloadProgress25(), 0);
+
+    // Spend a round so startReload has something to do, then cancel mid-way.
+    consumeRound25();
+    assertTrue('section25', 'a reload starts', startReload25() === true);
+    assertTrue('section25', 'it is running', isReloading25() === true);
+    updateAmmo25(200);
+    assertTrue('section25', 'and has made progress', reloadProgress25() > 0);
+
+    assertTrue('section25', 'a bash cancels it, and reports that it did',
+      cancelReload25() === true);
+    assertTrue('section25', 'the reload is abandoned', isReloading25() === false);
+    // reloadProgress() feeding the viewmodel dip is what makes the gun RELEASE
+    // the dip the same frame the swing takes over. If this stayed non-zero the
+    // gun would bash while still dipped — the exact two-jobs-one-gun look this
+    // fix exists to remove.
+    assertNear('section25', 'the dip releases the same frame (progress back to 0)',
+      reloadProgress25(), 0);
+    // The progress is LOST, not banked: the cancel has to cost something or
+    // "bash out of a reload" would be free and you would always do it.
+    //
+    // The bite sweep found this is guaranteed TWICE, independently —
+    // cancelReload zeroes reloadT and so does startReload — so no single-line
+    // mutation can bank the progress, and a one-line bite reads green. That
+    // redundancy is worth keeping rather than trimming: cancelReload's zero is
+    // unobservable TODAY only because every reader of reloadT happens to be
+    // guarded by `reloading`, which is an invariant nothing states and nothing
+    // pins. Delete it and the next unguarded reader inherits a live stale
+    // timer. Same reason setActiveWeapon clears both fields unconditionally.
+    assertTrue('section25', 'you may start a fresh reload afterwards',
+      startReload25() === true);
+    assertNear('section25', 'and it starts from ZERO — the progress is forfeit, not banked',
+      reloadProgress25(), 0);
   }
 
   // — (e) meleeSwing driven for real: a real camera, real meshes, real reach —

@@ -95,6 +95,32 @@ export function startReload() {
   return true;
 }
 
+// Abandon an in-progress reload, keeping whatever is already in the mag.
+// Returns whether one was actually running, so a caller (or the suite) can
+// tell a real cancel from a no-op.
+//
+// The SECOND thing that cancels a reload (17a-fix). The first is a swap, above
+// — and this deliberately does not refactor that one to call this one, though
+// they now write the same two fields. setActiveWeapon clears them
+// UNCONDITIONALLY; routing it through a guarded cancel would make it depend on
+// "reloadT is always 0 whenever !reloading" being true forever, which is an
+// invariant nothing states and nothing pins. Two honest writers beat one
+// clever one resting on an unwritten assumption.
+//
+// Why melee cancels rather than being blocked: you run dry, press R, and a
+// zombie closes inside the 1200 ms. If a bash were merely blocked you would
+// have no answer for that window — which is the "helpless empty gun" spiral
+// melee exists to prevent, and 17b's finite ammo is about to make that window
+// the most common moment in the game. So the bash stays available always and
+// costs you the reload progress instead. Same trade the swap makes, same
+// reason: an escape from melee should cost something you already paid for.
+export function cancelReload() {
+  const was = reloading;
+  reloading = false;
+  reloadT = 0;
+  return was;
+}
+
 // Ticks an in-progress reload; returns true on the tick it completes so the
 // caller knows to refresh the HUD. Fills the ACTIVE weapon only — the one
 // you're holding is the one your hands are working on.

@@ -49,6 +49,22 @@ export function swingReady(now, lastAt, cooldownMs) {
   return now - lastAt >= cooldownMs;
 }
 
+// Is the gun physically mid-bash right now? main.js gates FIRING on this
+// (17a-fix), because you cannot aim and fire a gun you are swinging as a club.
+//
+// The threshold is SWING_MS (the animation, 220 ms) and NOT COOLDOWN_MS (the
+// rate limit, 600 ms): the gun is back on base long before you may swing
+// again, and firing has to unblock when the ANIMATION ends. Gating fire on the
+// cooldown would lock the trigger for 600 ms after every bash — a punishment
+// nobody asked for and the wrong reading of what the cooldown is for.
+//
+// It borrows swingReady deliberately: "not ready after SWING_MS" IS "still
+// swinging" — same `now - lastAt` comparison, different threshold. One pinned
+// predicate, two uses, rather than two near-identical lines that could drift.
+export function isSwinging(now = performance.now()) {
+  return !swingReady(now, lastSwingAt, CONFIG.MELEE.SWING_MS);
+}
+
 // ————— The swing —————
 
 // Raycast one short ray through the crosshair and return the nearest thing

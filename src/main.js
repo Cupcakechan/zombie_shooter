@@ -11,7 +11,7 @@ import {
   initInput, requestLock, getLook, getMoveAxes, onFire, onReload, onSwapWeapon,
 } from './input.js';
 import {
-  resetAmmo, canFire as ammoCanFire, consumeRound, startReload,
+  resetAmmo, canFire as ammoCanFire, consumeRound, startReload, cancelReload,
   updateAmmo, getMag, isReloading, reloadProgress,
   getActiveWeapon, getActiveWeaponId, setActiveWeapon, weaponIdForSlot, nextWeaponId,
 } from './game/ammo.js';
@@ -54,7 +54,7 @@ import {
   computeMove, clampToArena, resolveCircleObstacles, resolveCircleAABBs,
 } from './game/movement.js';
 import { initShooting, resetShooting } from './game/shooting.js';
-import { initMelee, resetMelee } from './game/melee.js';
+import { initMelee, resetMelee, isSwinging } from './game/melee.js';
 import {
   registerHit, registerMiss, resetScoring,
   getScore, getMultiplier, getAccuracy, getBestStreak,
@@ -386,7 +386,20 @@ initShooting({
   getHittables: () => (mode === 'waves'
     ? [...getTargetHittables(), ...getEnemyHittables(), ...mapWallMeshes]
     : [...getTargetHittables(), ...getEnemyHittables()]),
-  canFire: () => getState() === States.PLAYING && ammoCanFire(),
+  // 17a-fix: no firing mid-bash. The bullet was never actually deflected —
+  // fireShot raycasts setFromCamera(CENTER, camera) and the gun root is a
+  // CHILD of the camera, so a swung child cannot steer its parent's ray. What
+  // WAS wrong is that the muzzle flash and its point light hang off the gun
+  // GROUP, so a shot fired mid-swing lit up 32 degrees off-axis while the
+  // blood landed dead ahead. The flash was lying about where the shot went.
+  //
+  // Fixed by removing the moment rather than by hiding the flash: one pair of
+  // hands does one thing at a time, so a bash costs you the trigger for its
+  // 220 ms. A blocked click is IGNORED and does not consume the trigger
+  // cooldown — the same contract that already covers a click during COUNTDOWN.
+  // 17c's knife is what makes "both at once" legal, because that is a second
+  // hand; until then, it isn't.
+  canFire: () => getState() === States.PLAYING && ammoCanFire() && !isSwinging(),
   getWeapon: getActiveWeapon,
   // ONE call per trigger pull (pass 17). `hits` is the PELLET results and is
   // empty when the whole pattern missed — there is no onMiss any more,
@@ -482,6 +495,29 @@ initMelee({
   // is to have no path that could. Range keeps exactly the inputs it had.
   canSwing: () => getState() === States.PLAYING && mode === 'waves',
   onSwing: (hit) => {
+    // 17a-fix: a bash ABANDONS an in-progress reload (Daniel's call, reversing
+    // the earlier "doesn't cancel"). Before this, the reload kept ticking while
+    // the gun swung — the viewmodel dipped and bashed at once, which is one
+    // gun doing two jobs. The alternative was blocking the bash during a
+    // reload, but that builds a 1200 ms hole with no answer exactly where 17b
+    // is about to put the most pressure.
+    //
+    // Cancel BEFORE the swing: reloadProgress() drops to 0 the same frame, so
+    // the dip releases and the swing owns the viewmodel cleanly. That snap is
+    // one frame and is not new — a weapon swap has cancelled reloads the same
+    // way since pass 17. Cancels on a WHIFF too: you committed when you pressed
+    // V, and a free look-before-you-leap would make the cost fake.
+    //
+    // The repaint is not optional and is the mirror of beginReload's
+    // `if (startReload()) setAmmo(..., true)` — the ammo pill is event-driven
+    // (it paints from the flag it is HANDED, not from live state), so every
+    // transition of `reloading` owes it a call. This is the sixth such site and
+    // shipping it without the repaint left the pill stuck on RELOADING... while
+    // the gun was visibly bashing. `false` as a literal rather than
+    // isReloading(), because the branch already guarantees it: cancelReload
+    // returns whether it cancelled anything, which is exactly what makes a
+    // no-op bash (no reload running) skip a pointless DOM write.
+    if (cancelReload()) setAmmo(getActiveWeapon(), getMag(), false);
     // Every accepted swing moves the gun, hit or miss — the whiff has to read,
     // or a bash into empty air is indistinguishable from a dropped keypress.
     swingGun();
