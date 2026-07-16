@@ -1,32 +1,66 @@
-// game/ammo.js — magazine + reload state, PER WEAPON (pass 9, widened by
-// pass 17). Finite magazine, manual R reload with auto-reload on an empty
-// click. Pure logic — no DOM, no three.js — so every rule here is provable in
-// Node (suite section 10).
+// game/ammo.js — magazine + RESERVE + reload state, PER WEAPON (pass 9,
+// widened by 17, completed by 17b). Pure logic — no DOM, no three.js — so
+// every rule here is provable in Node (suite sections 10 and 26).
 //
-// RESERVE IS STILL CONJURED: a completed reload sets the mag back to full out
-// of nothing. That is pass 17b's whole job, and it is deliberately NOT
-// half-built here — a RESERVE field with no source to refill it and no HUD to
-// show it is machinery without a consumer, and running dry with no way to
-// resupply is a softlock rather than a difficulty.
+// THE RESERVE EXISTS NOW (17b). A reload no longer conjures a full magazine
+// out of nothing: it TAKES from a finite pile, and the pile is refilled by
+// walking over what the dead drop (render/pickups.js). That is the whole pass,
+// and it is what turns every trigger pull into a decision.
 //
-// The pass-17 change is that every rule below now asks WHICH weapon. The
-// magazines are independent and persist across swaps: holstering a pistol with
-// 3 rounds and coming back to it finds 3 rounds. If a swap silently refilled,
-// swapping would be a free instant reload and the reload timer would be
-// decorative.
+// The optional-field contract is MAX_RANGE's, applied exactly: ABSENT MEANS
+// UNLIMITED. A weapon that declares no RESERVE_START/RESERVE_MAX behaves
+// byte-for-byte like the pass-17 gun — infinite pile, every reload full. That
+// is not a leftover; it is the single mechanism two callers need:
+//   • pass 18's roster can add a gun and opt into scarcity when it's ready;
+//   • RANGE MODE seeds Infinity deliberately (see resetAmmo). Range is a 60 s
+//     aim test that burns ~240 rounds with no zombies to drop anything — a
+//     finite reserve there would make the personal best a function of ammo.
+// So there is no mode branch anywhere in this file, and there must never be
+// one: main.js owns the mode and seeds the pile, exactly as it owns melee's
+// `canSwing: () => ... && mode === 'waves'` gate. This module owns the RULE.
+//
+// Infinity is load-bearing rather than cute, and it is correct BY
+// CONSTRUCTION rather than by analysis: `Math.min(need, Infinity)` is `need`
+// and `Infinity - need` is `Infinity`, so the unlimited case falls out of the
+// finite arithmetic with no second code path to keep in step. A large finite
+// number would be a lie that happened to work, and §5's registry sweep would
+// have to be told to expect it.
+//
+// The pass-17 change is that every rule below asks WHICH weapon. The magazines
+// — and now the reserves — are independent and persist across swaps:
+// holstering a pistol with 3 rounds and coming back to it finds 3 rounds. If a
+// swap silently refilled, swapping would be a free instant reload and the
+// reload timer would be decorative.
 
 import { WEAPON_TYPES, WEAPON_ORDER } from '../data/weaponTypes.js';
 
 const mags = {};              // weapon id -> rounds currently in ITS magazine
+const reserves = {};          // weapon id -> rounds in ITS pile (may be Infinity)
 let activeId = WEAPON_ORDER[0];
 let reloading = false;
 let reloadT = 0;
 
-// Fresh round: every weapon starts loaded, holding slot 1, nothing in
-// progress. Every weapon and not just the active one — you should not be able
-// to bank a spent shotgun across a death.
-export function resetAmmo() {
-  for (const id of WEAPON_ORDER) mags[id] = WEAPON_TYPES[id].MAG_SIZE;
+// Fresh round: every weapon starts loaded with a seeded pile behind it,
+// holding slot 1, nothing in progress. Every weapon and not just the active
+// one — you should not be able to bank a spent shotgun across a death, and
+// after 17b that goes double for the pile.
+//
+// `unlimited` is the ONLY thing this module will ever know about Range, and it
+// doesn't know it's Range: it is told to seed an infinite pile, and main.js is
+// the one that knows why. The alternative — a `reserveEnabled` flag branching
+// updateAmmo and startReload — would put two mode-shaped forks in the rule
+// itself, and every future pass would owe both of them a thought.
+export function resetAmmo({ unlimited = false } = {}) {
+  for (const id of WEAPON_ORDER) {
+    mags[id] = WEAPON_TYPES[id].MAG_SIZE;
+    // `?? Infinity` is the MAX_RANGE contract: no field, no limit. A gun that
+    // never opted into scarcity keeps the pass-17 behaviour instead of
+    // silently starting at zero and locking on its first reload. §24's
+    // REQUIRED list is what stops that guard from quietly absorbing a
+    // misplaced paste (LESSONS #22) — the fallback is for weapons that MEAN
+    // it, and the assert proves ours do.
+    reserves[id] = unlimited ? Infinity : (WEAPON_TYPES[id].RESERVE_START ?? Infinity);
+  }
   activeId = WEAPON_ORDER[0];
   reloading = false;
   reloadT = 0;
@@ -85,11 +119,19 @@ export function consumeRound() {
 }
 
 // Returns true only when a reload actually starts: refused while one is
-// already running (no restart-cheese resetting the timer) and refused on a
-// full mag (R at 12/12 must not lock the gun for nothing).
+// already running (no restart-cheese resetting the timer), refused on a full
+// mag (R at 12/12 must not lock the gun for nothing), and — 17b — refused on
+// an EMPTY PILE, for the same reason stated the other way round: a reload that
+// can't add a single round would lock the gun for 1200 ms and hand back
+// exactly what it took. That is a trap, not a decision. `Infinity <= 0` is
+// false, so an unlimited pile sails through untouched.
+//
+// This is also what makes the HUD's EMPTY state honest: when R does nothing,
+// the pill has to say so, or the player reads a dead key as a broken game.
 export function startReload() {
   if (reloading) return false;
   if ((mags[activeId] ?? 0) >= WEAPON_TYPES[activeId].MAG_SIZE) return false;
+  if ((reserves[activeId] ?? 0) <= 0) return false;
   reloading = true;
   reloadT = 0;
   return true;
@@ -124,13 +166,25 @@ export function cancelReload() {
 // Ticks an in-progress reload; returns true on the tick it completes so the
 // caller knows to refresh the HUD. Fills the ACTIVE weapon only — the one
 // you're holding is the one your hands are working on.
+// THE line 17b existed to delete: `mags[activeId] = MAG_SIZE` conjured a full
+// magazine from nothing. It now takes what the pile can give, which may be
+// less than a full mag — a partial reload is a real outcome and the HUD shows
+// it. `Math.min` against Infinity returns `need` and `Infinity - need` stays
+// Infinity, so an unlimited pile refills exactly like pass 17 did, through
+// this same arithmetic and not around it.
 export function updateAmmo(dtMs) {
   if (!reloading) return false;
   reloadT += dtMs;
   if (reloadT >= WEAPON_TYPES[activeId].RELOAD_MS) {
     reloading = false;
     reloadT = 0;
-    mags[activeId] = WEAPON_TYPES[activeId].MAG_SIZE;
+    const need = WEAPON_TYPES[activeId].MAG_SIZE - (mags[activeId] ?? 0);
+    const take = Math.min(need, reserves[activeId] ?? 0);
+    // `?? 0` on the mag as well: a completion tick that ran before any
+    // resetAmmo would otherwise write `undefined + take` = NaN into the
+    // magazine, and a NaN here paints a NaN on the HUD rather than throwing.
+    mags[activeId] = (mags[activeId] ?? 0) + take;
+    reserves[activeId] -= take;
     return true;
   }
   return false;
@@ -144,6 +198,52 @@ export function getMag() {
 // suite does, because "the pistol kept its 3 rounds" is unprovable without it.
 export function getMagOf(id) {
   return mags[id] ?? 0;
+}
+
+// The pile behind the gun in your hands. May be Infinity (Range) — the HUD
+// tests for that rather than printing it, so Range's readout is byte-identical
+// to pass 17's.
+export function getReserve() {
+  return reserves[activeId] ?? 0;
+}
+
+export function getReserveOf(id) {
+  return reserves[id] ?? 0;
+}
+
+// A pickup, cashed in. RETURNS HOW MANY ROUNDS ACTUALLY LANDED, and that
+// return value is the pickup's entire contract rather than a nicety: 0 means
+// the pile was already full, and render/pickups.js reads it to leave the drop
+// ON THE FLOOR instead of eating it for nothing. A pickup that vanished into a
+// capped reserve would be the player's mistake to make, silently, with no way
+// to see it coming.
+//
+// Guarded three ways, and each guard is a real case rather than ceremony:
+//   • unknown id — a caller can't invent a gun (same refusal as setActiveWeapon);
+//   • non-finite pile — Range. Topping up Infinity is meaningless, and without
+//     this the clamp BELOW would quietly REDUCE it to RESERVE_MAX. Nothing can
+//     reach here in Range (no zombies, no kills, no drops), which is exactly
+//     why the guard is one line: the trap can then never fire at all rather
+//     than never firing today.
+//   • `?? Infinity` on the cap — the MAX_RANGE contract again: no field, no
+//     limit.
+export function addReserve(id, n) {
+  if (!WEAPON_TYPES[id]) return 0;
+  const cur = reserves[id] ?? 0;
+  if (!Number.isFinite(cur)) return 0;
+  const cap = WEAPON_TYPES[id].RESERVE_MAX ?? Infinity;
+  const next = Math.min(cur + n, cap);
+  const gained = next - cur;
+  reserves[id] = next;
+  return gained;
+}
+
+// Nothing in the gun and nothing behind it: the moment 17a was built for. The
+// HUD paints this state and R refuses it, so the only answers left are the
+// other weapon (2 / Q) or the bash (V). Infinity can never satisfy it, so
+// Range can never be empty.
+export function isEmpty() {
+  return (mags[activeId] ?? 0) <= 0 && (reserves[activeId] ?? 0) <= 0;
 }
 
 export function isReloading() {

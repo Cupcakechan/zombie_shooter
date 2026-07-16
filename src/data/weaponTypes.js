@@ -40,6 +40,24 @@ WEAPON_TYPES.pistol = {
                         //   a quarter of a pistol mag and half a shotgun's —
                         //   one global number meant two different warnings.
 
+  // — Reserve (17b). OPTIONAL, same contract as MAX_RANGE: no field, no
+  //   limit. Both are on the REGISTRY and not in config because a pile size is
+  //   a fact about a GUN, and deriving it from MAG_SIZE would hand pass 18's
+  //   SMG (mag 30) a 210-round pile automatically. The cap is where a weapon
+  //   says "I am generous" or "I am precious"; that is a design statement, not
+  //   a multiple.
+  RESERVE_START: 48,    // 4 mags. Deliberately BELOW the cap so the very first
+                        //   drop you step on visibly moves the number — start
+                        //   at the cap and waves 1-3 teach that drops are
+                        //   worthless, at exactly the moment the pass needs
+                        //   them to teach the opposite.
+  RESERVE_MAX: 84,      // 7 mags (96 rounds with one loaded). MEASURED against
+                        //   the wave table: a wave-10 clear costs ~22 rounds
+                        //   headshotting (HITBOX.HEAD 3 vs proto HP 3 x
+                        //   hpMult 1.30) and ~47 body-shotting (TORSO 1), so
+                        //   the cap is ~2-4 waves of buffer. Enough to feel
+                        //   safe, never enough to stop counting.
+
   // — Fire —
   COOLDOWN_MS: 150,     // was FIRE_COOLDOWN_MS. Semi-auto: clicks inside this
                         //   window are ignored entirely (not shots, not misses).
@@ -87,6 +105,21 @@ WEAPON_TYPES.shotgun = {
                         //   Swapping to the pistol (which CANCELS the reload,
                         //   see ammo.js) is the intended out.
   LOW_AT: 2,            // a third of the tube
+
+  // — Reserve (17b). The shotgun's pile is SMALL in rounds and LARGE in
+  //   kills, and that asymmetry is the weapon's question asked with the
+  //   economy instead of with damage. At <=3 m one shell is one kill (8
+  //   pellets x TORSO 1 = 8 > proto HP 3 x hpMult 2.0 cap = 6), so at
+  //   PICKUPS.DROP_CHANCE 0.20 a wave of 10 pays 2 drops x 6 shells = 12 for
+  //   ~10 spent: THE SHOTGUN IS AMMO-POSITIVE IF YOU LET THEM CLOSE. Nothing
+  //   enforces that — it falls out of the drop granting the ACTIVE weapon a
+  //   fraction of ITS mag. "Will you commit?" now has a number attached, and
+  //   the answer pays for itself.
+  RESERVE_START: 18,    // 3 tubes — below the cap, same reasoning as the pistol
+  RESERVE_MAX: 36,      // 6 tubes. Half the pistol's mags because a shell is
+                        //   worth ~3x a round up close; parity in ROUNDS would
+                        //   be a 2x advantage in kills and the pistol would
+                        //   have no job left to do.
 
   COOLDOWN_MS: 700,     // pump action — 4.7× the pistol's. This is what pays
                         //   for 8 pellets; drop it and the pistol has no job.

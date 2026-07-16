@@ -233,12 +233,68 @@ FOG: {
     VANISH_MS: 250,       // then shrink away over this
     MAX: 40,              // hard pool cap
   },
-  // — Ammo (pass 9): finite magazine, unlimited reserve, manual R reload —
-  // AMMO moved WHOLE to data/weaponTypes.js in pass 17. Every field in it was
-  //   a fact about the pistol wearing a global name — a 12-round magazine and
-  //   a "3 left" warning are not properties of the game, and the moment a
-  //   second gun existed they were actively wrong about it. GUN.RELOAD_DIP
-  //   stays below: the dip is how the PLAYER's hands move, not the gun.
+  // — Ammo pickups (pass 17b): what the dead drop, and how long you have —
+  // This block stands where AMMO used to. AMMO moved WHOLE to
+  //   data/weaponTypes.js in pass 17 (every field in it was a fact about the
+  //   pistol wearing a global name), and the tombstone that sat here made two
+  //   claims 17b falsifies: "unlimited reserve" is over, and GUN.RELOAD_DIP is
+  //   ABOVE, not below. The source of ammo is the honest occupant of the slot
+  //   ammo's config used to hold.
+  //
+  // NOTHING HERE IS PER-WEAPON. Pile sizes are gun-facts and live on the
+  //   registry (RESERVE_START / RESERVE_MAX); what a drop LOOKS like and how
+  //   often one appears are facts about the world, and belong here.
+  PICKUPS: {
+    MAX: 12,                // hard pool cap. Wave 15 fields 15 zombies and
+                            //   DROP_CHANCE is 0.20, so ~3 drops exist at
+                            //   once; 12 covers a freak run without ever
+                            //   binding. Degrades by reclaiming the OLDEST
+                            //   (render/pickups.js says why it is spawnBlast's
+                            //   call here and not spawnGlob's).
+    DROP_CHANCE: 0.20,      // per kill. THE difficulty dial of this pass, and
+                            //   it is really a statement about AIM. A wave-10
+                            //   clear costs ~22 pistol rounds headshotting
+                            //   (HITBOX.HEAD 3 one-shots proto HP 3 through
+                            //   wave 8, two past it) and ~47 body-shotting
+                            //   (TORSO 1); 10 kills x 0.20 x 12 rounds pays
+                            //   24. So a player who aims rides the cap and a
+                            //   player who sprays drains toward the bash —
+                            //   ACCURACY IS THE DROP RATE, and no code says
+                            //   so. Trouble arrives ~wave 10-12 for the second
+                            //   player, which is where this pass wants it.
+    MAG_FRACTION: 1.0,      // a drop grants round(MAG_SIZE x this) of the
+                            //   ACTIVE weapon: pistol 12, shotgun 6. One
+                            //   lever, and it scales to pass 18's roster for
+                            //   free — a new gun's drop size falls out of its
+                            //   MAG_SIZE with no new registry field, which is
+                            //   what "a new gun is an entry and nothing else"
+                            //   has to mean here.
+    LIFE_MS: 15000,         // the tension lever, and the reason this is a pass
+                            //   and not a number: short means "go NOW, into
+                            //   the horde", long means "tidy up when it's
+                            //   safe". 15 s is deliberately longer than
+                            //   INTERMISSION_MS 2500 + SPAWN_GAP_MS 800, so a
+                            //   last-kill drop survives into the breather —
+                            //   which finally gives the breather a job.
+    BLINK_MS: 3000,         // starts flashing with this long left. The only
+                            //   warning there is; without it a drop stops
+                            //   existing between two glances.
+    BLINK_RATE_MS: 150,     // half-period of the flash
+    RADIUS: 0.35,           // collect ring = this + PLAYER.BODY_RADIUS 0.3 =
+                            //   0.65 m. Forgiving on purpose: the decision is
+                            //   whether to GO, never whether you lined it up.
+    SIZE: 0.22,             // metres — cube edge, matching the blocky look
+    Y: 0.4,                 // hover height, clear of floor 0 / grid 0.01 /
+                            //   blood pools 0.02 / blast ring 0.03
+    BOB_AMP: 0.08,          // metres of hover travel
+    BOB_FREQ: 3.0,          // rad/s of the bob
+    SPIN: 1.6,              // rad/s turn — motion no zombie part has
+    COLOR: 0x40e0ff,        // cyan. Every fog-free emissive thing out there is
+                            //   a pair of eyes and the hue axis is spent
+                            //   (amber/orange/acid/violet), so this reads as
+                            //   MADE rather than alive — and it hovers and
+                            //   spins, which is the second and third axes.
+  },
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',
   // — Debug (dev-only; the suite FAILS any truthy flag when the SHIP env

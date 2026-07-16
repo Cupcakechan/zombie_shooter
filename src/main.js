@@ -13,6 +13,7 @@ import {
 import {
   resetAmmo, canFire as ammoCanFire, consumeRound, startReload, cancelReload,
   updateAmmo, getMag, isReloading, reloadProgress,
+  getReserve, addReserve, isEmpty,
   getActiveWeapon, getActiveWeaponId, setActiveWeapon, weaponIdForSlot, nextWeaponId,
 } from './game/ammo.js';
 import { createRange } from './render/scene.js';
@@ -44,6 +45,9 @@ import {
 import {
   initProjectiles, spawnGlob, updateProjectiles, resetProjectiles,
 } from './render/projectiles.js';
+import {
+  initPickups, spawnPickup, updatePickups, resetPickups,
+} from './render/pickups.js';
 import {
   initBlastFX, spawnBlast, updateBlastFX, resetBlastFX,
 } from './render/blastFX.js';
@@ -197,10 +201,49 @@ initProjectiles(scene, { onPlayerHit: handlePlayerHit });
 // by detonate() the same frame it fires. This module only draws.
 initBlastFX(scene);
 
+// The ammo drop (17b). pickups.js reports that the player stood on one; the
+// grant is computed HERE, at collect time, from the gun actually in hand —
+// see that module's header for why baking it at the kill would delete the
+// "swap before you step on it" decision.
+//
+// Returning whether it landed is the whole contract: addReserve returns how
+// many rounds it could actually take, so a full pile returns 0 and the drop
+// stays on the floor for later instead of evaporating for nothing.
+initPickups(scene, {
+  onCollect: () => {
+    const w = getActiveWeapon();
+    const rounds = Math.round(w.MAG_SIZE * CONFIG.PICKUPS.MAG_FRACTION);
+    if (addReserve(getActiveWeaponId(), rounds) <= 0) return false;
+    // The SEVENTH repaint site (§3, LESSONS #24) — and it must pass the LIVE
+    // reloading flag rather than `false`, because you can absolutely walk over
+    // a drop mid-reload and the pill would then lie about what your hands are
+    // doing. It earns its place: at reserve 0 the pill reads EMPTY and R
+    // refuses, so without this repaint the number that just un-stuck your
+    // reload would stay invisible until something else happened to paint.
+    paintAmmo(isReloading());
+    return true;
+  },
+});
+
+// — Ammo HUD (pass 9; 17b adds the pile). One place that knows setAmmo's
+// argument list, so a new readout field can't be wired into six sites and
+// forgotten at the seventh.
+//
+// The RELOADING FLAG IS STILL PASSED IN, deliberately — this helper collapses
+// the three live reads (weapon / mag / reserve) and nothing else. Reading
+// isReloading() in here instead would quietly convert the pill from
+// event-driven to state-driven and make it depend on "the flag always already
+// agrees at every call site", which is the exact unwritten invariant ammo.js's
+// cancelReload refuses to lean on one file over.
+function paintAmmo(reloading) {
+  setAmmo(getActiveWeapon(), getMag(), reloading, getReserve(), isEmpty());
+}
+
 // — Reload wiring (pass 9): one entry point so R and the empty click behave
-// identically; startReload() itself refuses full-mag and mid-reload calls.
+// identically; startReload() itself refuses full-mag, mid-reload and — 17b —
+// empty-pile calls.
 function beginReload() {
-  if (startReload()) setAmmo(getActiveWeapon(), getMag(), true);
+  if (startReload()) paintAmmo(true);
 }
 onReload(() => {
   if (getState() === States.PLAYING) beginReload();
@@ -217,7 +260,7 @@ onSwapWeapon((slot) => {
   if (!id) return; // a slot with no weapon in it: silence, not a crash
   if (!setActiveWeapon(id)) return;
   setActiveGun(id);
-  setAmmo(getActiveWeapon(), getMag(), isReloading());
+  paintAmmo(isReloading());
 });
 // Clicking on an empty mag never reaches shooting's callbacks (canFire gates
 // it first), so the auto-reload listens to the raw fire hook instead.
@@ -310,6 +353,20 @@ initEnemies(scene, {
       spawnPool(pos.x, pos.z);
       spawnBurst({ x: pos.x, y: pos.y ?? 1.1, z: pos.z }, null, CONFIG.BLOOD.KILL_PARTICLES);
       detonate(typeId, pos); // inert for every type without an EXPLODE block
+      // The ammo drop (17b). This hook was already the right one and needed no
+      // widening: it fires from startDeath, so a bash, a pellet and a blast
+      // all pay the same, and it already carries the corpse's position and is
+      // already guarded on it. x/z only — pos.y is the WAIST anchor and would
+      // float a stander's drop at chest height (see pickups.js).
+      //
+      // The roll lives out HERE and not in enemies.js on purpose: the enemy
+      // update path has NO RNG, which is what makes control-difference
+      // measurement valid across this project's sims. spawnPool jitters with
+      // Math.random() one line up for the same reason.
+      //
+      // Inert in Range by construction, with no mode check to forget: Range
+      // has no enemies, so nothing ever kills, so nothing ever drops.
+      if (Math.random() < CONFIG.PICKUPS.DROP_CHANCE) spawnPickup(pos.x, pos.z);
     }
   },
 });
@@ -412,7 +469,7 @@ initShooting({
     kick();
     ejectCasing();
     consumeRound();
-    setAmmo(getActiveWeapon(), getMag(), false);
+    paintAmmo(false);
 
     // Per-pellet spray, divided so a shot's TOTAL mess stays roughly constant
     // whatever the pellet count. Undivided, a point-blank shotgun would ask
@@ -517,7 +574,7 @@ initMelee({
     // isReloading(), because the branch already guarantees it: cancelReload
     // returns whether it cancelled anything, which is exactly what makes a
     // no-op bash (no reload running) skip a pointless DOM write.
-    if (cancelReload()) setAmmo(getActiveWeapon(), getMag(), false);
+    if (cancelReload()) paintAmmo(false);
     // Every accepted swing moves the gun, hit or miss — the whiff has to read,
     // or a bash into empty air is indistinguishable from a dropped keypress.
     swingGun();
@@ -600,11 +657,17 @@ onEnter(States.COUNTDOWN, (prev) => {
     resetBlastFX(); // ...and so does a shockwave mid-expansion
     resetCasings();
     resetProjectiles(); // a glob in flight must not outlive its round
-    resetAmmo();
+    resetPickups();     // ...and neither must a drop nobody collected
+    // 17b: main owns the mode, so main seeds the pile — ammo.js has no idea
+    // Range exists and must never learn. Range is a 60 s aim test that burns
+    // ~240 rounds with no zombies to drop anything, so a finite pile there
+    // would make the personal best a function of ammo. Same shape as melee's
+    // gate (canSwing, below), which lives out here for the same reason.
+    resetAmmo({ unlimited: mode === 'range' });
     resetShooting(); // a new round must not inherit the last one's trigger timing
     resetMelee();    // ...nor the last one's swing timing
     setActiveGun(getActiveWeaponId());
-    setAmmo(getActiveWeapon(), getMag(), false);
+    paintAmmo(false);
     // Fresh rounds start from the spot the arena was designed around.
     camera.position.set(0, CONFIG.EYE_HEIGHT, 0);
     if (mode === 'range') {
@@ -710,7 +773,7 @@ renderer.setAnimationLoop(() => {
   if (st === States.PLAYING) {
     // Reload ticks ONLY while playing — a pause freezes it mid-motion, same
     // rule as the round clock. The completion tick refreshes the counter.
-    if (updateAmmo(dtMs)) setAmmo(getActiveWeapon(), getMag(), false);
+    if (updateAmmo(dtMs)) paintAmmo(false);
 
     const axes = getMoveAxes();
     if (axes.x !== 0 || axes.z !== 0) {
@@ -789,6 +852,12 @@ renderer.setAnimationLoop(() => {
     // The camera IS the player column's top — see projectiles.js for why
     // that's the honest reading rather than a PLAYER.HEIGHT constant.
     updateProjectiles(dtMs, camera.position);
+    // Drops bob, spin, blink and get collected (17b). Ticked unconditionally
+    // like every other pooled FX rather than under `mode === 'waves'`: with no
+    // drops alive the loop is a walk over 12 inactive slots, and Range can
+    // never have one (no enemies, no kills). A mode check here would be a
+    // second place for the truth to live.
+    updatePickups(dtMs, camera.position);
     if (mode === 'range') setTimer(getRemainingS());
     else updateWaves(dtMs); // spawning + intermissions only run while playing
   }

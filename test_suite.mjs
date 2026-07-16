@@ -84,7 +84,7 @@ const EXCLUDE = new Set([join('src', 'main.js')]);
 // added projectiles.js and never raised the floor, so for two passes the
 // guard would have shrugged at that module disappearing entirely. A floor
 // that lags the truth is not a floor. 30 = 31 files under src/ minus main.js.
-const MIN_EXPECTED_MODULES = 32; // 31 + game/melee.js (17a)
+const MIN_EXPECTED_MODULES = 33; // 32 + render/pickups.js (17b)
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -393,6 +393,17 @@ try {
     'CASINGS.GRAVITY': 'number', 'CASINGS.RESTITUTION': 'number',
     'CASINGS.LINGER_MS': 'number', 'CASINGS.VANISH_MS': 'number',
     'CASINGS.MAX': 'number',
+    // Pickups (17b). pickups.js destructures `const P = CONFIG.PICKUPS`, so
+    // the usage scan below sees ONE read and none of the leaves — the schema
+    // is the only layer that covers them, which is exactly the hole it was
+    // built for after the 2026-07-11 NaN black screen.
+    'PICKUPS.MAX': 'number', 'PICKUPS.DROP_CHANCE': 'number',
+    'PICKUPS.MAG_FRACTION': 'number', 'PICKUPS.LIFE_MS': 'number',
+    'PICKUPS.BLINK_MS': 'number', 'PICKUPS.BLINK_RATE_MS': 'number',
+    'PICKUPS.RADIUS': 'number', 'PICKUPS.SIZE': 'number',
+    'PICKUPS.Y': 'number', 'PICKUPS.BOB_AMP': 'number',
+    'PICKUPS.BOB_FREQ': 'number', 'PICKUPS.SPIN': 'number',
+    'PICKUPS.COLOR': 'number',
     'GUN.RELOAD_DIP': 'number',
     'PLAYER.MAX_HITS': 'number', 'PLAYER.DAMAGE_SHAKE_MS': 'number',
     'PLAYER.DAMAGE_SHAKE_AMP': 'number', 'PLAYER.MOVE_SPEED': 'number',
@@ -3136,6 +3147,15 @@ try {
     'NAME', 'MAG_SIZE', 'RELOAD_MS', 'LOW_AT', 'COOLDOWN_MS',
     'PELLETS', 'SPREAD_DEG', 'RECOIL_MS', 'RECOIL_DEG', 'RECOIL_BACK',
     'COLOR', 'ROUGH', 'METAL', 'PARTS', 'MUZZLE',
+    // 17b. These are REQUIRED here even though ammo.js reads them as
+    // `?? Infinity`, and that is the whole point rather than a contradiction:
+    // the fallback exists so a future gun can opt out of scarcity honestly,
+    // and without this line it would ALSO silently absorb a paste that landed
+    // in the wrong block — handing the player infinite ammo, which no assert
+    // anywhere else would notice and no play session would report as a bug.
+    // The graceful fallback and the presence assert are a pair (LESSONS #22);
+    // shipping one without the other is how the guard becomes the hiding place.
+    'RESERVE_START', 'RESERVE_MAX',
   ];
   let missing24 = [];
   for (const id of ORDER) {
@@ -3788,6 +3808,408 @@ try {
 } catch (err) {
   failures.push({ file: 'section25', err });
   console.log(`  FAIL   section 25 threw: ${err.message}`);
+}
+
+// ————— Section 26: the reserve + the drop (pass 17b) —————
+// The pass that made ammo finite. Two halves: the RULE (ammo.js, pure logic,
+// fully provable here) and the WORLD OBJECT (pickups.js — its collect logic is
+// provable, its appearance is not; see the stated limits at the end).
+//
+// No NaN sweep of CONFIG.PICKUPS here on purpose: §5's schema already asserts
+// every one of those keys present, typed and finite, and a second copy would
+// be a pin that can only ever agree with another pin. §25's bite sweep found
+// exactly that shape of redundancy once already.
+
+console.log('');
+console.log('— Section 26: the reserve + the drop (pass 17b) —');
+try {
+  const THREE26 = await import(pathToFileURL(join('lib', 'three.module.js')).href);
+  const A26 = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
+  const {
+    initPickups: initP26, spawnPickup: spawn26,
+    updatePickups: upd26, resetPickups: reset26,
+  } = await import(pathToFileURL(join('src', 'render', 'pickups.js')).href);
+  const { WEAPON_TYPES: W26, WEAPON_ORDER: ORDER26 } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
+  const { CONFIG: CFG26 } = await import(pathToFileURL(join('src', 'config.js')).href);
+  const { ENEMY_TYPES: ET26 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES: WV26 } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+
+  const P26 = CFG26.PICKUPS;
+  // Every number DERIVED from the registry, never typed in — a pin holding its
+  // own copy of RESERVE_START passes forever while the gun disagrees with it.
+  const MAG = W26.pistol.MAG_SIZE;
+  const START = W26.pistol.RESERVE_START;
+  const CAP = W26.pistol.RESERVE_MAX;
+  const RMS = W26.pistol.RELOAD_MS;
+
+  // — (a) the pile exists, and a reload SPENDS it —
+  {
+    A26.resetAmmo();
+    assertNear('section26', 'a fresh round seeds RESERVE_START', A26.getReserve(), START);
+    assertNear('section26', 'fresh mag is still full', A26.getMag(), MAG);
+
+    for (let i = 0; i < MAG; i++) A26.consumeRound();
+    assertTrue('section26', 'reload starts with a pile behind it', A26.startReload() === true);
+    A26.updateAmmo(RMS);
+    assertNear('section26', 'the mag came back full', A26.getMag(), MAG);
+    // THE pin of the pass. Pre-17b this line read `mag = MAG_SIZE` and the
+    // pile did not exist; if this ever goes back to being free, this is the
+    // assert that says so.
+    assertNear('section26', 'and the pile paid for every round of it',
+      A26.getReserve(), START - MAG);
+  }
+
+  // — (b) a PARTIAL reload is a real outcome —
+  // The pile can hold less than a magazine, and then the reload hands over
+  // what there is. A model that only ever refilled to full would pass every
+  // pin above and still be wrong here.
+  //
+  // The stub is CONSTRUCTED rather than drained down to, and that is a scar.
+  // RESERVE_START 48 is an exact multiple of MAG_SIZE 12, so the first draft's
+  // "drain until under a mag" loop landed on exactly 0, its `if (stub > 0)`
+  // guard went false, and the partial assert NEVER RAN — the pin passed by
+  // absence, and green-lit a bite that restored the conjured magazine. The
+  // bite sweep is the only thing that found it; the suite was happily green.
+  {
+    A26.resetAmmo();
+    // Empty the pile completely. Fixed bound, deliberately NOT derived from
+    // the value under test — a probe whose loop bound comes from the thing a
+    // bite feeds zero hangs instead of failing (LESSONS 2026-07-15).
+    for (let i = 0; i < 200 && A26.getReserve() > 0; i++) {
+      for (let r = 0; r < MAG; r++) A26.consumeRound();
+      A26.startReload();
+      A26.updateAmmo(RMS);
+    }
+    assertNear('section26', 'the pile drains to exactly 0, never past it', A26.getReserve(), 0);
+
+    const stub = MAG - 1;
+    // Guard the guard: if this ever stops being a real partial, say so out
+    // loud rather than skipping the assert underneath it.
+    assertTrue('section26', `the stub is a genuine partial (0 < ${stub} < ${MAG})`,
+      stub > 0 && stub < MAG);
+    A26.addReserve('pistol', stub);
+    for (let r = 0; r < MAG; r++) A26.consumeRound();
+    assertTrue('section26', 'a stub of a pile still permits a reload', A26.startReload() === true);
+    A26.updateAmmo(RMS);
+    // THE partial pin, and the one that catches a conjured magazine: `mag =
+    // MAG_SIZE` gives 12 here where the honest answer is 11.
+    assertNear('section26', 'a partial reload loads exactly what was left, and no more',
+      A26.getMag(), stub);
+    assertNear('section26', '...spending the stub, not going negative', A26.getReserve(), 0);
+
+    // The trap guard: a reload that can add nothing must not lock the gun for
+    // RELOAD_MS and hand back exactly what it took.
+    for (let r = 0; r < stub; r++) A26.consumeRound();
+    assertTrue('section26', 'reload REFUSED on an empty pile', A26.startReload() === false);
+    assertTrue('section26', 'and refusing left no reload running', !A26.isReloading());
+  }
+
+  // — (c) EMPTY: the state 17a was built for —
+  {
+    A26.resetAmmo();
+    assertTrue('section26', 'a fresh round is not empty', !A26.isEmpty());
+    for (let r = 0; r < MAG; r++) A26.consumeRound();
+    assertTrue('section26', 'mag 0 with a pile behind it is NOT empty (that is a reload)',
+      !A26.isEmpty());
+    // Drain both. Fixed bound again.
+    for (let i = 0; i < 200 && !A26.isEmpty(); i++) {
+      if (A26.startReload()) A26.updateAmmo(RMS);
+      for (let r = 0; r < MAG; r++) A26.consumeRound();
+    }
+    assertTrue('section26', 'mag 0 AND pile 0 is EMPTY', A26.isEmpty());
+    assertTrue('section26', 'an empty gun cannot fire', !A26.canFire());
+    assertTrue('section26', 'and R does nothing — the only answers left are 2 / Q / V',
+      A26.startReload() === false);
+  }
+
+  // — (d) the piles are per-weapon: independent, and they PERSIST across swaps —
+  // The mirror of §10's magazine block, and it fires on the same mistake one
+  // level up: a single shared pile reads identically at a glance and makes the
+  // shotgun's tube free the moment the pistol has been fed.
+  {
+    A26.resetAmmo();
+    const shotStart = W26.shotgun.RESERVE_START;
+    for (let r = 0; r < MAG; r++) A26.consumeRound();
+    A26.startReload();
+    A26.updateAmmo(RMS);
+    const pistolLeft = A26.getReserve();
+    assertNear('section26', 'the pistol spent its own pile', pistolLeft, START - MAG);
+
+    A26.setActiveWeapon('shotgun');
+    assertNear('section26', "the shotgun has its OWN pile (not the pistol's)",
+      A26.getReserve(), shotStart);
+    for (let r = 0; r < W26.shotgun.MAG_SIZE; r++) A26.consumeRound();
+    A26.startReload();
+    A26.updateAmmo(W26.shotgun.RELOAD_MS);
+    assertNear('section26', 'reloading the shotgun spends the SHOTGUN pile',
+      A26.getReserve(), shotStart - W26.shotgun.MAG_SIZE);
+    assertNear('section26', '...and never touches the pistol pile',
+      A26.getReserveOf('pistol'), pistolLeft);
+    assertTrue('section26', 'swapping back finds the pistol pile as you left it',
+      (A26.setActiveWeapon('pistol'), A26.getReserve() === pistolLeft));
+  }
+
+  // — (e) addReserve: the pickup's whole contract —
+  {
+    A26.resetAmmo();
+    const room = CAP - START;
+    assertNear('section26', 'a top-up returns what it actually took',
+      A26.addReserve('pistol', 1), 1);
+    assertNear('section26', '...and the pile moved by exactly that', A26.getReserve(), START + 1);
+
+    // Fill to the cap and prove it stops there.
+    A26.addReserve('pistol', CAP);
+    assertNear('section26', 'the pile clamps at RESERVE_MAX', A26.getReserve(), CAP);
+    // THE pin that keeps a drop on the floor. Without this returning 0,
+    // pickups.js retires the drop and the player loses ammo, silently, for
+    // walking in a straight line.
+    assertNear('section26', 'a FULL pile takes nothing and reports 0 (the drop stays on the floor)',
+      A26.addReserve('pistol', 12), 0);
+    assertNear('section26', '...and a refused top-up did not move the pile', A26.getReserve(), CAP);
+
+    // The partial landing: 1 round of room, a 12-round drop offered.
+    A26.resetAmmo();
+    A26.addReserve('pistol', room - 1);
+    assertNear('section26', 'a top-up near the cap reports the PARTIAL amount it took',
+      A26.addReserve('pistol', 12), 1);
+    assertNear('section26', '...landing exactly on the cap', A26.getReserve(), CAP);
+
+    assertNear('section26', 'an unknown weapon takes nothing and never throws',
+      A26.addReserve('railgun', 12), 0);
+  }
+
+  // — (f) the UNLIMITED path: Range, and the absent-field contract —
+  // Infinity is not decoration here; it is the claim that the unlimited case
+  // falls out of the FINITE arithmetic with no second code path. These pins
+  // are what make that claim checkable rather than plausible.
+  {
+    A26.resetAmmo({ unlimited: true });
+    assertTrue('section26', 'an unlimited round seeds an infinite pile',
+      A26.getReserve() === Infinity);
+    // 20 mags is ~240 rounds — the MEASURED 60 s Range burn ceiling (§7).
+    for (let i = 0; i < 20; i++) {
+      for (let r = 0; r < MAG; r++) A26.consumeRound();
+      assertTrue('section26', `unlimited reload ${i + 1}/20 permitted`, A26.startReload() === true);
+      A26.updateAmmo(RMS);
+    }
+    assertNear('section26', 'after a full Range burn the mag is still full', A26.getMag(), MAG);
+    assertTrue('section26', '...and the pile is still Infinity (Infinity - need === Infinity)',
+      A26.getReserve() === Infinity);
+    for (let r = 0; r < MAG; r++) A26.consumeRound();
+    assertTrue('section26', 'an unlimited pile can never be EMPTY, even at mag 0',
+      !A26.isEmpty());
+    assertTrue('section26', '...and R always works', A26.startReload() === true);
+    A26.updateAmmo(RMS);
+    // The clamp trap, closed. Without the non-finite guard in addReserve, this
+    // Math.min against RESERVE_MAX would REDUCE Infinity to 84 — a pickup
+    // quietly deleting Range's unlimited ammo. Nothing can reach it today (no
+    // enemies in Range, so no kills and no drops), which is precisely why the
+    // guard is worth its one line: the trap can never fire, rather than never
+    // firing yet.
+    assertNear('section26', 'a top-up on an unlimited pile takes nothing',
+      A26.addReserve('pistol', 12), 0);
+    assertTrue('section26', '...and CANNOT clamp Infinity down to RESERVE_MAX',
+      A26.getReserve() === Infinity);
+  }
+
+  // — (g) "absent means unlimited": the MAX_RANGE contract, on the pile —
+  // ammo.js's header claims a weapon that declares no RESERVE_START behaves
+  // byte-for-byte like the pass-17 gun. Nothing in the shipped roster exercises
+  // that, so the pin builds a weapon that does — and puts the roster back in a
+  // finally, because a leaked registry entry would be a mutation later sections
+  // inherit. (§26 is last today; that is a fact about the file, not a contract.)
+  {
+    const ORDER_LEN = ORDER26.length;
+    try {
+      W26.__probe26 = { id: '__probe26', MAG_SIZE: 5, RELOAD_MS: 100 };
+      ORDER26.push('__probe26');
+      A26.resetAmmo();
+      assertTrue('section26', 'a weapon with no RESERVE_START gets an unlimited pile',
+        A26.getReserveOf('__probe26') === Infinity);
+      A26.setActiveWeapon('__probe26');
+      for (let r = 0; r < 5; r++) A26.consumeRound();
+      assertTrue('section26', '...so it reloads exactly like the pass-17 gun did',
+        A26.startReload() === true);
+      A26.updateAmmo(100);
+      assertNear('section26', '...to a full mag, from nothing', A26.getMag(), 5);
+      assertNear('section26', '...and a drop on it takes nothing (no cap to fill toward)',
+        A26.addReserve('__probe26', 12), 0);
+    } finally {
+      delete W26.__probe26;
+      const i = ORDER26.indexOf('__probe26');
+      if (i >= 0) ORDER26.splice(i, 1);
+      A26.resetAmmo();
+    }
+    assertTrue('section26', 'the probe weapon was removed and the roster restored',
+      W26.__probe26 === undefined && ORDER26.length === ORDER_LEN
+      && A26.getActiveWeaponId() === ORDER26[0]);
+  }
+
+  // — (h) the drop, driven through the live pool —
+  {
+    const scene26 = new THREE26.Scene();
+    let collected = 0;
+    initP26(scene26, { onCollect: () => { collected++; return true; } });
+    reset26();
+
+    const far = { x: 100, y: CFG26.EYE_HEIGHT, z: 100 };
+    const d = spawn26(3, -5);
+    assertTrue('section26', 'a drop spawns active and visible', d.active && d.mesh.visible);
+    assertNear('section26', 'planted at the kill: x', d.mesh.position.x, 3);
+    assertNear('section26', 'planted at the kill: z', d.mesh.position.z, -5);
+    // The corpse's y is the WAIST anchor — 1.16 m standing, 0.39 m prone. The
+    // drop takes neither: it is a floor object at a fixed height, so a proto's
+    // drop and a crawler's sit at the same place.
+    assertNear('section26', 'and at the FIXED floor height, not the corpse height',
+      d.mesh.position.y, P26.Y);
+    assertTrue('section26', '...which clears the floor, the grid, the pools and the blast ring',
+      P26.Y > CFG26.BLAST.RING_Y && CFG26.BLAST.RING_Y > 0.02);
+
+    // Just outside the collect ring: nothing happens. The boundary is checked
+    // a hair either side — a pin that only tests the inside passes a ring of
+    // any radius at all, including infinite.
+    const ring = P26.RADIUS + CFG26.PLAYER.BODY_RADIUS;
+    upd26(16.67, { x: 3 + ring + 0.01, y: CFG26.EYE_HEIGHT, z: -5 });
+    assertTrue('section26', 'a hair OUTSIDE the ring collects nothing',
+      collected === 0 && d.active);
+    upd26(16.67, { x: 3 + ring - 0.01, y: CFG26.EYE_HEIGHT, z: -5 });
+    assertTrue('section26', 'a hair INSIDE the ring collects', collected === 1);
+    assertTrue('section26', '...and the drop is retired and hidden', !d.active && !d.mesh.visible);
+
+    // The DECLINE. A full pile returns 0 from addReserve, main.js's onCollect
+    // returns false, and the drop must survive to be collected later.
+    initP26(scene26, { onCollect: () => false });
+    reset26();
+    const d2 = spawn26(0, 0);
+    upd26(16.67, { x: 0, y: CFG26.EYE_HEIGHT, z: 0 });
+    assertTrue('section26', 'a DECLINED collect leaves the drop on the floor', d2.active);
+    upd26(16.67, { x: 0, y: CFG26.EYE_HEIGHT, z: 0 });
+    assertTrue('section26', '...and it is still there the next frame, not consumed',
+      d2.active);
+    // ...and once there is room, the same drop still pays out.
+    initP26(scene26, { onCollect: () => true });
+    upd26(16.67, { x: 0, y: CFG26.EYE_HEIGHT, z: 0 });
+    assertTrue('section26', '...and pays out the moment the pile has room again', !d2.active);
+
+    // Expiry + the blink. A drop that vanished with no warning would stop
+    // existing between two glances.
+    initP26(scene26, { onCollect: () => true });
+    reset26();
+    const d3 = spawn26(20, 20);
+    upd26(P26.LIFE_MS - P26.BLINK_MS - 1, far);
+    assertTrue('section26', 'a drop is solid before its blink window', d3.active && d3.mesh.visible);
+    upd26(P26.BLINK_MS - 1, far);
+    assertTrue('section26', '...still alive one tick short of LIFE_MS', d3.active);
+    upd26(2, far);
+    assertTrue('section26', 'a drop expires at LIFE_MS', !d3.active && !d3.mesh.visible);
+
+    // Blinking actually blinks: sample the window and prove BOTH states occur.
+    // "It flashes" is unfalsifiable against a mesh that is simply always
+    // visible, which is what this would have shipped as.
+    reset26();
+    const d4 = spawn26(-20, -20);
+    upd26(P26.LIFE_MS - P26.BLINK_MS + 1, far);
+    let sawOn = false;
+    let sawOff = false;
+    for (let i = 0; i < 40; i++) {
+      upd26(P26.BLINK_RATE_MS / 2, far);
+      if (!d4.active) break;
+      if (d4.mesh.visible) sawOn = true; else sawOff = true;
+    }
+    assertTrue('section26', 'the expiry blink really blinks (both states seen)', sawOn && sawOff);
+
+    // Pool pressure: reclaim the OLDEST, never decline. A fresh kill must
+    // always leave something — the opposite call to spawnGlob, for the reason
+    // spawnGlob gives.
+    reset26();
+    const first = spawn26(1, 1);
+    upd26(500, far); // age it past the others
+    for (let i = 0; i < P26.MAX - 1; i++) spawn26(i, i);
+    const overflow = spawn26(9, 9);
+    assertTrue('section26', 'a full pool still spawns (reclaims, never declines)',
+      overflow !== null && overflow.active);
+    assertTrue('section26', '...and it reclaimed the OLDEST drop', overflow === first);
+    assertNear('section26', '...whose clock restarted at the new kill', overflow.t, 0);
+
+    reset26();
+    assertTrue('section26', 'resetPickups sweeps the floor',
+      spawn26(0, 0) !== null && (reset26(), true));
+  }
+
+  // — (i) the design window: the pass's thesis as arithmetic —
+  {
+    const dropOf = (id) => Math.round(W26[id].MAG_SIZE * P26.MAG_FRACTION);
+
+    for (const id of ORDER26) {
+      // Start BELOW the cap, or the early waves teach that drops are worthless
+      // at exactly the moment the pass needs them to teach the opposite.
+      assertTrue('section26', `${id}: RESERVE_START < RESERVE_MAX (the first drop must MOVE the number)`,
+        W26[id].RESERVE_START < W26[id].RESERVE_MAX);
+      // One drop must not refill the world. If a single pickup covers the whole
+      // pile, the cap is decoration and there is nothing to conserve.
+      assertTrue('section26', `${id}: one drop (${dropOf(id)}) is a fraction of the pile (${W26[id].RESERVE_MAX})`,
+        dropOf(id) > 0 && dropOf(id) < W26[id].RESERVE_MAX);
+    }
+    assertTrue('section26', 'DROP_CHANCE is a probability, and not a certainty',
+      P26.DROP_CHANCE > 0 && P26.DROP_CHANCE < 1);
+    assertTrue('section26', 'the blink window fits inside the life (a blink cannot precede the drop)',
+      P26.BLINK_MS > 0 && P26.BLINK_MS < P26.LIFE_MS);
+    // A last-kill drop has to survive the breather, or the intermission — the
+    // one safe window there is — cannot be when you collect. Two files, so it
+    // is pinned as an INEQUALITY the way §24 pins MAX_RANGE against the fog:
+    // if either side is ever retuned, this fires instead of drifting.
+    assertTrue('section26',
+      `a last-kill drop outlives the breather (LIFE_MS ${P26.LIFE_MS} > INTERMISSION ${WV26.INTERMISSION_MS} + SPAWN_GAP ${WV26.SPAWN_GAP_MS})`,
+      P26.LIFE_MS > WV26.INTERMISSION_MS + WV26.SPAWN_GAP_MS);
+
+    // — ACCURACY IS THE DROP RATE. The whole pass, in two asserts.
+    // No code says this anywhere; it falls out of DROP_CHANCE, MAG_FRACTION,
+    // the registry's HITBOX tiers and the base HP. That makes it exactly the
+    // kind of claim that can be deleted by a tune in a different file and
+    // leave no other trace — so it is pinned here, derived, nothing typed in.
+    const proto = ET26.proto_zombie;
+    const headCost = Math.ceil(proto.HP / proto.HITBOX.HEAD);   // 1 round
+    const torsoCost = Math.ceil(proto.HP / proto.HITBOX.TORSO); // 3 rounds
+    const perKill = P26.DROP_CHANCE * dropOf('pistol');         // 2.4 rounds
+    assertTrue('section26',
+      `a player who AIMS sustains: ${perKill} rounds/kill from drops >= ${headCost} to headshot`,
+      perKill >= headCost);
+    assertTrue('section26',
+      `a player who SPRAYS drains: ${perKill} rounds/kill from drops < ${torsoCost} to body-shot`,
+      perKill < torsoCost);
+    assertTrue('section26', 'and those are two different outcomes (the tiers must differ)',
+      headCost < torsoCost);
+
+    // The shotgun's mirror: one shell is one kill at point blank (8 pellets x
+    // TORSO 1 = 8, past even the HP cap of 3 x 2.0), so the drop rate makes it
+    // AMMO-POSITIVE if you let them close. That is "will you commit?" answered
+    // with the economy instead of with damage, and it is not enforced anywhere
+    // — it falls out of the drop feeding the ACTIVE weapon.
+    const pointBlank = W26.shotgun.PELLETS * proto.HITBOX.TORSO;
+    const cappedHp = proto.HP * WV26.HP.CAP;
+    assertTrue('section26',
+      `one shell kills point-blank at ANY wave (${pointBlank} dmg vs ${cappedHp} HP at the cap)`,
+      pointBlank >= cappedHp);
+    assertTrue('section26',
+      `so the shotgun is AMMO-POSITIVE up close: ${P26.DROP_CHANCE * dropOf('shotgun')} shells/kill from drops >= 1 spent`,
+      P26.DROP_CHANCE * dropOf('shotgun') >= 1);
+  }
+
+  // — Stated limits: what §26 CANNOT prove, said out loud rather than papered
+  //   over. The drop's APPEARANCE is not asserted anywhere above — there is no
+  //   WebGL in Node, so "visible" is a flag and not a photon, and `visible`,
+  //   `position` and `material` can all be perfect while nothing renders.
+  //   Cyan-cube-in-the-world, the bob and the spin reading as an ITEM rather
+  //   than as eyes, and the blink being legible at 150 ms are BROWSER-ONLY.
+  //   Same for the HUD: setAmmo is DOM-coupled by construction, so the pile's
+  //   readout, the EMPTY state and the seventh repaint site are browser-only
+  //   too — the fourth argument reaching all seven call sites is a GREP of
+  //   main.js, which section 0 cannot even import.
+} catch (err) {
+  failures.push({ file: 'section26', err });
+  console.log(`  FAIL   section 26 threw: ${err.message}`);
 }
 
 // ————— Report —————

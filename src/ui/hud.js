@@ -193,18 +193,40 @@ export function setWavesScore(score) {
   els.hudWavesScore.textContent = `SCORE ${score}`;
 }
 
-// Bottom-right ammo counter (pass 9; pass 17 names the gun): count while
-// idle, RELOADING while the mag is out, red pill when running dry.
+// Bottom-right ammo counter (pass 9; pass 17 names the gun; 17b adds the
+// pile): count while idle, RELOADING while the mag is out, red pill when
+// running dry, EMPTY when there is nothing left to load.
 //
 // Takes the WEAPON rather than loose numbers — the readout needs its name, its
 // mag size and its own LOW_AT, and passing three parallel arguments that must
 // all describe the same gun is how they end up describing two.
-export function setAmmo(weapon, mag, reloading) {
+//
+// `reserve` defaults to Infinity and `empty` to false so a call site that has
+// not been updated degrades to the exact pass-17 readout rather than painting
+// `undefined` or NaN at the player. There are seven sites and all seven pass
+// both — main.js is DOM-coupled and suite-invisible, so that claim is a GREP,
+// not a pin.
+//
+// `empty` is HANDED IN rather than worked out from `mag` and `reserve` up
+// here, even though both are right there and the arithmetic is one line. That
+// line is ammo.js's isEmpty(), and it is a RULE about the game — the same
+// state startReload refuses on — rather than a formatting question. Rederiving
+// it in a view would make two sources of truth that agree on the day they are
+// written, in a file the suite cannot import to check. §3's rule, one layer
+// out: put it where it can be driven.
+export function setAmmo(weapon, mag, reloading, reserve = Infinity, empty = false) {
   if (!weapon) return; // never paint a readout for a gun that isn't in hand
+  // Range seeds an infinite pile, and an infinite number has nothing to say —
+  // so it isn't said, and RANGE'S READOUT IS BYTE-IDENTICAL TO PASS 17'S. That
+  // falls out of the test rather than out of a mode check up here; the HUD
+  // still knows nothing about modes.
+  const tail = Number.isFinite(reserve) ? `  \u00b7  ${reserve}` : '';
   els.hudAmmo.textContent = reloading
     ? 'RELOADING\u2026'
-    : `${weapon.NAME}  ${mag} / ${weapon.MAG_SIZE}`;
-  els.hudAmmo.classList.toggle('low', !reloading && mag <= weapon.LOW_AT);
+    : empty
+      ? `${weapon.NAME}  EMPTY`
+      : `${weapon.NAME}  ${mag} / ${weapon.MAG_SIZE}${tail}`;
+  els.hudAmmo.classList.toggle('low', !reloading && (empty || mag <= weapon.LOW_AT));
 }
 
 // Red edge-flash on taking damage: restart the CSS animation by removing
