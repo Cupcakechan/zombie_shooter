@@ -84,7 +84,7 @@ const EXCLUDE = new Set([join('src', 'main.js')]);
 // added projectiles.js and never raised the floor, so for two passes the
 // guard would have shrugged at that module disappearing entirely. A floor
 // that lags the truth is not a floor. 30 = 31 files under src/ minus main.js.
-const MIN_EXPECTED_MODULES = 33; // 32 + render/pickups.js (17b)
+const MIN_EXPECTED_MODULES = 34; // 33 + game/buys.js (19)
 
 const allSrcFiles = walk('src');
 const files = allSrcFiles.filter((p) => !EXCLUDE.has(p));
@@ -397,6 +397,7 @@ try {
     // the usage scan below sees ONE read and none of the leaves — the schema
     // is the only layer that covers them, which is exactly the hole it was
     // built for after the 2026-07-11 NaN black screen.
+    'BUYS.RADIUS': 'number', 'BUYS.PROMPT_REPAINT_MS': 'number',
     'PICKUPS.MAX': 'number', 'PICKUPS.DROP_CHANCE': 'number',
     'PICKUPS.LIFE_MS': 'number',
     'PICKUPS.BLINK_MS': 'number', 'PICKUPS.BLINK_RATE_MS': 'number',
@@ -974,7 +975,7 @@ try {
   const M = WT.pistol.MAG_SIZE;
   const R = WT.pistol.RELOAD_MS;
 
-  A.resetAmmo();
+  A.resetAmmo({ allOwned: true }); // 19: accounting pins own the rack; ownership has §27
   assertNear('section10', 'fresh mag is full', A.getMag(), M);
   assertTrue('section10', 'full mag can fire', A.canFire());
   assertTrue('section10', 'reload refused on a full mag', A.startReload() === false);
@@ -1003,7 +1004,7 @@ try {
   // The block that would have caught a shared-magazine implementation, which
   // reads identically at a glance and turns every swap into a free reload.
   {
-    A.resetAmmo();
+    A.resetAmmo({ allOwned: true }); // 19: accounting pins own the rack; ownership has §27
     assertTrue('section10', 'a fresh round starts on slot 1',
       A.getActiveWeaponId() === 'pistol');
     A.consumeRound();
@@ -1034,7 +1035,7 @@ try {
 
   // — The reload is the ACTIVE weapon's, and a swap CANCELS it —
   {
-    A.resetAmmo();
+    A.resetAmmo({ allOwned: true }); // 19: accounting pins own the rack; ownership has §27
     A.setActiveWeapon('shotgun');
     A.consumeRound();
     assertTrue('section10', 'shotgun reload starts', A.startReload() === true);
@@ -1055,7 +1056,7 @@ try {
 
   // — Slot resolution + cycling: Q's whole implementation —
   {
-    A.resetAmmo();
+    A.resetAmmo({ allOwned: true }); // 19: accounting pins own the rack; ownership has §27
     assertTrue('section10', 'slot 1 is the pistol', A.weaponIdForSlot(1) === 'pistol');
     assertTrue('section10', 'slot 2 is the shotgun', A.weaponIdForSlot(2) === 'shotgun');
     assertTrue('section10', 'an empty slot resolves to null, never undefined-indexing',
@@ -3166,6 +3167,10 @@ try {
     // The graceful fallback and the presence assert are a pair (LESSONS #22);
     // shipping one without the other is how the guard becomes the hiding place.
     'RESERVE_START', 'RESERVE_MAX',
+    // 19 note: PRICE/AMMO_PRICE are CONDITIONALLY required (non-STARTERs
+    // only) — the starter/price pins live just after this loop, because a
+    // flat REQUIRED here would force a price onto the pistol, and a priced
+    // starter is a contradiction (you cannot buy what you cannot lack).
     // 18. Drop size is a gun-fact like the pile it feeds. REQUIRED for the
     // same reason: main.js reads it as `?? MAG_SIZE`, and that fallback is
     // exactly the pass-17b behaviour this pass measured as broken — so an
@@ -3211,13 +3216,22 @@ try {
     const offenders = [];
     for (const f of allSrcFiles) {
       if (f === REGISTRY) continue; // the registry is allowed to name its own
+      // CONSCIOUS SCOPE MOVE (19): registries under src/data/ may name weapon
+      // ids — a buy spot in maps.js sells 'shotgun', exactly as waveTable.js
+      // has always named enemy types. Data-to-data references are registry
+      // WIRING; the scan's target was always CODE memorising the roster
+      // (input.js's hardcoded digits were the founding bug, and code files
+      // remain fully in scope — a 'smg' literal in main.js still goes red,
+      // and the bite sweep proves both directions). Slot-digit scanning stays
+      // universal: no DATA file has business naming a KEY.
+      const isRegistry = f.startsWith(join('src', 'data') + '/') || f.startsWith('src' + '\\' + 'data');
       const text = readFileSync(f, 'utf8');
       // Strip line comments first: prose ABOUT the shotgun is not a dependency
       // ON the shotgun, and gun.js's comments discuss it at length. Only a
       // quoted id in live code is a memorised roster.
       const code = text.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
       for (const id of ORDER) {
-        if (new RegExp(`['"\`]${id}['"\`]`).test(code)) offenders.push(`${f} names '${id}'`);
+        if (!isRegistry && new RegExp(`['"\`]${id}['"\`]`).test(code)) offenders.push(`${f} names '${id}'`);
       }
       for (const m of code.matchAll(/\bDigit[0-9]\b/g)) offenders.push(`${f} hardcodes ${m[0]}`);
     }
@@ -3974,7 +3988,7 @@ try {
 
   // — (a) the pile exists, and a reload SPENDS it —
   {
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     assertNear('section26', 'a fresh round seeds RESERVE_START', A26.getReserve(), START);
     assertNear('section26', 'fresh mag is still full', A26.getMag(), MAG);
 
@@ -4001,7 +4015,7 @@ try {
   // absence, and green-lit a bite that restored the conjured magazine. The
   // bite sweep is the only thing that found it; the suite was happily green.
   {
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     // Empty the pile completely. Fixed bound, deliberately NOT derived from
     // the value under test — a probe whose loop bound comes from the thing a
     // bite feeds zero hangs instead of failing (LESSONS 2026-07-15).
@@ -4036,7 +4050,7 @@ try {
 
   // — (c) EMPTY: the state 17a was built for —
   {
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     assertTrue('section26', 'a fresh round is not empty', !A26.isEmpty());
     for (let r = 0; r < MAG; r++) A26.consumeRound();
     assertTrue('section26', 'mag 0 with a pile behind it is NOT empty (that is a reload)',
@@ -4057,7 +4071,7 @@ try {
   // level up: a single shared pile reads identically at a glance and makes the
   // shotgun's tube free the moment the pistol has been fed.
   {
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     const shotStart = W26.shotgun.RESERVE_START;
     for (let r = 0; r < MAG; r++) A26.consumeRound();
     A26.startReload();
@@ -4081,7 +4095,7 @@ try {
 
   // — (e) addReserve: the pickup's whole contract —
   {
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     const room = CAP - START;
     assertNear('section26', 'a top-up returns what it actually took',
       A26.addReserve('pistol', 1), 1);
@@ -4098,7 +4112,7 @@ try {
     assertNear('section26', '...and a refused top-up did not move the pile', A26.getReserve(), CAP);
 
     // The partial landing: 1 round of room, a 12-round drop offered.
-    A26.resetAmmo();
+    A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     A26.addReserve('pistol', room - 1);
     assertNear('section26', 'a top-up near the cap reports the PARTIAL amount it took',
       A26.addReserve('pistol', 12), 1);
@@ -4113,7 +4127,7 @@ try {
   // falls out of the FINITE arithmetic with no second code path. These pins
   // are what make that claim checkable rather than plausible.
   {
-    A26.resetAmmo({ unlimited: true });
+    A26.resetAmmo({ unlimited: true, allOwned: true }); // Range's real pair of flags
     assertTrue('section26', 'an unlimited round seeds an infinite pile',
       A26.getReserve() === Infinity);
     // 20 mags is ~240 rounds — the MEASURED 60 s Range burn ceiling (§7).
@@ -4153,7 +4167,7 @@ try {
     try {
       W26.__probe26 = { id: '__probe26', MAG_SIZE: 5, RELOAD_MS: 100 };
       ORDER26.push('__probe26');
-      A26.resetAmmo();
+      A26.resetAmmo({ allOwned: true }); // 19: see §10 note
       assertTrue('section26', 'a weapon with no RESERVE_START gets an unlimited pile',
         A26.getReserveOf('__probe26') === Infinity);
       A26.setActiveWeapon('__probe26');
@@ -4168,7 +4182,7 @@ try {
       delete W26.__probe26;
       const i = ORDER26.indexOf('__probe26');
       if (i >= 0) ORDER26.splice(i, 1);
-      A26.resetAmmo();
+      A26.resetAmmo({ allOwned: true }); // 19: see §10 note
     }
     assertTrue('section26', 'the probe weapon was removed and the roster restored',
       W26.__probe26 === undefined && ORDER26.length === ORDER_LEN
@@ -4422,6 +4436,252 @@ try {
 } catch (err) {
   failures.push({ file: 'section26', err });
   console.log(`  FAIL   section 26 threw: ${err.message}`);
+}
+
+// ————— Section 27: the wallet + the walls (pass 19) —————
+// Pistol-start, points as a purse, guns and ammo off the village's walls.
+// Three rule sets: the WALLET (waves.js — earned never falls, balance is the
+// purse), OWNERSHIP (ammo.js — starters vs bought), and the BUY (buys.js —
+// proximity, the gun→ammo→full ladder, charge-before-grant). All pure, all
+// injected, all driven here; the chalk panels' LOOK is browser-only and the
+// stated-limits block at the end says exactly what that leaves unproven.
+
+console.log('');
+console.log('— Section 27: the wallet + the walls (pass 19) —');
+try {
+  const A27 = await import(pathToFileURL(join('src', 'game', 'ammo.js')).href);
+  const WV27 = await import(pathToFileURL(join('src', 'game', 'waves.js')).href);
+  const B27 = await import(pathToFileURL(join('src', 'game', 'buys.js')).href);
+  const { WEAPON_TYPES: W27, WEAPON_ORDER: ORDER27 } =
+    await import(pathToFileURL(join('src', 'data', 'weaponTypes.js')).href);
+  const { ENEMY_TYPES: ET27 } =
+    await import(pathToFileURL(join('src', 'data', 'enemyTypes.js')).href);
+  const { WAVES: WT27 } = await import(pathToFileURL(join('src', 'data', 'waveTable.js')).href);
+  const { MAPS: M27 } = await import(pathToFileURL(join('src', 'data', 'maps.js')).href);
+  const { parseLayout: parse27, cellToWorld: c2w27 } =
+    await import(pathToFileURL(join('src', 'game', 'mapGrid.js')).href);
+  const { CONFIG: CFG27 } = await import(pathToFileURL(join('src', 'config.js')).href);
+
+  // — (a) the registry contract: exactly one starter; everything else priced —
+  {
+    const starters = ORDER27.filter((id) => W27[id].STARTER === true);
+    assertTrue('section27',
+      `exactly ONE starter exists ('${starters.join("','")}') — zero spawns you unarmed, two blurs the pistol era`,
+      starters.length === 1);
+    for (const id of ORDER27) {
+      if (W27[id].STARTER) {
+        assertTrue('section27', `${id}: a starter carries NO price (you cannot buy what you cannot lack)`,
+          W27[id].PRICE === undefined && W27[id].AMMO_PRICE === undefined);
+      } else {
+        // The conditional REQUIRED §24's note points at: priced or starter,
+        // never neither — an unpriced non-starter is unreachable forever.
+        assertTrue('section27', `${id}: a non-starter is PRICED (PRICE + AMMO_PRICE present, finite, positive)`,
+          Number.isFinite(W27[id].PRICE) && W27[id].PRICE > 0
+          && Number.isFinite(W27[id].AMMO_PRICE) && W27[id].AMMO_PRICE > 0);
+        assertTrue('section27', `${id}: ammo costs less than the gun (${W27[id].AMMO_PRICE} < ${W27[id].PRICE})`,
+          W27[id].AMMO_PRICE < W27[id].PRICE);
+      }
+    }
+  }
+
+  // — (b) the wallet: earned is the record, balance is the purse —
+  {
+    WV27.startWaves(); // the reset IS startWaves — read from the artifact, not the convention
+    assertNear('section27', 'a fresh run holds nothing', WV27.getBalance(), 0);
+    WV27.scoreKill({ value: 100 });
+    WV27.scoreKill({ value: 100, part: 'head' }); // x2 -> 200
+    assertNear('section27', 'kills fill the purse (100 + 200 headshot)', WV27.getBalance(), 300);
+    assertTrue('section27', 'spending inside the balance succeeds', WV27.spendPoints(250) === true);
+    assertNear('section27', '...and the purse shows the change', WV27.getBalance(), 50);
+    // THE pin of the split. If spend ever decrements the score, buying a
+    // shotgun fines the player on the scoreboard — the trap the two-counter
+    // design exists to close.
+    assertNear('section27', 'EARNED never falls: the run record ignores spending', WV27.getWavesScore(), 300);
+    assertTrue('section27', 'a spend beyond the balance is REFUSED whole (no partial charges)',
+      WV27.spendPoints(51) === false);
+    assertNear('section27', '...and a refused spend moved nothing', WV27.getBalance(), 50);
+    assertTrue('section27', 'zero and negative spends are refused (a free purchase is a bug)',
+      WV27.spendPoints(0) === false && WV27.spendPoints(-5) === false);
+    WV27.startWaves(); // the reset IS startWaves — read from the artifact, not the convention
+    assertNear('section27', 'reset clears the SPENT side too (no debt carries into a new run)',
+      WV27.getBalance(), 0);
+  }
+
+  // — (c) ownership: the pistol era is real —
+  {
+    A27.resetAmmo(); // the WAVES call: starters only
+    const starter = ORDER27.find((id) => W27[id].STARTER);
+    assertTrue('section27', `a fresh waves run owns ONLY the starter ('${starter}')`,
+      ORDER27.every((id) => A27.isOwned(id) === (id === starter)));
+    assertTrue('section27', '...and holds it', A27.getActiveWeaponId() === starter);
+    const bought = ORDER27.find((id) => !W27[id].STARTER);
+    assertTrue('section27', `slot-swapping to unowned '${bought}' is REFUSED (the key works when the wall says so)`,
+      A27.setActiveWeapon(bought) === false && A27.getActiveWeaponId() === starter);
+    assertTrue('section27', 'Q with one gun cycles to itself (the swap no-op makes it silence)',
+      A27.nextWeaponId() === starter);
+
+    assertTrue('section27', 'ownWeapon grants a gun once', A27.ownWeapon(bought) === true);
+    assertTrue('section27', '...and refuses a double-buy (that path is the AMMO purchase)',
+      A27.ownWeapon(bought) === false);
+    assertNear('section27', 'the bought gun arrives with a full magazine', A27.getMagOf(bought), W27[bought].MAG_SIZE);
+    assertNear('section27', '...and its seeded pile', A27.getReserveOf(bought), W27[bought].RESERVE_START);
+    assertTrue('section27', 'now the slot key works', A27.setActiveWeapon(bought) === true);
+    assertTrue('section27', 'and Q toggles the owned pair, skipping the unowned',
+      (A27.setActiveWeapon(starter), A27.nextWeaponId() === bought));
+
+    // fillReserve: the wall's ammo sale.
+    assertTrue('section27', 'fillReserve tops an owned gun to its CAP and reports the gain',
+      A27.fillReserve(bought) === W27[bought].RESERVE_MAX - W27[bought].RESERVE_START);
+    assertNear('section27', '...landing exactly on RESERVE_MAX', A27.getReserveOf(bought), W27[bought].RESERVE_MAX);
+    assertNear('section27', 'a full pile sells nothing (the refuse-to-charge read)', A27.fillReserve(bought), 0);
+    const unowned = ORDER27.find((id) => !A27.isOwned(id));
+    if (unowned) {
+      assertNear('section27', 'an UNOWNED gun sells no ammo (buy the gun first)', A27.fillReserve(unowned), 0);
+    }
+
+    A27.resetAmmo({ allOwned: true, unlimited: true }); // Range's pair
+    assertTrue('section27', "Range owns the whole rack (an aim test doesn't shop)",
+      ORDER27.every((id) => A27.isOwned(id)));
+    assertNear('section27', "...and Range's infinite pile sells nothing (fillReserve refuses non-finite)",
+      A27.fillReserve(ORDER27.find((id) => !W27[id].STARTER)), 0);
+  }
+
+  // — (d) the buy rules, driven through the injected seam —
+  {
+    const starter = ORDER27.find((id) => W27[id].STARTER);
+    const gunId = ORDER27.find((id) => !W27[id].STARTER);
+    const state = { owned: { [starter]: true }, full: {}, balance: 0, log: [] };
+    B27.initBuys([{ weapon: gunId, x: 10, z: 10 }], {
+      isOwned: (id) => !!state.owned[id],
+      reserveFull: (id) => !!state.full[id],
+      getBalance: () => state.balance,
+      spend: (n) => (state.balance >= n ? ((state.balance -= n), true) : false),
+      onBuyGun: (id) => { state.owned[id] = true; state.log.push(`gun:${id}`); },
+      onBuyAmmo: (id) => { state.log.push(`ammo:${id}`); },
+    });
+
+    assertTrue('section27', 'out of range: no offer', B27.offerAt(0, 0) === null);
+    const edge = CFG27.BUYS.RADIUS;
+    assertTrue('section27', 'a hair outside the radius: still no offer',
+      B27.offerAt(10 + edge + 0.01, 10) === null);
+    let o = B27.offerAt(10 + edge - 0.01, 10);
+    assertTrue('section27', 'a hair inside: the GUN is offered at the registry price',
+      o !== null && o.kind === 'gun' && o.price === W27[gunId].PRICE);
+    assertTrue('section27', 'broke: the offer stands but is not affordable (the prompt greys, never hides)',
+      o.affordable === false);
+    assertTrue('section27', 'E while broke buys nothing and charges nothing',
+      B27.tryBuy(10, 10) === null && state.balance === 0 && state.log.length === 0);
+
+    state.balance = W27[gunId].PRICE + 5;
+    o = B27.offerAt(10, 10);
+    assertTrue('section27', 'funded: the same offer is affordable', o.affordable === true);
+    const receipt = B27.tryBuy(10, 10);
+    assertTrue('section27', 'E buys the gun: charged the price, granted the gun, in that order',
+      receipt !== null && receipt.kind === 'gun'
+      && state.balance === 5 && state.log[0] === `gun:${gunId}`);
+
+    // The ladder: the same panel now sells ammo.
+    o = B27.offerAt(10, 10);
+    assertTrue('section27', 'the panel converts: owned means the offer is AMMO at AMMO_PRICE',
+      o.kind === 'ammo' && o.price === W27[gunId].AMMO_PRICE);
+    assertTrue('section27', 'ammo while broke: refused whole', B27.tryBuy(10, 10) === null && state.balance === 5);
+    state.balance = W27[gunId].AMMO_PRICE;
+    assertTrue('section27', 'ammo funded: bought, charged, granted',
+      B27.tryBuy(10, 10)?.kind === 'ammo' && state.balance === 0 && state.log[1] === `ammo:${gunId}`);
+
+    // The top of the ladder: full.
+    state.full[gunId] = true;
+    state.balance = 99999;
+    o = B27.offerAt(10, 10);
+    assertTrue('section27', "a full pile offers 'full' — the wall says so instead of vanishing",
+      o.kind === 'full');
+    assertTrue('section27', 'E on a full wall buys nothing and charges nothing (rich or not)',
+      B27.tryBuy(10, 10) === null && state.balance === 99999);
+
+    // Step-away: tryBuy recomputes at the CURRENT position.
+    state.full[gunId] = false;
+    assertTrue('section27', 'E after stepping away buys nothing (charging a left panel is theft by latency)',
+      B27.tryBuy(0, 0) === null && state.balance === 99999);
+
+    B27.initBuys([{ weapon: 'railgun', x: 0, z: 0 }], {
+      isOwned: () => false, reserveFull: () => false, getBalance: () => 1e9,
+      spend: () => true, onBuyGun: () => {}, onBuyAmmo: () => {},
+    });
+    assertTrue('section27', "a spot for a gun that doesn't exist offers nothing and never throws",
+      B27.offerAt(0, 0) === null);
+  }
+
+  // — (e) the shipped map's spots, derived from the same data the game reads —
+  {
+    const map = M27.village01;
+    const grid = parse27(map);
+    const FACE = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+    const buys = map.BUYS ?? [];
+    // Every non-starter must be purchasable SOMEWHERE on the shipped map —
+    // THE softlock pin of the pass: pistol-start plus a missing spot equals a
+    // gun that exists in the registry and can never be held in waves.
+    for (const id of ORDER27) {
+      if (W27[id].STARTER) continue;
+      assertTrue('section27', `'${id}' is sold somewhere on the shipped map (pistol-start must not orphan it)`,
+        buys.some((b) => b.WEAPON === id));
+    }
+    for (const b of buys) {
+      const [c, r] = b.CELL;
+      const [ox, oz] = FACE[b.FACE];
+      assertTrue('section27', `${b.WEAPON}'s panel hangs on a real wall ('${grid.at(c, r)}' at ${c},${r})`,
+        grid.at(c, r) === '#');
+      assertTrue('section27', `...with walkable ground on its ${b.FACE} face (you can stand where you buy)`,
+        grid.walkable(c + ox, r + oz));
+    }
+    // Nearest-wins is a real rule only if it never has to fire on the shipped
+    // map: spots must not share a radius.
+    for (let i = 0; i < buys.length; i++) {
+      for (let j = i + 1; j < buys.length; j++) {
+        const a = c2w27(map, grid, buys[i].CELL[0], buys[i].CELL[1]);
+        const b2 = c2w27(map, grid, buys[j].CELL[0], buys[j].CELL[1]);
+        const d = Math.hypot(a.x - b2.x, a.z - b2.z);
+        assertTrue('section27',
+          `spots ${i} and ${j} sit farther apart than two radii (${d.toFixed(1)} m > ${(CFG27.BUYS.RADIUS * 2).toFixed(1)} m)`,
+          d > CFG27.BUYS.RADIUS * 2);
+      }
+    }
+  }
+
+  // — (f) the design window: the pistol era, priced off the real tables —
+  {
+    // Income of waves 1-N, body-shotting, from the SHIPPED tables: count x
+    // blended bounty (type shares x SCORE.KILL). Derived, nothing typed in —
+    // retune the wave table or a bounty and this pin re-prices the era.
+    const incomeThrough = (n) => WT27.TABLE.slice(0, n).reduce((sum, w) => {
+      const blended = Object.entries(w.types)
+        .reduce((s, [id, share]) => s + share * ET27[id].SCORE.KILL, 0);
+      return sum + w.count * blended;
+    }, 0);
+    const cheapest = Math.min(...ORDER27.filter((id) => !W27[id].STARTER).map((id) => W27[id].PRICE));
+    const income5 = incomeThrough(5);
+    assertTrue('section27',
+      `the pistol era ENDS: body-shot income through wave 5 (${income5}) affords the cheapest wall (${cheapest})`,
+      income5 >= cheapest);
+    const income3 = incomeThrough(3);
+    assertTrue('section27',
+      `...and the era is REAL: waves 1-3 (${income3}) cannot yet afford it (a wall bought in wave 2 is no goal at all)`,
+      income3 < cheapest);
+    // Headshots halve the wait — the aim reward reaching into the economy.
+    assertTrue('section27',
+      `a headshot player buys EARLIER: doubled income through wave 3 (${income3 * CFG27.WAVES_SCORE.HEADSHOT_MULT}) affords it`,
+      income3 * CFG27.WAVES_SCORE.HEADSHOT_MULT >= cheapest);
+  }
+
+  // — Stated limits. The chalk panels are CanvasTexture strokes on planes:
+  //   their legibility, their placement flush on the wall face, and the
+  //   z-fighting margin are BROWSER-ONLY — 'a panel hangs on a real wall'
+  //   above pins the DATA, not the pixels. The prompt's grey-out is a CSS
+  //   class toggle in a DOM-coupled file; §27(d) proves the OFFER carries
+  //   affordable=false, not that the text turns grey. And the E handler's
+  //   state gate (PLAYING, waves) lives in main.js — a GREP, not a pin.
+} catch (err) {
+  failures.push({ file: 'section27', err });
+  console.log(`  FAIL   section 27 threw: ${err.message}`);
 }
 
 // ————— Report —————

@@ -36,6 +36,7 @@ import { WEAPON_TYPES, WEAPON_ORDER } from '../data/weaponTypes.js';
 
 const mags = {};              // weapon id -> rounds currently in ITS magazine
 const reserves = {};          // weapon id -> rounds in ITS pile (may be Infinity)
+const owned = {};             // weapon id -> true once yours (19: pistol-start)
 let activeId = WEAPON_ORDER[0];
 let reloading = false;
 let reloadT = 0;
@@ -50,8 +51,18 @@ let reloadT = 0;
 // the one that knows why. The alternative — a `reserveEnabled` flag branching
 // updateAmmo and startReload — would put two mode-shaped forks in the rule
 // itself, and every future pass would owe both of them a thought.
-export function resetAmmo({ unlimited = false } = {}) {
+// `allOwned` and `unlimited` are SEPARATE flags even though today both mean
+// "Range". Fusing them into one would repeat input.js's pass-17 mistake —
+// welding a requirement to an accident — and the first mode that wants one
+// without the other (a hardcore waves variant, a loadout screen) would have
+// to unpick it. main.js states both, derived from the mode it owns.
+export function resetAmmo({ unlimited = false, allOwned = false } = {}) {
   for (const id of WEAPON_ORDER) {
+    // Ownership: STARTERs are yours at wave 1 (§24 pins exactly one exists);
+    // everything else is bought off a wall (ownWeapon below). delete rather
+    // than false so Object.keys(owned) IS the inventory.
+    if (allOwned || WEAPON_TYPES[id].STARTER) owned[id] = true;
+    else delete owned[id];
     mags[id] = WEAPON_TYPES[id].MAG_SIZE;
     // `?? Infinity` is the MAX_RANGE contract: no field, no limit. A gun that
     // never opted into scarcity keeps the pass-17 behaviour instead of
@@ -61,9 +72,44 @@ export function resetAmmo({ unlimited = false } = {}) {
     // it, and the assert proves ours do.
     reserves[id] = unlimited ? Infinity : (WEAPON_TYPES[id].RESERVE_START ?? Infinity);
   }
-  activeId = WEAPON_ORDER[0];
+  // ORDER[0] happens to be the pistol, but "the starter" is the RULE and
+  // "first in the roster" is the accident — pass 20 could legitimately
+  // reorder the registry for the slot keys. Find the rule.
+  activeId = WEAPON_ORDER.find((id) => owned[id]) ?? WEAPON_ORDER[0];
   reloading = false;
   reloadT = 0;
+}
+
+export function isOwned(id) {
+  return owned[id] === true;
+}
+
+// The wall-buy's grant (19): ownership + a full magazine + the seeded pile —
+// exactly the state the weapon would have had at a fresh round, which is what
+// "buying the gun" should mean. Idempotent-hostile on purpose: buying a gun
+// you own is a caller bug (that path is the AMMO purchase), so it returns
+// false rather than quietly re-seeding a spent pile at gun price.
+export function ownWeapon(id) {
+  if (!WEAPON_TYPES[id] || owned[id]) return false;
+  owned[id] = true;
+  mags[id] = WEAPON_TYPES[id].MAG_SIZE;
+  reserves[id] = WEAPON_TYPES[id].RESERVE_START ?? Infinity;
+  return true;
+}
+
+// The wall's AMMO purchase (19): the reserve fills TO ITS CAP — COD's rule,
+// and the pickup contract's opposite on purpose (a drop ADDS a fixed quantum;
+// the wall SELLS "full"). Returns rounds actually gained so main can refuse
+// to charge for zero — the same leave-it-if-worthless shape as the drop.
+export function fillReserve(id) {
+  if (!WEAPON_TYPES[id] || !owned[id]) return 0;
+  const cur = reserves[id] ?? 0;
+  if (!Number.isFinite(cur)) return 0; // Range's pile: nothing to sell
+  const cap = WEAPON_TYPES[id].RESERVE_MAX ?? Infinity;
+  if (!Number.isFinite(cap)) return 0; // no cap, no meaningful "full"
+  const gained = cap - cur;
+  reserves[id] = cap;
+  return gained;
 }
 
 export function getActiveWeaponId() {
@@ -83,7 +129,13 @@ export function getActiveWeapon() {
 // you'd already paid for. Without the cancel you could start the shotgun's
 // reload, fight with the pistol, and collect a free full tube: the slow reload
 // that pays for eight pellets would cost nothing at all.
+// Refuses unowned ids (19) ahead of every other rule: slot keys still route
+// raw digits for the whole roster (input.js stays roster-blind), so "2" with
+// an unbought shotgun lands here and dies here — the pill never repaints, the
+// gun never moves. Owning it is what makes the key work, which is the wall-buy
+// teaching its own control scheme.
 export function setActiveWeapon(id) {
+  if (!owned[id]) return false;
   if (!WEAPON_TYPES[id]) return false; // unknown weapon: refuse, never throw
   if (id === activeId) return false;   // already holding it — not a swap
   activeId = id;
@@ -99,9 +151,18 @@ export function weaponIdForSlot(slot) {
 }
 
 // The next weapon in the roster, wrapping. Q's whole implementation.
+// Cycles OWNED weapons only (19): Q with just the pistol is a no-op, Q after
+// buying the shotgun toggles the pair. The modulo walk covers the whole
+// roster so ownership gaps are skipped, not fenced.
 export function nextWeaponId() {
   const i = WEAPON_ORDER.indexOf(activeId);
-  return WEAPON_ORDER[(i + 1) % WEAPON_ORDER.length];
+  // Walk at most one full lap: with one owned gun this lands back on it and
+  // the swap handler's no-op refusal makes Q silence, which is correct.
+  for (let step = 1; step <= WEAPON_ORDER.length; step++) {
+    const id = WEAPON_ORDER[(i + step) % WEAPON_ORDER.length];
+    if (owned[id]) return id;
+  }
+  return activeId; // unreachable while anything is owned; never undefined
 }
 
 // The fire gate: no shots while reloading, no shots on empty.

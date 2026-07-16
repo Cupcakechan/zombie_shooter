@@ -42,6 +42,23 @@ export const MAPS = {
       FOUNTAIN: 0x55504a,
       WATER: 0x1e3a3f,
     },
+    // Wall-buys (19): WHICH wall sells WHAT. A buy is (cell, face, weapon):
+    // the cell is a '#' in the layout, FACE names the side the panel hangs on
+    // (and the side you stand on to buy — the cell one step that way must be
+    // walkable; suite §27 derives both checks from this data via mapGrid, so
+    // a typo'd cell fails the suite instead of hanging a panel inside a wall).
+    // PRICES ARE NOT HERE — a price is a gun-fact (weaponTypes.js); where it
+    // is sold is the map's only say. Placement is a design statement:
+    //   shotgun — BR hall's west face, SEEN from the fountain crossing every
+    //     lap: the early saving goal stays visible while you save (probed:
+    //     wall (13,16) '#', front (12,16) '.', world x4.8 z-7.0);
+    //   smg — DEEP in the TR house's north room, two doors from anywhere:
+    //     the panic gun costs points AND a walk through zombie ground
+    //     (probed: wall (15,2) '#', front (15,3) '.', world x8.0 z-29.4).
+    BUYS: [
+      { WEAPON: 'shotgun', CELL: [13, 16], FACE: 'W' },
+      { WEAPON: 'smg', CELL: [15, 2], FACE: 'S' },
+    ],
     // Grown 2026-07-12 (felt cramped): same buildings and CELL, more ground
     // — wider building gaps, deeper edge margins, taller mid-field.
     layout: [

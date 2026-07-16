@@ -45,6 +45,7 @@ export function initHud({
     pauseHint: 'pause-hint',
     hudBar: 'hud',
     hudScore: 'hud-score',
+    hudBuy: 'hud-buy',
     hudMult: 'hud-mult',
     hudTimer: 'hud-timer',
     hudAmmo: 'hud-ammo',
@@ -187,6 +188,27 @@ export function showPraise(text) {
   els.praise.classList.add('pop');
   if (praiseTimer) clearTimeout(praiseTimer);
   praiseTimer = setTimeout(() => setVisible(els.praise, false), 900);
+}
+
+// The wall-buy prompt (19). Null clears it. The offer arrives whole from
+// buys.js — this paints, it never decides: kind and affordability were
+// judged where the suite can drive them.
+//   gun  -> "E — SHOTGUN 1200"        ammo -> "E — SHOTGUN AMMO 600"
+//   full -> "SHOTGUN AMMO FULL"       (no E: there is nothing to press)
+// Greyed via .poor when the wallet can't cover it — a live-looking prompt
+// that refuses on E reads as a broken key (the EMPTY-pill lesson, 17b).
+export function setBuyPrompt(offer) {
+  if (!offer) {
+    els.hudBuy.classList.add('hidden');
+    return;
+  }
+  els.hudBuy.classList.remove('hidden');
+  els.hudBuy.textContent = offer.kind === 'full'
+    ? `${offer.label} AMMO FULL`
+    : offer.kind === 'ammo'
+      ? `E — ${offer.label} AMMO ${offer.price}`
+      : `E — ${offer.label} ${offer.price}`;
+  els.hudBuy.classList.toggle('poor', offer.kind !== 'full' && !offer.affordable);
 }
 
 export function setWavesScore(score) {

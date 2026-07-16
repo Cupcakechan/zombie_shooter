@@ -170,6 +170,7 @@ export function startWaves() {
   waveNumber = 0;
   kills = 0;
   score = 0;
+  spent = 0;
   elapsedMs = 0;
   aliveCount = 0;
   pendingSpawns = [];
@@ -251,13 +252,36 @@ export function getKills() {
 
 // Score a kill (pass 10): the registry bounty times the headshot
 // multiplier. Returns the points awarded so the caller can print them
-// (the praise popup). Pass 11 turns this accumulator into the spendable
-// currency — keep this the SINGLE write site.
+// (the praise popup). Pass 19 (the deferred pass 11) made this the EARN side
+// of the wallet — still the SINGLE earn site, exactly as the pass-10 comment
+// planned.
 export function scoreKill({ value, part } = {}) {
   const mult = part === 'head' ? CONFIG.WAVES_SCORE.HEADSHOT_MULT : 1;
   const pts = Math.round((value ?? 0) * mult);
   score += pts;
   return pts;
+}
+
+// The wallet (19). `score` NEVER goes down — it is the run's record, what the
+// game-over screen and any future best track. `spent` is its own counter and
+// the balance is the difference. This split exists because of a trap the COD
+// identity carries: if spending decremented the displayed-and-recorded number,
+// buying a shotgun would LOWER your recorded run — the player would be fined
+// on the scoreboard for engaging with the economy. Earned is the score;
+// balance is the purse; the HUD shows the purse.
+let spent = 0;
+
+export function getBalance() {
+  return score - spent;
+}
+
+// The SINGLE spend site, mirroring scoreKill. Refuses rather than clamps:
+// a purchase either happens whole or not at all — a partial charge is not a
+// thing, and callers branch on the boolean.
+export function spendPoints(n) {
+  if (!(n > 0) || score - spent < n) return false;
+  spent += n;
+  return true;
 }
 
 export function getWavesScore() {

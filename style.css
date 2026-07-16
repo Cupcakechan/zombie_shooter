@@ -143,6 +143,25 @@ body {
   color: #e04545;
 }
 
+/* Wall-buy prompt (19): bottom-centre, above the crosshair's eyeline drop.
+   Greyed = visible but not actionable — the offer exists, the wallet says no.
+   The prompt is the LIVING label (name, price, affordability repaint on a
+   cadence); the chalk panel in the world is only the landmark. */
+#hud-buy {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 84px;
+  font-size: 20px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  color: #e8e2d4;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+}
+#hud-buy.poor {
+  color: #7a756b;
+}
+
 /* Hearts: diamond pips that dim as hits are lost. */
 #hud-hearts {
   gap: 8px;

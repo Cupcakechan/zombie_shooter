@@ -15,6 +15,7 @@ let fireHeld = false; // 18: left button currently down (see mousedown below)
 let onLockChangeCb = null;
 let onLockErrorCb = null;
 const fireHandlers = [];
+const interactHandlers = [];
 const reloadHandlers = [];
 const swapHandlers = [];
 const meleeHandlers = [];
@@ -119,6 +120,14 @@ export function initInput({ onLockChange, onLockError } = {}) {
     if (e.button !== 0) return;
     fireHeld = false;
   });
+
+  // Interact (19): E goes out as "interact", nothing more — this file knows
+  // there are things in the world you can use, not what they are or cost.
+  // Same division as the slot keys: the signal is generic, the world decides.
+  document.addEventListener('keydown', (e) => {
+    if (!locked || e.code !== 'KeyE' || e.repeat) return;
+    interactHandlers.forEach((fn) => fn());
+  });
 }
 
 export function requestLock(el) {
@@ -143,6 +152,10 @@ export function requestLock(el) {
 // key handlers.
 export function isFireHeld() {
   return fireHeld;
+}
+
+export function onInteract(fn) {
+  interactHandlers.push(fn);
 }
 
 export function onFire(fn) {

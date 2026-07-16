@@ -8,17 +8,18 @@ import * as THREE from '../lib/three.module.js';
 import { CONFIG } from './config.js';
 import { States, getState, setState, onEnter } from './state.js';
 import {
-  initInput, requestLock, getLook, getMoveAxes, isFireHeld, onFire, onReload, onSwapWeapon,
+  initInput, requestLock, getLook, getMoveAxes, isFireHeld, onFire, onInteract, onReload, onSwapWeapon,
 } from './input.js';
 import {
   resetAmmo, canFire as ammoCanFire, consumeRound, startReload, cancelReload,
   updateAmmo, getMag, isReloading, reloadProgress,
-  getReserve, addReserve, isEmpty,
+  getReserve, getReserveOf, addReserve, isEmpty,
+  isOwned, ownWeapon, fillReserve,
   getActiveWeapon, getActiveWeaponId, setActiveWeapon, weaponIdForSlot, nextWeaponId,
 } from './game/ammo.js';
 import { createRange } from './render/scene.js';
 import { createFogBank } from './render/fogBank.js';
-import { buildMap } from './render/mapGen.js';
+import { buildMap, buildBuyPanels } from './render/mapGen.js';
 import { MAPS, ACTIVE_MAP_ID } from './data/maps.js';
 import { WAVES } from './data/waveTable.js';
 import { ENEMY_TYPES } from './data/enemyTypes.js';
@@ -48,6 +49,8 @@ import {
 import {
   initPickups, spawnPickup, updatePickups, resetPickups,
 } from './render/pickups.js';
+import { initBuys, offerAt, tryBuy } from './game/buys.js';
+import { WEAPON_TYPES } from './data/weaponTypes.js';
 import {
   initBlastFX, spawnBlast, updateBlastFX, resetBlastFX,
 } from './render/blastFX.js';
@@ -68,14 +71,14 @@ import { saveBestIfBeaten } from './game/best.js';
 import { resetPlayer, damagePlayer, getHits, isDead } from './game/player.js';
 import {
   initWaves, startWaves, updateWaves, notifyKill,
-  getWave, getKills, getElapsedMs, scoreKill, getWavesScore,
+  getWave, getKills, getElapsedMs, scoreKill, getWavesScore, getBalance, spendPoints,
 } from './game/waves.js';
 import {
   initHud, showForState, flashLockHint,
   setScore, setMultiplier, setCountdown, setTimer,
   setHearts, setWave, setKills, showWaveBanner,
   flashDamage, flashBloodSplatter, showGameOver, showResults, setAmmo,
-  setWavesScore, showPraise,
+  setWavesScore, showPraise, setBuyPrompt,
 } from './ui/hud.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -141,6 +144,9 @@ renderer.autoClear = false;
 // beeline through them (4.3); both are the named next passes.
 const activeMap = MAPS[ACTIVE_MAP_ID];
 const houseMap = buildMap(activeMap);
+// Chalk panels (19) ride the map group: same visibility toggle, zero extra
+// choreography — Range hides the map, so Range hides the shop with it.
+houseMap.add(buildBuyPanels(activeMap));
 // Map meshes double as raycast occluders (4.2): a wall eats the bullet.
 const mapWallMeshes = [];
 // Where this map says the player starts (4.1b: the map owns the start).
@@ -163,6 +169,7 @@ for (let r = 0; r < activeGrid.rows; r++) {
   }
 }
 let activeColliders = [];
+let buyPromptT = 0; // prompt repaint accumulator (19)
 // The player cell the flow field was last built FROM (4.3). null forces a
 // rebuild on the next PLAYING frame — mode switches reset it. The
 // congestion signature (4.3b.1) forces the same rebuild when window queues
@@ -225,6 +232,66 @@ initPickups(scene, {
     paintAmmo(isReloading());
     return true;
   },
+});
+
+// — Wall-buys (19). The spots convert from map cells to world points HERE,
+// once, at boot — buys.js judges distances and prices and knows nothing of
+// maps; maps.js names cells and knows nothing of wallets. FACE tells us
+// which side of the wall the player stands on: the offer point is the
+// walkable cell IN FRONT of the panel, not the wall's own centre (a radius
+// around a point inside the wall would make half the zone unreachable).
+const FACE_STEP = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const buySpots = (activeMap.BUYS ?? []).map((b) => {
+  const [ox, oz] = FACE_STEP[b.FACE];
+  const p = cellToWorld(activeMap, activeGrid, b.CELL[0] + ox, b.CELL[1] + oz);
+  return { weapon: b.WEAPON, x: p.x, z: p.z };
+});
+initBuys(buySpots, {
+  isOwned,
+  reserveFull: (id) => fillReserveWouldGain(id) <= 0,
+  getBalance,
+  spend: spendPoints,
+  // The gun purchase: own it, then HOLD it — COD's rule, and the correct
+  // one: you paid 1200 points to use this now, not to carry it. setActiveGun
+  // moves the viewmodel; paintAmmo shows the new gun's full mag + pile.
+  onBuyGun: (id) => {
+    ownWeapon(id);
+    setActiveWeapon(id);
+    setActiveGun(getActiveWeaponId());
+    paintAmmo(isReloading());
+  },
+  // The ammo purchase fills the pile to its cap. Repaint even when the
+  // bought gun is NOT in hand (you can refill the shotgun while holding the
+  // SMG at its wall? No — the wall sells ITS weapon; but the repaint is
+  // still correct when it IS in hand, and harmless otherwise).
+  onBuyAmmo: (id) => {
+    fillReserve(id);
+    paintAmmo(isReloading());
+  },
+});
+
+// buys.js asks "is the pile full" without wanting the fill's side effect;
+// fillReserve both answers and acts. This read-only twin exists so the OFFER
+// can be computed without mutating anything — a prompt that filled your
+// reserve by looking at it would be quite the bug.
+function fillReserveWouldGain(id) {
+  const cap = WEAPON_TYPES[id]?.RESERVE_MAX ?? Infinity;
+  const cur = getReserveOf(id);
+  if (!Number.isFinite(cap) || !Number.isFinite(cur)) return 0;
+  return cap - cur;
+}
+
+// E: recompute at the CURRENT position and buy whole or not at all — the
+// rules and refusals all live in buys.js where the suite drives them.
+onInteract(() => {
+  if (getState() !== States.PLAYING || mode !== 'waves') return;
+  const receipt = tryBuy(camera.position.x, camera.position.z);
+  if (receipt) {
+    setWavesScore(getBalance());
+    // Repaint the prompt immediately off the new state: the same panel now
+    // offers ammo (just bought the gun) or FULL (just bought the ammo).
+    setBuyPrompt(offerAt(camera.position.x, camera.position.z));
+  }
 });
 
 // — Ammo HUD (pass 9; 17b adds the pile). One place that knows setAmmo's
@@ -508,7 +575,7 @@ initShooting({
         // +pts it prints is the REAL awarded number from the single write site.
         if (res && res.killed) {
           const pts = scoreKill(res);
-          setWavesScore(getWavesScore());
+          setWavesScore(getBalance()); // the purse (19); game-over reads EARNED
           if (res.part === 'head') showPraise(`HEADSHOT +${pts}`);
         }
         continue;
@@ -601,7 +668,7 @@ initMelee({
       // bashing the dominant INCOME strategy and quietly retire the shotgun.
       // Melee is an ammo decision. It must never become a points decision.
       scoreKill(res);
-      setWavesScore(getWavesScore());
+      setWavesScore(getBalance()); // the HUD shows the PURSE (19); earned is the record
       // No praise popup: showPraise is the headshot's payoff (pass 10) and a
       // bash has no head to hit.
     }
@@ -667,7 +734,12 @@ onEnter(States.COUNTDOWN, (prev) => {
     // ~240 rounds with no zombies to drop anything, so a finite pile there
     // would make the personal best a function of ammo. Same shape as melee's
     // gate (canSwing, below), which lives out here for the same reason.
-    resetAmmo({ unlimited: mode === 'range' });
+    // 19: BOTH flags are mode-derived here and separately stated — see
+    // resetAmmo for why fusing them would repeat input.js's pass-17 mistake.
+    // Waves owns only STARTERs (the pistol era); Range is an aim test and
+    // hands you the whole rack.
+    resetAmmo({ unlimited: mode === 'range', allOwned: mode === 'range' });
+    setBuyPrompt(null); // no stale offer survives into a fresh round
     resetShooting(); // a new round must not inherit the last one's trigger timing
     resetMelee();    // ...nor the last one's swing timing
     setActiveGun(getActiveWeaponId());
@@ -867,6 +939,15 @@ renderer.setAnimationLoop(() => {
     // never have one (no enemies, no kills). A mode check here would be a
     // second place for the truth to live.
     updatePickups(dtMs, camera.position);
+    // The buy prompt (19), on a cadence rather than per frame: proximity AND
+    // affordability both change while you stand still (a kill pays out), so
+    // it must repaint without moving — but a 60 Hz DOM write for a static
+    // string is waste. Waves-only by construction: Range built no spots.
+    buyPromptT += dtMs;
+    if (mode === 'waves' && buyPromptT >= CONFIG.BUYS.PROMPT_REPAINT_MS) {
+      buyPromptT = 0;
+      setBuyPrompt(offerAt(camera.position.x, camera.position.z));
+    }
     if (mode === 'range') setTimer(getRemainingS());
     else updateWaves(dtMs); // spawning + intermissions only run while playing
   }

@@ -40,6 +40,16 @@ WEAPON_TYPES.pistol = {
                         //   a quarter of a pistol mag and half a shotgun's —
                         //   one global number meant two different warnings.
 
+  STARTER: true,        // pass 19: in your hands at wave 1, no PRICE — the
+                        //   pistol is not for sale because it is never absent.
+                        //   Exactly one STARTER exists (§24 pins it): zero
+                        //   would spawn the player unarmed, two would blur the
+                        //   pistol-era identity the pass exists to create. It
+                        //   also has no AMMO_PRICE and therefore no wall: the
+                        //   pistol lives on drops ALONE, which its economics
+                        //   already guarantee (2.4 rounds/kill earned vs 1 to
+                        //   headshot — the sustainable gun needs no shop).
+
   // — Reserve (17b). OPTIONAL, same contract as MAX_RANGE: no field, no
   //   limit. Both are on the REGISTRY and not in config because a pile size is
   //   a fact about a GUN, and deriving it from MAG_SIZE would hand pass 18's
@@ -124,6 +134,15 @@ WEAPON_TYPES.shotgun = {
   //   the answer pays for itself.
   PICKUP_ROUNDS: 6,     // one full tube (18) — unchanged in value from the
                         //   MAG_FRACTION era, now stated rather than derived.
+
+  // — Wall-buy (19). PRICE is what the gun costs off the wall; AMMO_PRICE
+  //   refills the RESERVE to its cap at the same wall once you own it.
+  //   MEASURED against income: waves 1-4 pay ~1,000 body-shotting protos
+  //   (bounty 100 x 10 kills) and ~2,000 headshotting, so 1200 is a wave-4
+  //   purchase for a player who aims and wave-5 for one who doesn't — the
+  //   pistol era is real but short. Ammo at half the gun, COD's own ratio.
+  PRICE: 1200,
+  AMMO_PRICE: 600,
   RESERVE_START: 18,    // 3 tubes — below the cap, same reasoning as the pistol
   RESERVE_MAX: 36,      // 6 tubes. Half the pistol's mags because a shell is
                         //   worth ~3x a round up close; parity in ROUNDS would
@@ -247,6 +266,14 @@ WEAPON_TYPES.smg = {
                         //   pass 18). §26 now pins the whole roster.
   RESERVE_START: 60,    // 2 mags. Below the cap, same reasoning as the others:
                         //   the first drop must visibly MOVE the number.
+
+  // — Wall-buy (19). Priced ABOVE the shotgun on purpose: the SMG is the
+  //   panic answer and panic must cost more than commitment — and its panel
+  //   hangs deep in the TR house's north room, so the price is paid twice,
+  //   once in points and once in the walk. 900 is a hair over half of 1750;
+  //   round numbers beat exact ratios at the HUD.
+  PRICE: 1750,
+  AMMO_PRICE: 900,
   RESERVE_MAX: 120,     // 4 mags — more ROUNDS than the pistol's 84 and far
                         //   less TIME: at COOLDOWN_MS 75 a full pile is ~11
                         //   seconds of held trigger, against the pistol's ~13

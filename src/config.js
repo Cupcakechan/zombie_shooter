@@ -233,6 +233,21 @@ FOG: {
     VANISH_MS: 250,       // then shrink away over this
     MAX: 40,              // hard pool cap
   },
+  // — Wall-buys (pass 19): how buying WORKS; what and for how much are
+  //   registry facts (weaponTypes PRICE/AMMO_PRICE) and where is a map fact
+  //   (maps.js BUYS). This block is only the interaction envelope. —
+  BUYS: {
+    RADIUS: 1.4,            // metres from the panel's floor point to offer the
+                            //   prompt. Wider than the pickup ring (0.65) on
+                            //   purpose: a pickup is grabbed by walking, a buy
+                            //   is READ — you stand near it and decide, so the
+                            //   zone has to hold you and the prompt still.
+    PROMPT_REPAINT_MS: 150, // prompt refresh cadence — it repaints on a timer
+                            //   rather than every frame because affordability
+                            //   can change mid-stand (a kill pays out), but
+                            //   60 Hz DOM writes for a static string is waste.
+  },
+
   // — Ammo pickups (pass 17b): what the dead drop, and how long you have —
   // This block stands where AMMO used to. AMMO moved WHOLE to
   //   data/weaponTypes.js in pass 17 (every field in it was a fact about the

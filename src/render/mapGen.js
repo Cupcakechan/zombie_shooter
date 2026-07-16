@@ -126,3 +126,98 @@ export function buildMap(map) {
 
   return group;
 }
+
+// — Wall-buy panels (19): the chalk outlines. One plane per BUYS entry,
+// hung on the wall face the data names, drawn entirely on a CanvasTexture
+// (fogBank's precedent — the no-assets rule holds; the "chalk" is strokes).
+//
+// The gun on the panel is not an icon: it is the WEAPON'S OWN PARTS,
+// side-projected. Each registry box [w,h,d] at [x,y,z] becomes a stroked
+// rect in the (z,y) plane — so the shotgun's panel shows the shotgun's
+// long barrel and the SMG's shows its hanging magazine, and pass 20's gun
+// draws its own chalk the day its entry exists. Nothing per-gun here.
+//
+// PRICE IS NOT PAINTED ON PURPOSE. A CanvasTexture is baked at build time;
+// the price is registry data that pass 20 may multiply, discount, or tint —
+// a baked number is a claim nothing repaints. The living text (name, price,
+// affordability) belongs to the HUD prompt, which repaints on a cadence.
+// The panel is the LANDMARK; the prompt is the LABEL.
+import { WEAPON_TYPES } from '../data/weaponTypes.js';
+
+const FACE_OFFSET = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const FACE_YAW = { N: Math.PI, S: 0, E: Math.PI / 2, W: -Math.PI / 2 };
+
+function chalkTexture(weapon) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  // Chalk on plaster: near-white strokes, no fill, slightly translucent.
+  ctx.strokeStyle = 'rgba(235, 230, 215, 0.9)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(10, 10, 236, 236); // the panel border
+
+  // Side projection: registry z spans the horizontal, y the vertical.
+  // Fit the gun's (z,y) bounding box into the middle band of the canvas.
+  let minZ = Infinity; let maxZ = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (const p of weapon.PARTS) {
+    minZ = Math.min(minZ, p.pos[2] - p.size[2] / 2);
+    maxZ = Math.max(maxZ, p.pos[2] + p.size[2] / 2);
+    minY = Math.min(minY, p.pos[1] - p.size[1] / 2);
+    maxY = Math.max(maxY, p.pos[1] + p.size[1] / 2);
+  }
+  const spanZ = maxZ - minZ;
+  const spanY = maxY - minY;
+  const scale = Math.min(190 / spanZ, 110 / spanY);
+  // Registry -Z is downrange; canvas +x is right. Negate z so the muzzle
+  // points RIGHT — the reading direction, and the way chalk guns face in
+  // the reference material. Canvas y grows down; registry y grows up: flip.
+  const cx = 128; const cy = 110;
+  const midZ = (minZ + maxZ) / 2; const midY = (minY + maxY) / 2;
+  ctx.lineWidth = 2;
+  for (const p of weapon.PARTS) {
+    const w = p.size[2] * scale; const h = p.size[1] * scale;
+    const x = cx - (p.pos[2] - midZ) * scale - w / 2;
+    const y = cy - (p.pos[1] - midY) * scale - h / 2;
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  // The name, chalk-printed under the gun. The price deliberately isn't
+  // here — see the header.
+  ctx.fillStyle = 'rgba(235, 230, 215, 0.9)';
+  ctx.font = 'bold 34px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(weapon.NAME, 128, 215);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Builds the panel meshes for a map's BUYS. Separate from buildMap so the
+// caller that has no economy (Range builds no buys) simply never calls it —
+// the same never-reachable-beats-guarded shape as the pickup's Range story.
+export function buildBuyPanels(map) {
+  const grid = parseLayout(map);
+  const group = new THREE.Group();
+  group.name = `buys:${map.id}`;
+  for (const b of (map.BUYS ?? [])) {
+    const w = WEAPON_TYPES[b.WEAPON];
+    if (!w) continue; // a spot for an unshipped gun renders nothing, crashes nothing
+    const [c, r] = b.CELL;
+    const p = cellToWorld(map, grid, c, r);
+    const [ox, oz] = FACE_OFFSET[b.FACE];
+    const panel = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.1, 1.1),
+      // Unlit and fog-free like every readable marker in this world (eyes,
+      // drops): a saving goal you cannot SEE from across the square is not
+      // a goal. It reads as chalk because it is strokes on plaster colour.
+      new THREE.MeshBasicMaterial({ map: chalkTexture(w), transparent: true, fog: false }),
+    );
+    // Half a cell to the face, plus a hair to beat z-fighting with the wall.
+    panel.position.set(p.x + ox * (map.CELL / 2 + 0.02), 1.5, p.z + oz * (map.CELL / 2 + 0.02));
+    panel.rotation.y = FACE_YAW[b.FACE];
+    group.add(panel);
+  }
+  return group;
+}
