@@ -453,7 +453,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   before touching the system under test.
 - Route: skill reference candidate (html-game.md testing conventions).
 
-## 2026-07-14 — a registry paste landed in the WRONG BLOCK; the fallback guard hid it and a red suite shipped
+## 2026-07-14 — a registry paste landed in the WRONG BLOCK; the fallback guard hid it and a red suite shipped [HARVESTED — 2026-07-15]
 
 - What broke / what happened: pass 13b's `RING_FRACTION: 0.85` paste-in
   landed inside the BRUTE's `CRAWL.WALL` block instead of replacing
@@ -488,7 +488,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   status-is-a-READ rule; corollary for the skill's registry conventions — a
   paste-in that lands in the wrong block is the failure mode paste-ins have.
 
-## 2026-07-14 — three pins in one pass that could not fail
+## 2026-07-14 — three pins in one pass that could not fail [HARVESTED — 2026-07-15]
 
 - What broke / what happened: while hardening the crawl gate I wrote three
   pins and every one of them was a false green. (a) A data pin asserting
@@ -516,7 +516,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   and watched it go red"; and "a test harness that fabricates state must
   assert the state it fabricated."
 
-## 2026-07-14 — I measured one build's trajectories and scored the OTHER build with them
+## 2026-07-14 — I measured one build's trajectories and scored the OTHER build with them [HARVESTED — 2026-07-15]
 
 - What broke / what happened: to justify a proposed gate change (13c) I
   measured what fraction of ticks a crawler spends inside the OLD gate — using
@@ -545,7 +545,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   change must be RUN, not derived from the current build's numbers"; sibling
   of ARTIFACT-WINS (measure the real thing — and measure the RIGHT build).
 
-## 2026-07-15 — the probe held a Material and read `.r` off it: NaN passed the assert it should have failed
+## 2026-07-15 — the probe held a Material and read `.r` off it: NaN passed the assert it should have failed [HARVESTED — 2026-07-15]
 
 - What broke / what happened: §21's eye-pulse probe fetched the exploder's eye
   handle with a helper that returned `c.material` — a MeshBasicMaterial — then
@@ -573,7 +573,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   the value a broken probe produces"; and "a probe pins its own INPUT before it
   pins the system."
 
-## 2026-07-15 — the suite HUNG on a zero divisor; a hang diagnoses nothing, so it is worse than a failure
+## 2026-07-15 — the suite HUNG on a zero divisor; a hang diagnoses nothing, so it is worse than a failure [HARVESTED — 2026-07-15]
 
 - What broke / what happened: §21 derived its sample budget from the value
   under test — `periodMs = 1000 / X.PULSE_HZ`, then `for (let ms = 0; ms <
@@ -598,7 +598,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   testing"; and "a schema that proves FINITE does not prove USEFUL — zero,
   negative, and empty all pass a finiteness check."
 
-## 2026-07-15 — Claude-side: my bite harness tested the wrong pin and ran a sed with no landing report
+## 2026-07-15 — Claude-side: my bite harness tested the wrong pin and ran a sed with no landing report [HARVESTED — 2026-07-15]
 
 - What broke / what happened: bite-testing §22, two bites came back "PIN GUARDS
   NOTHING". Both verdicts were wrong, in different ways. (a) The harness ran
@@ -624,7 +624,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   verdict you can distinguish from a no-op." Sibling of #18 and the 2026-07-14
   bite-test rule.
 
-## 2026-07-15 — a registry comment stated a falsifiable claim, and float noise made it false
+## 2026-07-15 — a registry comment stated a falsifiable claim, and float noise made it false [HARVESTED — 2026-07-15]
 
 - What broke / what happened: the wave-8 row justified the spitter's 0.125
   share with "at count 8 it is EXACTLY 1.0 zombies, so largest-remainder cannot
@@ -655,7 +655,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   rounding are decided by float noise; never let a design depend on winning
   one."
 
-## 2026-07-15 — code of unknown provenance appeared in the sandbox; the `git status` READ is the only thing that caught it
+## 2026-07-15 — code of unknown provenance appeared in the sandbox; the `git status` READ is the only thing that caught it [HARVESTED — 2026-07-15]
 
 - What broke / what happened: after syncing the sandbox to origin/main (`git
   reset --hard`, verified clean, suite green) and doing nothing but reads, a
@@ -685,7 +685,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   as deletions"; and "code you did not write yourself is adoptable only through
   the same gates you would apply to your own — green tests are not a review."
 
-## 2026-07-15 — the bite harness ran its whole set against an ALREADY-RED tree: 22 confident false reds
+## 2026-07-15 — the bite harness ran its whole set against an ALREADY-RED tree: 22 confident false reds [HARVESTED — 2026-07-15]
 
 - What broke / what happened: bite-testing pass 14c's §23, the harness reported
   22 of 23 pins RED and one MISS. Every one of those reds was worthless. Earlier
@@ -715,7 +715,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   Also: "never use bash-only syntax in sandbox one-liners — /bin/sh is dash, and
   a Bad substitution silently eats every command after it on the line."
 
-## 2026-07-15 — the harness detector grepped for a string the suite has never printed: 23/23 false GREEN
+## 2026-07-15 — the harness detector grepped for a string the suite has never printed: 23/23 false GREEN [HARVESTED — 2026-07-15]
 
 - What broke / what happened: the first run of 14c's bite harness reported ALL
   23 bites GREEN — "the pin does not bite" — which would mean §23 was 30 asserts
@@ -744,7 +744,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   against your model of it; and uniform verdicts across a whole set are
   evidence about the instrument."
 
-## 2026-07-15 — two false-green pins sampled the exact instant their mutation cannot reach
+## 2026-07-15 — two false-green pins sampled the exact instant their mutation cannot reach [HARVESTED — 2026-07-15]
 
 - What broke / what happened: with an honest baseline, two of 14c's §23 pins
   stayed green under a mutation that genuinely broke the thing they guarded.
@@ -772,7 +772,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   tested at the divisor's zero, not near it — the boundary is where the branch
   that hides the bug lives."
 
-## 2026-07-15 — config.js declared two keys TWICE for nine passes, and a runtime schema physically cannot see it
+## 2026-07-15 — config.js declared two keys TWICE for nine passes, and a runtime schema physically cannot see it [HARVESTED — 2026-07-15]
 
 - What broke / what happened: opening pass 17 I found `RECOIL_MS` and
   `RECOIL_KICK_DEG` each declared twice in `config.js`, adjacent, identical
@@ -798,7 +798,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   the evidence still exists — for source-shaped bugs that is a text scan, not a
   schema."
 
-## 2026-07-15 — the paste-in's ANCHOR got pasted: two comment lines doubled in a file Daniel hand-edits
+## 2026-07-15 — the paste-in's ANCHOR got pasted: two comment lines doubled in a file Daniel hand-edits [HARVESTED — 2026-07-15]
 
 - What broke / what happened: 14c's config.js paste-in showed a "find this"
   block and a "paste this" block as two adjacent fenced code blocks with nothing
@@ -828,7 +828,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   are an instruction to paste both." Sibling of #417 (partial multi-part
   delivery).
 
-## 2026-07-15 — the module floor sat at 28 while the walker found 29: a guard-the-guard that lags guards nothing
+## 2026-07-15 — the module floor sat at 28 while the walker found 29: a guard-the-guard that lags guards nothing [HARVESTED — 2026-07-15]
 
 - What broke / what happened: `MIN_EXPECTED_MODULES` in §0 carried the comment
   "exactly this many modules exist today. Raise it when a module is added; a
@@ -851,7 +851,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   'exactly N today' must be raised in the same pass that changes N, and the
   pass's checklist should name it."
 
-## 2026-07-15 — my probe repaired the thing it was measuring: getWorldPosition updates the matrix it reads
+## 2026-07-15 — my probe repaired the thing it was measuring: getWorldPosition updates the matrix it reads [HARVESTED — 2026-07-15]
 
 - What broke / what happened: measuring the shotgun's kill rate vs range, my
   probe reported that EVERY landed pellet hit the head and none the torso, at
@@ -880,7 +880,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   instrument." Sibling of #296 ("the probe mimicked the defect") and #548 (the
   probe held a Material).
 
-## 2026-07-15 — Claude-side: my edit script nested three quoting levels and the tool call leaked into the chat
+## 2026-07-15 — Claude-side: my edit script nested three quoting levels and the tool call leaked into the chat [HARVESTED — 2026-07-15]
 
 - What broke / what happened: mid-pass-17 I sent an edit script as
   `cat > /tmp/edit_main2.cjs <<'ENDOFSCRIPT'` containing JS template literals.
@@ -911,7 +911,7 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   all-or-nothing — exit before writing if any anchor misses, because the
   half-applied state passes every cheap gate."
 
-## 2026-07-15 — a bad bite is indistinguishable from a false-green pin, and a neutral mutation is neither
+## 2026-07-15 — a bad bite is indistinguishable from a false-green pin, and a neutral mutation is neither [HARVESTED — 2026-07-15]
 
 - What broke / what happened: pass 17's bite run came back 23 red, 3 problems.
   All three were the harness, not the suite. (a) "magazines SHARED across
@@ -937,120 +937,3 @@ updates and mark them `HARVESTED — <date>` (or delete them).
   false pin, a bite that didn't bite, and a mutation that changed nothing —
   and only the first is about the code; print the caught labels so a red for the
   wrong reason is visible too."
-
-## 2026-07-15 — the one lesson that reached Daniel: I built a return value FOR a repaint, then called the function bare
-
-- What broke / what happened: 17a-fix added `cancelReload()` so a melee bash
-  could abandon a reload. I gave it a return value and wrote, in its own comment,
-  that it returns "whether one was actually running, so a caller can tell a real
-  cancel from a no-op" — then wired it in main.js as a bare `cancelReload();`.
-  The ammo pill paints from the flag it is HANDED (`setAmmo(weapon, mag,
-  reloading)`), not from live state, so it stayed stuck on RELOADING… while the
-  gun was visibly bashing. Daniel found it in the browser.
-- Root cause: I added the SEVENTH call site of a `reloading` transition without
-  reading what the other six do. Every one of them pairs itself with a
-  `setAmmo` repaint, and `startReload` — the closest sibling, same shape, same
-  file — has exactly one caller reading `if (startReload()) setAmmo(…, true)`.
-  The fix was `if (cancelReload()) setAmmo(…, false)`: the codebase already
-  contained the answer, in the mirror position, and I wrote the new call from
-  scratch instead of from the pattern.
-- Verification gap it exposed: my end-state grep walk asks "is every new
-  identifier imported?" — which is exactly why `isSwinging`/`cancelReload` got
-  caught one round earlier. It does not ask "does every new call do what its
-  siblings do at their call sites?" And nothing else could: `setAmmo` is
-  DOM-coupled, so the pairing is unpinnable by construction — a state change
-  with no view update leaves no failing anchor, no orphaned identifier, and a
-  `git status` that looks exactly as expected.
-- Plug shipped: the pairing is now stated in main.js at the call site and in the
-  handoff §3 ("the ammo pill is event-driven, so every transition of
-  `reloading` owes it a `setAmmo` call — there are now six such sites"), so
-  17b's reserve — a seventh transition — inherits the warning.
-- Route: general instructions candidate — "before calling an existing
-  state-mutating function for the first time, grep its SIBLINGS' call sites and
-  copy what they pair with. A state change with no view update is the mirror of
-  a record field with no consumer: same stop signal, and neither a suite nor a
-  `git status` can see it."
-
-## 2026-07-15 — an exact-landing pin near a NON-ZERO base is unfalsifiable: the residue rounds away beneath it
-
-- What broke / what happened: §25 pins the melee swing closing exactly on base
-  with `===` rather than a tolerance, and I wrote — in both gun.js and the
-  suite — that the sine envelope alone cannot land it, since
-  `Math.sin(Math.PI)` is 1.2246e-16 rather than 0. The bite that removed the
-  explicit landing came back RED for the WRONG REASON: it caught
-  `rotation.y`/`rotation.z` and never `position.x`. Measured: x's residue is
-  `0.22 × 1.2246e-16` = 2.69e-17, which is below half an ULP near 0.28
-  (5.55e-17), so it rounds away and `x === baseX` holds with the landing code
-  DELETED. The rotations' base is 0, where nothing rounds away, so their
-  6.84e-17 survives.
-- Root cause: I reasoned about the float residue and not about the float
-  GRANULARITY AT THE BASE. The same epsilon is invisible at 0.28 and fatal at 0.
-  My comment was a true statement about the envelope and a false statement about
-  the channel it was attached to.
-- Verification gap it exposed: only the bite found it. The pin was green, its
-  label was accurate-sounding, and it certified a property it could not test —
-  reading exactly like the other two landings beside it.
-- Plug shipped: all three landings kept (x still catches a landing on the WRONG
-  base, which is the regression that would actually ship), but the claim is
-  corrected at both sites and the suite now names `rotation.y` as THE channel
-  that proves the close. Measured numbers recorded in handoff §7.
-- Route: general instructions candidate — "an exactness pin is only falsifiable
-  where the expected value's ULP is smaller than the error you are trying to
-  catch. Near a non-zero base a small residue rounds away and the pin passes by
-  float granularity rather than by the code — pin the ZERO-based channel, and
-  bite an exactness claim before believing it."
-
-## 2026-07-15 — a pin passed the value under test as its own argument, so it re-tested arithmetic instead of the code
-
-- What broke / what happened: 17a-fix gates firing on `!isSwinging()`, where
-  `isSwinging` must read `CONFIG.MELEE.SWING_MS` (220) and NOT `COOLDOWN_MS`
-  (600) — the difference between the trigger freeing at the animation's end and
-  being dead for the whole cooldown. I "proved" it with
-  `assertTrue('the fire block runs the SWING, not the cooldown',
-  !swingReady(M25.SWING_MS - 1, 0, M25.SWING_MS))`. That passes whatever
-  `isSwinging` actually reads: every input is typed into the pin, so it only
-  re-tests `swingReady`'s subtraction.
-- Root cause: the pin asserted the MECHANISM (the predicate's arithmetic) while
-  its label claimed the EFFECT (which constant the caller supplies). Supplying
-  the value under test as an argument severs the pin from the code entirely —
-  and the label read as coverage.
-- Verification gap it exposed: the true case is genuinely unreachable from Node
-  — `isSwinging()` reads module-scope `lastSwingAt`, which only a real keydown
-  writes, and the gate itself lives in DOM-coupled main.js. Facing an
-  unreachable effect, the silent fallback is to test the mechanism and read the
-  green as coverage. That FEELS like compliance.
-- Plug shipped: relabelled to claim only what it proves; kept the two pins that
-  ARE real (`SWING_MS < COOLDOWN_MS`, and `isSwinging() === false` on a fresh
-  round, which catches an inverted sense); and the gap is stated in the suite
-  file and the handoff §5 as browser-verified-only.
-- Route: general instructions candidate — "a pin that receives the value under
-  test as an argument proves nothing about what the CODE supplies — it tests the
-  arithmetic you just typed. When the effect is unreachable in the test runtime,
-  say 'not verified: X' rather than reaching for the mechanism and calling the
-  green coverage."
-
-## 2026-07-15 — a bite read GREEN because the property was guaranteed TWICE: a fourth cause
-
-- What broke / what happened: §25 pins that a bash-cancelled reload forfeits its
-  progress rather than banking it. The bite removed `reloadT = 0` from
-  `cancelReload()` and came back GREEN. The pin was fine: `startReload()` ALSO
-  zeroes `reloadT`, so the forfeit is guaranteed by two independent lines and no
-  single-line mutation can remove it. Re-bitten with both lines removed, it went
-  red on exactly the right assert.
-- Root cause: an existing entry names three causes of a green bite (false pin /
-  bite that didn't bite / neutral mutation). This is a FOURTH and it is not the
-  same as "neutral": the mutation was semantically real, the pin was real, and
-  the property survived anyway because a second guarantee was standing behind it
-  that I had not noticed I'd written.
-- Verification gap it exposed: a redundantly-guaranteed property looks identical
-  to an untested one from the harness's side. And the redundancy is worth
-  KEEPING — `cancelReload`'s zero is unobservable today only because every
-  reader of `reloadT` happens to be `reloading`-guarded, an invariant nothing
-  states and nothing pins; delete it and the next unguarded reader inherits a
-  live stale timer.
-- Plug shipped: the redundancy and the reason for keeping it are recorded at the
-  pin. The bite for that property mutates BOTH guarantees.
-- Route: general instructions candidate — "a GREEN bite has a fourth cause: the
-  property is guaranteed redundantly, so one mutation cannot remove it. Before
-  blaming the pin, grep for a second writer — and if you find one, keep it and
-  bite them together rather than trimming the belt because the braces held."
