@@ -47,39 +47,58 @@ export function initPickups(scene, { onCollect } = {}) {
   if (drops.length) return; // idempotent: re-init must not double the pool
 
   const P = CONFIG.PICKUPS;
-  // The crate (17d — Daniel's feel note on 17b: "more in theme"). Two boxes:
-  // a squat olive body and a proud brass band around its waist. The cyan cube
-  // it replaces carried the "not eyes" separation on HUE because hue was the
-  // cheap axis; the crate hands that job to SILHOUETTE (nothing else out
-  // there is squat and banded) and MOTION (nothing else bobs or spins), and
-  // lets the palette go warm — the band is the CASINGS brass, read from that
-  // block so ammo-coloured means one colour everywhere, not two hexes that
-  // agreed once. Brass-vs-amber-eyes at fog distance is the one check the
-  // suite cannot make; the testing steps hand it to the browser.
+  // The ammo can (17d.2 — Daniel's reference photo: a military can, olive all
+  // over, stencilled). Eight boxes per drop, each earning its slot in the
+  // silhouette: a portrait olive BODY; a proud LID LIP at the top (the can's
+  // rim — the 17d band sat at the waist and read "crate"; a lip at the TOP
+  // reads "can"); a wire HANDLE floating just above the lid; the DIAGONAL
+  // RIB across both broad faces — the reference's signature line, and the
+  // one part that makes it *this* object at a glance; a LATCH block on the
+  // end; and two STENCIL strips, the only non-olive accent, inheriting the
+  // brass band's says-AMMO job in the reference's own stencil yellow.
+  // Detail text would be invisible at 3-13 m; an abstract yellow block is
+  // what a stencil IS at that range.
   //
-  // Pool discipline HOLDS through the shape change, and this is the line the
-  // 17b header warned about: TWO shared geometries and TWO shared materials
-  // serve all twelve drops (suite §26 pins the sharing). The expire-blink
-  // stays on the GROUP's `visible` — children inherit it — for the same
-  // reason as before: opacity is per-instance state, and reaching for it
-  // would silently make twenty-four materials mandatory.
-  const crateGeo = new THREE.BoxGeometry(P.SIZE * 1.3, P.SIZE * 0.85, P.SIZE * 1.3);
-  const bandGeo = new THREE.BoxGeometry(P.SIZE * 1.38, P.SIZE * 0.24, P.SIZE * 1.38);
+  // Pool discipline HOLDS through the shape change (§26 pins it): SIX shared
+  // geometries and THREE shared materials serve all twelve drops — the rib
+  // and stencil reuse one geometry each across both faces. The expire-blink
+  // stays on the GROUP's `visible` — children inherit it — because opacity
+  // is per-instance state, and reaching for it would make thirty-six
+  // materials mandatory.
+  const S = P.SIZE;
+  const bodyGeo = new THREE.BoxGeometry(S * 1.35, S * 1.05, S * 0.7);
+  const lidGeo = new THREE.BoxGeometry(S * 1.45, S * 0.16, S * 0.8);
+  const handleGeo = new THREE.BoxGeometry(S * 0.55, S * 0.07, S * 0.12);
+  const ribGeo = new THREE.BoxGeometry(S * 1.5, S * 0.08, S * 0.05); // rotated 40° in place
+  const latchGeo = new THREE.BoxGeometry(S * 0.12, S * 0.4, S * 0.3);
+  const stencilGeo = new THREE.BoxGeometry(S * 0.7, S * 0.22, S * 0.02);
   // fog:false is load-bearing, same argument as the glob's and the eyes'.
   // FOG.WAVES.FAR is 13 and this arena is 36x42 — a fogged drop across the map
   // is a drop the player cannot see, and a drop the player cannot see cannot
-  // ask them anything. The whole mechanic is the pull of a thing you can see
-  // and have not gone to get yet. Unlit (Basic) for the same reason: readable
-  // is the job; sitting politely in the lighting is not.
-  const crateMat = new THREE.MeshBasicMaterial({ color: P.COLOR_CRATE, fog: false });
-  const bandMat = new THREE.MeshBasicMaterial({ color: P.COLOR_BAND, fog: false });
+  // ask them anything. Unlit (Basic) for the same reason: readable is the
+  // job; sitting politely in the lighting is not.
+  const oliveMat = new THREE.MeshBasicMaterial({ color: P.COLOR_CRATE, fog: false });
+  const trimMat = new THREE.MeshBasicMaterial({ color: P.COLOR_TRIM, fog: false });
+  const stencilMat = new THREE.MeshBasicMaterial({ color: P.COLOR_STENCIL, fog: false });
   for (let i = 0; i < P.MAX; i++) {
     const group = new THREE.Group();
-    group.add(new THREE.Mesh(crateGeo, crateMat));
-    group.add(new THREE.Mesh(bandGeo, bandMat));
+    const add = (geo, mat, x, y, z, rz = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.rotation.z = rz;
+      group.add(m);
+    };
+    add(bodyGeo, oliveMat, 0, 0, 0);
+    add(lidGeo, trimMat, 0, S * 0.6, 0);                    // the rim lip, proud of the body
+    add(handleGeo, trimMat, 0, S * 0.74, 0);                // wire handle, floating on the lid
+    add(ribGeo, oliveMat, 0, 0, S * 0.37, 0.7);             // diagonal rib, front face (~40°)
+    add(ribGeo, oliveMat, 0, 0, -S * 0.37, -0.7);           // ...and back, mirrored
+    add(latchGeo, trimMat, S * 0.72, 0, 0);                 // latch block on the end
+    add(stencilGeo, stencilMat, -S * 0.22, S * 0.24, S * 0.36);  // stencil, front, upper-left
+    add(stencilGeo, stencilMat, S * 0.22, S * 0.24, -S * 0.36);  // stencil, back
     group.visible = false;
     scene.add(group);
-    // The record's field stays named `mesh` although it now holds a Group:
+    // The record's field stays named `mesh` although it holds a Group:
     // position, rotation and visible are Object3D surface, so every consumer
     // in this file and every §26 pin reads it unchanged — the dressing pass
     // touched the LOOK and nothing else, and the untouched suite proves it.

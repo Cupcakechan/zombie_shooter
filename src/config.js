@@ -310,17 +310,21 @@ FOG: {
     BOB_AMP: 0.08,          // metres of hover travel
     BOB_FREQ: 3.0,          // rad/s of the bob
     SPIN: 1.6,              // rad/s turn — motion no zombie part has
-    COLOR_CRATE: 0x4a4f38,  // olive drab — the crate body (17d; was one cyan
-                            //   COLOR: the placeholder cube carried "not eyes"
-                            //   on hue; the crate hands that to silhouette +
-                            //   motion and lets the palette go warm/military).
-    COLOR_BAND: 0xb08d2f,   // brass — DELIBERATELY the CASINGS brass, same
-                            //   hex: "ammo-coloured" is one colour in this
-                            //   world, and the band is what says AMMO at a
-                            //   glance. Sits near the amber eye palette, which
-                            //   is why motion now carries the separation (see
-                            //   pickups.js); the fog-distance read is the
-                            //   browser's, per the 17d test plan.
+    COLOR_CRATE: 0x4d5240,  // olive drab — the can body (17d.2, matched by
+                            //   eye to Daniel's reference photo). 17d carried
+                            //   "not eyes" on silhouette + motion already, so
+                            //   the palette is free to be honestly military.
+    COLOR_TRIM: 0x3a3e30,   // darker olive-metal — lid lip, wire handle,
+                            //   latch: the parts that read as hardware in the
+                            //   reference, one tone down so the silhouette
+                            //   has edges at distance without a second hue.
+    COLOR_STENCIL: 0xd8c34a, // stencil yellow — the reference's markings, and
+                            //   the only non-olive accent. Inherits the 17d
+                            //   brass band's says-AMMO job; at 3-13 m an
+                            //   abstract yellow block IS what a stencil looks
+                            //   like. Warm like the amber eyes, so motion and
+                            //   shape still carry the separation — the same
+                            //   fog-line browser check as 17d.
   },
   // — Persistence (consumed by the results pass) —
   STORAGE_KEY: 'zombieShooter.v1.best',
