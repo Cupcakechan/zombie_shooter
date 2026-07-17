@@ -14,36 +14,39 @@ export const WAVES = {
 // types are auto-paired away from window entries (they can't climb).
 // Past the table, EXTEND carries the LAST row's mix unchanged.
 TABLE: [
-  { count: 1, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
+  // Density reprice pass: wave 1 opens PLURAL (CoD's round-1 lesson is
+  // "there is a horde, it is just slow"), and every gun price doubled with
+  // the income so the pistol-era window keeps its shape.
+  { count: 4, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
     types: { proto_zombie: 1.0 } },
-  { count: 2, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
+  { count: 5, speedMult: 1.0,  entry: { perimeter: 1.0, window: 0 },
     types: { proto_zombie: 1.0 } },
-  { count: 3, speedMult: 1.05, entry: { perimeter: 0.7, window: 0.3 },
+  { count: 6, speedMult: 1.05, entry: { perimeter: 0.7, window: 0.3 },
     types: { proto_zombie: 1.0 } },
-  { count: 4, speedMult: 1.1,  entry: { perimeter: 0.6, window: 0.4 },
+  { count: 7, speedMult: 1.1,  entry: { perimeter: 0.6, window: 0.4 },
     types: { proto_zombie: 0.75, crawler: 0.25 } },
-   { count: 5, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 },
+   { count: 8, speedMult: 1.15, entry: { perimeter: 0.5, window: 0.5 },
     types: { proto_zombie: 0.6, crawler: 0.2, sprinter: 0.2 } },
-  { count: 6, speedMult: 1.2,  entry: { perimeter: 0.5, window: 0.5 },
+  { count: 9, speedMult: 1.2,  entry: { perimeter: 0.5, window: 0.5 },
     types: { proto_zombie: 0.55, crawler: 0.15, sprinter: 0.2, brute: 0.1 } },
     // Wave 7 (pass 14): the exploder debuts, and EXTEND carries the last
   // row's mix forever — so from here on every wave asks the positional
   // question. Its 0.1 share comes out of the Shambler's, not the other
   // archetypes': the specials keep the density they were tuned at.
-  { count: 7, speedMult: 1.25, entry: { perimeter: 0.5, window: 0.5 },
+  { count: 10, speedMult: 1.25, entry: { perimeter: 0.5, window: 0.5 },
     types: { proto_zombie: 0.45, crawler: 0.15, sprinter: 0.2, brute: 0.1, exploder: 0.1 } },
 // Wave 8 (pass 15): the spitter debuts, and EXTEND carries this mix
-  // forever. 0.125 is not a taste call — at count 8 it is EXACTLY 1.0
-  // zombies, so the debut wins a FLOOR slot outright and never depends on
-  // the largest-remainder tie-break at all.
+  // forever. 0.125 is not a taste call — at count 11 (density pass) it is
+  // 1.375 zombies, flooring to 1: the debut still wins a FLOOR slot
+  // outright and never depends on the largest-remainder tie-break.
   //
-  // Any smaller share does depend on it, and that tie-break is decided by
-  // float noise, not design: at 0.05 the remainder is 0.40000000000000002
-  // and it BEATS proto's 0.39999999999999991, so the debut survives — by
-  // luck. (MEASURED during the §22 bite-test; an earlier note here claimed
-  // 0.05 would floor to none, which is false.) Don't tune this below
-  // 1/count without re-checking §22's rounding pin.
-  { count: 8, speedMult: 1.3,  entry: { perimeter: 0.5, window: 0.5 },
+  // Any share below 1/count (now ~0.091) does depend on that tie-break,
+  // and it is decided by float noise, not design — measured at the OLD
+  // count 8 during the §22 bite-test: at share 0.05 the remainder
+  // 0.40000000000000002 BEAT proto's 0.39999999999999991, so a debut
+  // survived by luck. Don't tune this below 1/count without re-checking
+  // §22's rounding pin.
+  { count: 11, speedMult: 1.3,  entry: { perimeter: 0.5, window: 0.5 },
     types: { proto_zombie: 0.35, crawler: 0.15, sprinter: 0.175, brute: 0.1, exploder: 0.1, spitter: 0.125 } },
   ],
   EXTEND: {

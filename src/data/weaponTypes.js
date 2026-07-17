@@ -137,12 +137,14 @@ WEAPON_TYPES.shotgun = {
 
   // — Wall-buy (19). PRICE is what the gun costs off the wall; AMMO_PRICE
   //   refills the RESERVE to its cap at the same wall once you own it.
-  //   MEASURED against income: waves 1-4 pay ~1,000 body-shotting protos
-  //   (bounty 100 x 10 kills) and ~2,000 headshotting, so 1200 is a wave-4
-  //   purchase for a player who aims and wave-5 for one who doesn't — the
-  //   pistol era is real but short. Ammo at half the gun, COD's own ratio.
-  PRICE: 1200,
-  AMMO_PRICE: 600,
+  //   MEASURED against income (density pass, counts 4..11): waves 1-3 pay
+  //   1,500 body-shotting / 3,000 headshotting, and 3,150 body through
+  //   wave 5 — so 2400 is a wave-3 purchase for a player who aims and an
+  //   early-wave-5 one for a player who doesn't. The pistol era keeps the
+  //   exact shape it had before the density doubling (every price doubled
+  //   with the income). Ammo at half the gun, COD's own ratio.
+  PRICE: 2400,
+  AMMO_PRICE: 1200,
   RESERVE_START: 18,    // 3 tubes — below the cap, same reasoning as the pistol
   RESERVE_MAX: 36,      // 6 tubes. Half the pistol's mags because a shell is
                         //   worth ~3x a round up close; parity in ROUNDS would
@@ -270,10 +272,11 @@ WEAPON_TYPES.smg = {
   // — Wall-buy (19). Priced ABOVE the shotgun on purpose: the SMG is the
   //   panic answer and panic must cost more than commitment — and its panel
   //   hangs deep in the TR house's north room, so the price is paid twice,
-  //   once in points and once in the walk. 900 is a hair over half of 1750;
-  //   round numbers beat exact ratios at the HUD.
-  PRICE: 1750,
-  AMMO_PRICE: 900,
+  //   once in points and once in the walk. Doubled with the density pass
+  //   (3500/2400 keeps 19's exact panic-premium ratio); ammo at 1800 stays
+  //   a hair over half the gun, same as the old 900/1750.
+  PRICE: 3500,
+  AMMO_PRICE: 1800,
   RESERVE_MAX: 120,     // 4 mags — more ROUNDS than the pistol's 84 and far
                         //   less TIME: at COOLDOWN_MS 75 a full pile is ~11
                         //   seconds of held trigger, against the pistol's ~13
